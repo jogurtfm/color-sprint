@@ -1,5 +1,5 @@
 import { App, ItemView, MarkdownRenderChild, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce } from 'obsidian';
-import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay } from './model';
+import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay, timeBlockFor, saveTimeBlock, clearTimeBlock } from './model';
 import { starter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
@@ -156,8 +156,9 @@ class SessionModal extends FormModal {
 }
 class EntryModal extends FormModal {
   constructor(app:App,plugin:ColorSprint,task:Task,day:string,text:string,path=plugin.settings.path){
-    super(app,`${task.title} · ${day}`);const original=entryFor(parseBoard(text),task.id,day);let detail=original?.detail||'';
+    super(app,`${task.title} · ${day}`);const board=parseBoard(text);const original=entryFor(board,task.id,day);const originalBlock=timeBlockFor(board,task.id,day);let detail=original?.detail||'';let start=originalBlock?.start||'',end=originalBlock?.end||'',timezone=originalBlock?.timezone||board.availability[0]?.timezone||'America/Chicago';
     this.text('Plan / actual result','Keep source assignments intact; add actual sets, reps, distances, evidence, or blockers here.',detail,v=>detail=v);
-    this.save(()=>plugin.change(current=>{const entry=entryFor(parseBoard(current),task.id,day);if(JSON.stringify(entry)!==JSON.stringify(original))throw new Error('This entry changed in Markdown. Reopen the latest version.');return setEntry(current,day,task.id,entry?.done||false,detail);},path));
+    this.field('Suggested start','24-hour local time, such as 19:00; leave both time fields empty for flexible.',start,v=>start=v,'time');this.field('Suggested end','Same day, after the start.',end,v=>end=v,'time');this.field('Time zone','Time zone used by the calendar block.',timezone,v=>timezone=v.trim());
+    this.save(()=>plugin.change(current=>{const latest=parseBoard(current);const entry=entryFor(latest,task.id,day);const block=timeBlockFor(latest,task.id,day);if(JSON.stringify(entry)!==JSON.stringify(original)||JSON.stringify(block)!==JSON.stringify(originalBlock))throw new Error('This entry changed in Markdown. Reopen the latest version.');let next=setEntry(current,day,task.id,entry?.done||false,detail);if(start||end){const changed=start!==originalBlock?.start||end!==originalBlock?.end||timezone!==originalBlock?.timezone;next=saveTimeBlock(next,{date:day,taskId:task.id,start,end,timezone,status:changed?'suggested':originalBlock?.status||'suggested',eventId:originalBlock?.eventId||'-',eventUrl:originalBlock?.eventUrl||'-'});}else{if(block?.eventId&&block.eventId!=='-')throw new Error('This time has a calendar event. Change its time and reconcile the linked event before clearing it.');next=clearTimeBlock(next,task.id,day);}return next;},path));
   }
 }

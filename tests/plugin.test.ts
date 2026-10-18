@@ -7,6 +7,7 @@ import { starter } from '../src/starter';
 import { parseBoard, setEntry, startTimer, localDay } from '../src/model';
 import { dailyScaffold } from '../src/daily';
 import { addRoadmap } from '../src/roadmaps';
+import { timeBlockFor } from '../src/model';
 const require=createRequire(import.meta.url);
 const {JSDOM}=require('jsdom');
 const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
@@ -113,4 +114,7 @@ test('color focus schedules its entire group, cues each task, and credits only e
 });
 test('quick counts render their total and unavailable cue APIs do not prevent focus',async()=>{
   const h=await harness();try{h.button('+5 reps').click();await settle();assert.match(h.view.contentEl.querySelector('.cs-quick-total').textContent,/5 reps/);Object.defineProperty(h.dom.window,'Notification',{value:{permission:'default',requestPermission(){throw new Error('Device API unavailable');}},configurable:true});h.view.contentEl.querySelector('[aria-label="Start meditation mode"]').click();await settle();assert.equal(parseBoard(h.text).timer!.taskId,'mindfulness');assert.ok(h.document.querySelector('.cs-focus-mode'));assert.equal(h.notices.length,0);}finally{await h.close();}
+});
+test('Day details saves suggested time and displays it on cards and week cells',async()=>{
+  const day=localDay();const h=await harness(setEntry(starter(),day,'cook',false,'Soup'));try{h.button('Day details').click();await settle();const modal=h.modals[0];for(const [name,value] of [['Suggested start','19:00'],['Suggested end','19:30'],['Time zone','America/Chicago']]){const input=modal.contentEl.querySelector(`[aria-label="${name}"]`);input.value=value;input.dispatchEvent(new h.dom.window.Event('input'));}h.button('Save',modal.contentEl).click();await settle();assert.equal(timeBlockFor(parseBoard(h.text),'cook',day)?.status,'suggested');assert.match(h.document.querySelector('.cs-time-slot').textContent,/7 PM–7:30 PM/);assert.equal(parseBoard(h.text).entries[0].detail,'Soup');assert.equal(parseBoard(h.text).entries[0].done,false);h.button('Week').click();await settle();assert.match(h.document.querySelector('.cs-cell-time').textContent,/~7 PM/);assert.equal(h.notices.length,0);}finally{await h.close();}
 });

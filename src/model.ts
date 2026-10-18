@@ -17,7 +17,9 @@ export interface FocusStep {id:string; taskId:string; subtask?:Subtask; title:st
 export interface WorkoutLog {id:string; date:string; taskId:'workout'|'treadmill'; minutes:number; distance:number; details:string; note:string}
 export interface QuickCount {id:string; date:string; taskId:string; amount:number; unit:string}
 export interface GroupRef {kind:'page'|'color'; value:string}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; start:string; end:string}
+export interface TimeBlock {date:string;taskId:string;start:string;end:string;timezone:string;status:'suggested'|'scheduled'|'needs-review';eventId:string;eventUrl:string}
+export interface Availability {id:string;label:string;days:string;start:string;end:string;timezone:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
@@ -25,7 +27,9 @@ const QUEUE_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed 
 const LEGACY_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |';
 export const WORKOUT_LOG_HEADER='| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |';
 export const QUICK_COUNT_HEADER='| ID | Date | Task ID | Amount | Unit |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks'];
+export const TIME_BLOCK_HEADER='| Date | Task ID | Start | End | Time zone | Status | Calendar event ID | Event URL |';
+export const AVAILABILITY_HEADER='| ID | Label | Days | Start | End | Time zone |';
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -74,8 +78,18 @@ export function parseBoard(text:string):Board {
   const reflectionRange=rs.get('Reflections');const reflections=reflectionRange?dataLines(lines,reflectionRange).map(line=>line.trim().replace(/^[-*]\s+|^>\s?/,'')).filter(line=>line&&!line.startsWith('<!--')):[];
   const match=text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);const start=match?.[1]||localDay();const end=match?.[2]||addDays(start,13);if(!validDay(start)||!validDay(end)||end<start)throw new Error('Invalid Sprint date range.');
   const subRange=rs.get('Subtasks');const subtasks=subRange?checkboxRows(lines,subRange).map(({done,parts:p})=>{if(p.length!==7)throw new Error('Subtask rows need ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or -.');const sub:Subtask={id:p[0],taskId:p[1],context:p[2],minutes:number(p[3]),title:p[4],definition:p[5],completed:p[6],done};if(!taskIds.has(sub.taskId)||!sub.title||!sub.context||sub.minutes>1440||(sub.completed!=='-'&&!validDay(sub.completed)))throw new Error('Invalid subtask parent, title, duration, or completed date.');return sub;}):[];unique(subtasks.map(sub=>sub.id),'subtask');
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,start,end};
+  const timeRange=rs.get('Time Blocks');const timeBlocks=timeRange?table(lines,timeRange,TIME_BLOCK_HEADER).map(p=>({date:p[0],taskId:p[1],start:p[2],end:p[3],timezone:p[4],status:p[5] as TimeBlock['status'],eventId:p[6],eventUrl:p[7]})):[];
+  for(const block of timeBlocks){if(!validDay(block.date)||!taskIds.has(block.taskId)||!validTime(block.start)||!validTime(block.end)||block.end<=block.start||!validTimezone(block.timezone)||!['suggested','scheduled','needs-review'].includes(block.status))throw new Error('Time Blocks need a real task/date, HH:MM start/end, time zone, and valid status.');if(block.status==='scheduled'&&(!block.eventId||block.eventId==='-'))throw new Error('Scheduled blocks need a verified calendar event ID.');if(block.eventUrl!=='-'&&!/^https:\/\/(calendar\.google\.com|www\.google\.com)\//.test(block.eventUrl))throw new Error('Event URL must be a Google Calendar HTTPS link or -.');}
+  if(new Set(timeBlocks.map(block=>`${block.date}/${block.taskId}`)).size!==timeBlocks.length)throw new Error('Duplicate time block for task/date.');
+  const availRange=rs.get('Availability');const availability=availRange?table(lines,availRange,AVAILABILITY_HEADER).map(p=>({id:p[0],label:p[1],days:p[2],start:p[3],end:p[4],timezone:p[5]})):[];unique(availability.map(block=>block.id),'availability');for(const block of availability)if(!block.label||!validRepeat(block.days)||!validTime(block.start)||!validTime(block.end)||block.end<=block.start||!validTimezone(block.timezone))throw new Error('Availability blocks need a label, repeat days, HH:MM start/end and time zone.');
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,start,end};
 }
+export function validTime(value:string):boolean{return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);}
+function validTimezone(value:string):boolean{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}}
+export function clockLabel(value:string):string{const [hour,minute]=value.split(':').map(Number);return `${hour%12||12}${minute?':'+String(minute).padStart(2,'0'):''}${hour<12?' AM':' PM'}`;}
+export function timeBlockFor(board:Board,taskId:string,date:string):TimeBlock|undefined{return board.timeBlocks.find(block=>block.date===date&&block.taskId===taskId);}
+export function timeBlockLabel(block:TimeBlock):string{return `${block.status==='scheduled'?'On calendar':block.status==='needs-review'?'Review time':'Suggested'} · ${clockLabel(block.start)}–${clockLabel(block.end)}`;}
+export function availabilityFor(board:Board,date:string):Availability[]{return board.availability.filter(block=>scheduled({repeat:block.days} as Task,date));}
 export function taskSubtasks(board:Board,taskId:string,date:string):Subtask[]{const detail=entryFor(board,taskId,date)?.detail.toLowerCase()||'';return board.subtasks.filter(sub=>sub.taskId===taskId&&(sub.context==='-'||detail.includes(sub.context.toLowerCase())));}
 export function focusQueue(board:Board,timer:Timer):FocusStep[]{const group=parseGroupTimerId(timer.taskId);const tasks=board.tasks.filter(task=>group?(group.kind==='page'?task.page===group.value:task.color===group.value):task.id===timer.taskId);return tasks.flatMap(task=>{const subs=taskSubtasks(board,task.id,timer.date);return subs.length?subs.map(sub=>({id:sub.id,taskId:task.id,subtask:sub,title:sub.title,definition:sub.definition,minutes:sub.minutes,done:sub.done})):[{id:task.id,taskId:task.id,title:task.title,definition:task.definition,minutes:task.minutes,done:!!entryFor(board,task.id,timer.date)?.done}];});}
 export function dailyWins(board:Board,date:string):{tasks:number;subtasks:number}{return {tasks:board.entries.filter(entry=>entry.date===date&&entry.done).length,subtasks:board.subtasks.filter(sub=>sub.done&&sub.completed===date).length};}
@@ -97,6 +111,14 @@ export function setEntry(text:string,date:string,id:string,done:boolean,detail?:
 export function scheduleGroup(text:string,group:GroupRef,date:string):string{
   let board=parseBoard(text);if(!validDay(date)||!group.value.trim())throw new Error('A schedule group needs a valid date and group.');const tasks=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value);if(!tasks.length)throw new Error('This schedule group has no tasks.');let next=text;for(const task of tasks){if(!entryFor(board,task.id,date)){next=setEntry(next,date,task.id,false);board=parseBoard(next);}}return next;
 }
+export function saveTimeBlock(text:string,block:TimeBlock):string{
+  const board=parseBoard(text);if(!validTime(block.start)||!validTime(block.end)||block.end<=block.start)throw new Error('Use HH:MM start and end, with end after start.');const conflict=availabilityFor(board,block.date).find(fixed=>fixed.timezone===block.timezone&&block.start<fixed.end&&block.end>fixed.start);if(conflict)throw new Error(`This overlaps ${conflict.label} (${clockLabel(conflict.start)}–${clockLabel(conflict.end)}). Choose an open time.`);
+  if(board.timeBlocks.some(other=>other.date===block.date&&other.taskId!==block.taskId&&other.timezone===block.timezone&&block.start<other.end&&block.end>other.start))throw new Error('This overlaps another task on this date. Choose an open time.');
+  const nl=text.includes('\r\n')?'\r\n':'\n';let next=text;if(!ranges(text.split(/\r?\n/)).has('Time Blocks'))next+=`${nl}## Time Blocks${nl}${nl}${TIME_BLOCK_HEADER}${nl}| --- | --- | --- | --- | --- | --- | --- | --- |${nl}`;
+  const row=`| ${[block.date,block.taskId,block.start,block.end,block.timezone,block.status,block.eventId||'-',block.eventUrl||'-'].map(cell).join(' | ')} |`;
+  next=lineEdit(next,'Time Blocks',line=>{const p=splitCells(line);return p[0]===block.date&&p[1]===block.taskId;},()=>row,row);parseBoard(next);if(!entryFor(board,block.taskId,block.date))next=setEntry(next,block.date,block.taskId,false);return next;
+}
+export function clearTimeBlock(text:string,taskId:string,date:string):string{if(!parseBoard(text).timeBlocks.some(block=>block.taskId===taskId&&block.date===date))return text;return lineEdit(text,'Time Blocks',line=>{const p=splitCells(line);return p[0]===date&&p[1]===taskId;},()=>'', '');}
 export function saveSubtask(text:string,sub:Subtask):string{
   let next=text;const nl=text.includes('\r\n')?'\r\n':'\n';if(!ranges(text.split(/\r?\n/)).has('Subtasks'))next+=`${nl}## Subtasks${nl}${nl}<!-- - [ ] ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or - -->${nl}`;
   const row=`- [${sub.done?'x':' '}] ${[sub.id,sub.taskId,sub.context,String(sub.minutes),sub.title,sub.definition,sub.completed].map(cell).join(' | ')}`;

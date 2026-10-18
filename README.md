@@ -57,6 +57,8 @@ Embedded and full-screen dashboards share the same tracker note. They do not dup
 
 ## Mobile behavior and limits
 
+Optional Markdown Time Blocks display suggested start/end times on cards and in the weekly cells. Set them in Day details; Availability holds protected time separately from task counts. Google Calendar synchronization is performed by the scheduling assistant through its connected Calendar integration, with provider IDs stored in private vault data. The Obsidian plugin displays that data and makes no Google API calls. See [FORMAT.md](FORMAT.md) for both schemas and sync status rules.
+
 No Node.js, filesystem, Electron, or network APIs are used by the plugin. Obsidian's Vault API performs reads and atomic edits. No account, analytics, or external service is required.
 
 iOS can suspend Obsidian. The timer uses persisted timestamps instead of counting background ticks, so elapsed time is reconstructed on return. **There is no background alarm or push notification.** The timer continues until you pause/save; reaching the focus target does not end it or mark work complete. Before changing devices, pause or save the timer. Vault sync conflicts across two simultaneously active devices still require your sync provider's conflict handling.

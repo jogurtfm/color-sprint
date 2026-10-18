@@ -44,6 +44,10 @@
 .cs-card .cs-meta { font-size:11px; margin:4px 0 6px; }
 .cs-definition { margin:6px 0 12px; overflow-wrap:anywhere; }
 .cs-detail { font-size:14px; font-weight:650; margin:6px 0; }
+.cs-time-slot { font-size:12px; font-weight:650; margin:3px 0; color:var(--text-accent,var(--cs-ink)); }
+.cs-event-link { color:inherit; }
+.cs-cell-time { display:block; font-size:10px; white-space:nowrap; line-height:1.3; padding:2px 3px; }
+.cs-day-availability { color:var(--cs-muted); font-size:11px; margin:4px 0; overflow-x:auto; white-space:nowrap; }
 .cs-card.is-done .cs-task-title { text-decoration:line-through; color:var(--cs-muted); }
 .cs-actions { margin-top:12px; }
 .cs-quick-total { width:100%; color:var(--cs-muted); font-size:12px; font-weight:700; }

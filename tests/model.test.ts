@@ -4,6 +4,7 @@ import { starter } from '../src/starter';
 import { parseBoard, setEntry, saveTask, setGoal, scheduleGroup, startTimer, startGroupTimer, moveGroupTimer, parseGroupTimerId, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, timerSeconds, planned, splitCells, cell, addDays } from '../src/model';
 import { TIMER_HEADER, focusQueue, completeFocusStep, dailyWins, setSubtaskDone } from '../src/model';
 import { addRoadmap } from '../src/roadmaps';
+import { saveTimeBlock, timeBlockFor, availabilityFor, timeBlockLabel, AVAILABILITY_HEADER } from '../src/model';
 
 const seed=()=>starter('2026-10-18');
 test('all 22 exact task labels and all six source colors survive Markdown parsing',()=>{
@@ -60,4 +61,7 @@ test('portfolio roadmap queue persists durations, preserves total focus, and cou
 });
 test('tax and letters roadmaps remain scoped to their own schedule details',()=>{
   let md=addRoadmap(addRoadmap(seed(),'hard-task','2020 Tax'),'hard-task','Letters');md=setEntry(md,'2026-10-19','hard-task',false,'2020 Tax');md=setEntry(md,'2026-10-21','hard-task',false,'Letters');md=startTimer(md,'hard-task','2026-10-19');let b=parseBoard(md);assert.ok(focusQueue(b,b.timer!).every(step=>step.subtask?.context==='2020 Tax'));md=finishTimer(md,b.timer!.id,'');md=startTimer(md,'hard-task','2026-10-21');b=parseBoard(md);assert.ok(focusQueue(b,b.timer!).every(step=>step.subtask?.context==='Letters'));
+});
+test('structured time proposals preserve task evidence, expose local times and block protected overlaps',()=>{
+  const reserved=`\n## Availability\n\n${AVAILABILITY_HEADER}\n| --- | --- | --- | --- | --- | --- |\n| reserved | Reserved | mon,tue,wed,thu,fri | 10:00 | 18:00 | America/Chicago |\n`;let md=setEntry(seed(),'2026-10-19','cook',true,'Keep this evidence')+reserved;const proposal={date:'2026-10-19',taskId:'cook',start:'19:00',end:'19:30',timezone:'America/Chicago',status:'suggested' as const,eventId:'-',eventUrl:'-'};md=saveTimeBlock(md,proposal);const board=parseBoard(md);assert.equal(board.entries[0].done,true);assert.equal(board.entries[0].detail,'Keep this evidence');assert.equal(board.sessions.length,0);assert.match(timeBlockLabel(timeBlockFor(board,'cook','2026-10-19')!),/Suggested · 7 PM–7:30 PM/);assert.equal(availabilityFor(board,'2026-10-19').length,1);assert.equal(availabilityFor(board,'2026-10-18').length,0);assert.throws(()=>saveTimeBlock(md,{...proposal,start:'17:30',end:'18:30'}),/overlaps Reserved/);assert.throws(()=>saveTimeBlock(md,{...proposal,taskId:'clean-room',start:'19:15',end:'19:45'}),/overlaps another/);assert.throws(()=>saveTimeBlock(md,{...proposal,status:'scheduled'}),/verified calendar event ID/);
 });

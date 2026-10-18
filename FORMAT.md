@@ -94,6 +94,26 @@ Each subtask has a stable lowercase ID, a real parent task ID, suggested minutes
 
 Focus expands a parent or group into these steps. Done records the subtask date and advances; Skip advances without completion. Completing all subtasks does not mark the parent done. The daily wins display counts dated task completions and dated subtask completions separately; sessions and quick increments do not add completion wins. If you edit a subtask checkbox directly, fill its Completed date to include it in that day's count.
 
+## Time Blocks and Availability (optional)
+
+```md
+## Time Blocks
+
+| Date | Task ID | Start | End | Time zone | Status | Calendar event ID | Event URL |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-19 | cook | 19:00 | 19:30 | America/Chicago | suggested | - | - |
+
+## Availability
+
+| ID | Label | Days | Start | End | Time zone |
+| --- | --- | --- | --- | --- | --- |
+| reserved-block | Reserved | mon,tue,wed,thu,fri | 10:00 | 18:00 | America/Chicago |
+```
+
+Time Blocks adds a clock time separately from Schedule details and completion. Use 24-hour `HH:MM`, same-day end after start, and an IANA time zone. Status is `suggested`, `scheduled`, or `needs-review`. A `scheduled` block requires a provider event ID; absent IDs/URLs use `-`. Card labels show the range and status, week cells show `~` before suggested start times, and accessible labels include the time zone. Edit start/end from Day details. Saving a new time also creates an unchecked Schedule entry if needed, and retains existing details/completions.
+
+Availability is protected time, not a spreadsheet task or completion win. Days use `daily` or comma-separated weekday tokens like Repeat. The editor rejects overlap with protected blocks or other task blocks in the same time zone; different-zone conflict checks must be performed by the calendar reconciliation workflow. A linked Google event must be reconciled separately after changing its proposed time. This plugin does not hold Google credentials or create events itself; the scheduling assistant uses the connected Google Calendar integration and writes verified provider references back to Markdown.
+
 ## Workout Log (optional)
 
 ```md

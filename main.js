@@ -42,8 +42,10 @@ var QUEUE_TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed 
 var LEGACY_TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |";
 var WORKOUT_LOG_HEADER = "| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |";
 var QUICK_COUNT_HEADER = "| ID | Date | Task ID | Amount | Unit |";
+var TIME_BLOCK_HEADER = "| Date | Task ID | Start | End | Time zone | Status | Calendar event ID | Event URL |";
+var AVAILABILITY_HEADER = "| ID | Label | Days | Start | End | Time zone |";
 var SECTIONS = ["Tasks", "Schedule", "Goals", "Sessions", "Timer"];
-var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts", "Subtasks"];
+var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts", "Subtasks", "Time Blocks", "Availability"];
 function localDay(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -213,7 +215,43 @@ function parseBoard(text) {
     return sub;
   }) : [];
   unique(subtasks.map((sub) => sub.id), "subtask");
-  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, subtasks, start, end };
+  const timeRange = rs.get("Time Blocks");
+  const timeBlocks = timeRange ? table(lines, timeRange, TIME_BLOCK_HEADER).map((p) => ({ date: p[0], taskId: p[1], start: p[2], end: p[3], timezone: p[4], status: p[5], eventId: p[6], eventUrl: p[7] })) : [];
+  for (const block of timeBlocks) {
+    if (!validDay(block.date) || !taskIds.has(block.taskId) || !validTime(block.start) || !validTime(block.end) || block.end <= block.start || !validTimezone(block.timezone) || !["suggested", "scheduled", "needs-review"].includes(block.status)) throw new Error("Time Blocks need a real task/date, HH:MM start/end, time zone, and valid status.");
+    if (block.status === "scheduled" && (!block.eventId || block.eventId === "-")) throw new Error("Scheduled blocks need a verified calendar event ID.");
+    if (block.eventUrl !== "-" && !/^https:\/\/(calendar\.google\.com|www\.google\.com)\//.test(block.eventUrl)) throw new Error("Event URL must be a Google Calendar HTTPS link or -.");
+  }
+  if (new Set(timeBlocks.map((block) => `${block.date}/${block.taskId}`)).size !== timeBlocks.length) throw new Error("Duplicate time block for task/date.");
+  const availRange = rs.get("Availability");
+  const availability = availRange ? table(lines, availRange, AVAILABILITY_HEADER).map((p) => ({ id: p[0], label: p[1], days: p[2], start: p[3], end: p[4], timezone: p[5] })) : [];
+  unique(availability.map((block) => block.id), "availability");
+  for (const block of availability) if (!block.label || !validRepeat(block.days) || !validTime(block.start) || !validTime(block.end) || block.end <= block.start || !validTimezone(block.timezone)) throw new Error("Availability blocks need a label, repeat days, HH:MM start/end and time zone.");
+  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, subtasks, timeBlocks, availability, start, end };
+}
+function validTime(value) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+function validTimezone(value) {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function clockLabel(value) {
+  const [hour, minute] = value.split(":").map(Number);
+  return `${hour % 12 || 12}${minute ? ":" + String(minute).padStart(2, "0") : ""}${hour < 12 ? " AM" : " PM"}`;
+}
+function timeBlockFor(board, taskId, date) {
+  return board.timeBlocks.find((block) => block.date === date && block.taskId === taskId);
+}
+function timeBlockLabel(block) {
+  return `${block.status === "scheduled" ? "On calendar" : block.status === "needs-review" ? "Review time" : "Suggested"} \xB7 ${clockLabel(block.start)}\u2013${clockLabel(block.end)}`;
+}
+function availabilityFor(board, date) {
+  return board.availability.filter((block) => scheduled({ repeat: block.days }, date));
 }
 function taskSubtasks(board, taskId, date) {
   const detail = entryFor(board, taskId, date)?.detail.toLowerCase() || "";
@@ -302,6 +340,31 @@ function scheduleGroup(text, group, date) {
     }
   }
   return next;
+}
+function saveTimeBlock(text, block) {
+  const board = parseBoard(text);
+  if (!validTime(block.start) || !validTime(block.end) || block.end <= block.start) throw new Error("Use HH:MM start and end, with end after start.");
+  const conflict = availabilityFor(board, block.date).find((fixed) => fixed.timezone === block.timezone && block.start < fixed.end && block.end > fixed.start);
+  if (conflict) throw new Error(`This overlaps ${conflict.label} (${clockLabel(conflict.start)}\u2013${clockLabel(conflict.end)}). Choose an open time.`);
+  if (board.timeBlocks.some((other) => other.date === block.date && other.taskId !== block.taskId && other.timezone === block.timezone && block.start < other.end && block.end > other.start)) throw new Error("This overlaps another task on this date. Choose an open time.");
+  const nl = text.includes("\r\n") ? "\r\n" : "\n";
+  let next = text;
+  if (!ranges(text.split(/\r?\n/)).has("Time Blocks")) next += `${nl}## Time Blocks${nl}${nl}${TIME_BLOCK_HEADER}${nl}| --- | --- | --- | --- | --- | --- | --- | --- |${nl}`;
+  const row = `| ${[block.date, block.taskId, block.start, block.end, block.timezone, block.status, block.eventId || "-", block.eventUrl || "-"].map(cell).join(" | ")} |`;
+  next = lineEdit(next, "Time Blocks", (line) => {
+    const p = splitCells(line);
+    return p[0] === block.date && p[1] === block.taskId;
+  }, () => row, row);
+  parseBoard(next);
+  if (!entryFor(board, block.taskId, block.date)) next = setEntry(next, block.date, block.taskId, false);
+  return next;
+}
+function clearTimeBlock(text, taskId, date) {
+  if (!parseBoard(text).timeBlocks.some((block) => block.taskId === taskId && block.date === date)) return text;
+  return lineEdit(text, "Time Blocks", (line) => {
+    const p = splitCells(line);
+    return p[0] === date && p[1] === taskId;
+  }, () => "", "");
 }
 function saveSubtask(text, sub) {
   let next = text;
@@ -732,6 +795,8 @@ var Surface = class {
     const meditation = b.tasks.find((t) => t.id === "mindfulness");
     if (meditation) this.button(controls, meditation.minutes ? `Meditate \xB7 ${meditation.minutes}m` : "Meditate", () => this.beginFocus(() => this.host.start(meditation, this.day)), "cs-link cs-meditate", "Start meditation mode");
     this.el("p", this.root, "cs-muted cs-sprint", `Sprint ${b.start} \u2192 ${b.end}`);
+    const fixed = availabilityFor(b, this.day);
+    if (fixed.length) this.el("p", this.root, "cs-day-availability", fixed.map((block) => `${block.label} ${clockLabel(block.start)}\u2013${clockLabel(block.end)}`).join(" \xB7 "));
     if (b.timer) this.renderTimer();
     if (this.tab === "Today") this.renderToday();
     else if (this.tab === "Week") this.renderWeek();
@@ -850,6 +915,18 @@ var Surface = class {
     const body = this.el("div", row, "cs-card-body");
     this.el("h3", body, "cs-task-title", task.title);
     this.el("p", body, "cs-meta", `${task.page} \xB7 ${task.kind}`);
+    const block = timeBlockFor(b, task.id, this.day);
+    if (block) {
+      const time = this.el("p", body, "cs-time-slot", timeBlockLabel(block));
+      time.title = block.timezone;
+      if (block.status === "scheduled" && block.eventUrl !== "-") {
+        const link = this.el("a", time, "cs-event-link", " \u2197");
+        link.href = block.eventUrl;
+        link.setAttribute("aria-label", "Open Google Calendar event");
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+      }
+    }
     if (entry?.detail) this.el("p", body, "cs-detail", entry.detail);
     this.el("p", body, "cs-definition", task.definition);
     const actions = this.el("div", card, "cs-actions");
@@ -936,8 +1013,13 @@ var Surface = class {
         for (const day of days) {
           const entry = entryFor(this.board, task.id, day);
           const isPlanned = planned(this.board, task, day);
+          const block = timeBlockFor(this.board, task.id, day);
           const cell2 = this.el("td", row);
-          const btn = this.button(cell2, entry?.done ? "\u2713" : isPlanned ? "\u25CB" : "+", () => isPlanned ? this.host.check(task, day, !entry?.done) : this.host.schedule(task, day, ""), entry?.done ? "cs-cell done" : isPlanned ? "cs-cell planned" : "cs-cell", `${task.title}, ${day}: ${entry?.done ? "completed" : isPlanned ? "planned" : "add to plan"}`);
+          const btn = this.button(cell2, entry?.done ? "\u2713" : isPlanned ? "\u25CB" : "+", () => isPlanned ? this.host.check(task, day, !entry?.done) : this.host.schedule(task, day, ""), entry?.done ? "cs-cell done" : isPlanned ? "cs-cell planned" : "cs-cell", `${task.title}, ${day}: ${entry?.done ? "completed" : isPlanned ? "planned" : "add to plan"}${block ? `, ${timeBlockLabel(block)}, ${block.timezone}` : ""}`);
+          if (block) {
+            this.el("span", btn, "cs-cell-time", `${block.status === "scheduled" ? "" : "~"}${clockLabel(block.start)}`);
+            btn.title = `${timeBlockLabel(block)} \xB7 ${block.timezone}`;
+          }
           btn.setAttribute("aria-pressed", String(!!entry?.done));
         }
       }
@@ -1745,13 +1827,29 @@ var SessionModal = class extends FormModal {
 var EntryModal = class extends FormModal {
   constructor(app, plugin, task, day, text, path = plugin.settings.path) {
     super(app, `${task.title} \xB7 ${day}`);
-    const original = entryFor(parseBoard(text), task.id, day);
+    const board = parseBoard(text);
+    const original = entryFor(board, task.id, day);
+    const originalBlock = timeBlockFor(board, task.id, day);
     let detail = original?.detail || "";
+    let start = originalBlock?.start || "", end = originalBlock?.end || "", timezone = originalBlock?.timezone || board.availability[0]?.timezone || "America/Chicago";
     this.text("Plan / actual result", "Keep source assignments intact; add actual sets, reps, distances, evidence, or blockers here.", detail, (v) => detail = v);
+    this.field("Suggested start", "24-hour local time, such as 19:00; leave both time fields empty for flexible.", start, (v) => start = v, "time");
+    this.field("Suggested end", "Same day, after the start.", end, (v) => end = v, "time");
+    this.field("Time zone", "Time zone used by the calendar block.", timezone, (v) => timezone = v.trim());
     this.save(() => plugin.change((current) => {
-      const entry = entryFor(parseBoard(current), task.id, day);
-      if (JSON.stringify(entry) !== JSON.stringify(original)) throw new Error("This entry changed in Markdown. Reopen the latest version.");
-      return setEntry(current, day, task.id, entry?.done || false, detail);
+      const latest = parseBoard(current);
+      const entry = entryFor(latest, task.id, day);
+      const block = timeBlockFor(latest, task.id, day);
+      if (JSON.stringify(entry) !== JSON.stringify(original) || JSON.stringify(block) !== JSON.stringify(originalBlock)) throw new Error("This entry changed in Markdown. Reopen the latest version.");
+      let next = setEntry(current, day, task.id, entry?.done || false, detail);
+      if (start || end) {
+        const changed = start !== originalBlock?.start || end !== originalBlock?.end || timezone !== originalBlock?.timezone;
+        next = saveTimeBlock(next, { date: day, taskId: task.id, start, end, timezone, status: changed ? "suggested" : originalBlock?.status || "suggested", eventId: originalBlock?.eventId || "-", eventUrl: originalBlock?.eventUrl || "-" });
+      } else {
+        if (block?.eventId && block.eventId !== "-") throw new Error("This time has a calendar event. Change its time and reconcile the linked event before clearing it.");
+        next = clearTimeBlock(next, task.id, day);
+      }
+      return next;
     }, path));
   }
 };
