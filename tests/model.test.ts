@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { starter } from '../src/starter';
-import { parseBoard, setEntry, saveTask, setGoal, startTimer, startGroupTimer, moveGroupTimer, parseGroupTimerId, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, timerSeconds, planned, splitCells, cell, addDays } from '../src/model';
+import { parseBoard, setEntry, saveTask, setGoal, scheduleGroup, startTimer, startGroupTimer, moveGroupTimer, parseGroupTimerId, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, timerSeconds, planned, splitCells, cell, addDays } from '../src/model';
 
 const seed=()=>starter('2026-10-18');
 test('all 22 exact task labels and all six source colors survive Markdown parsing',()=>{
@@ -43,7 +43,10 @@ test('saving timer is exactly once, retains result, and never auto-completes or 
   const now=Date.parse('2026-10-18T14:00:00Z');let md=startTimer(seed(),'workout','2026-10-18',now);const id=parseBoard(md).timer!.id;md=finishTimer(md,id,'Actual sets 4x10',now+90000);assert.equal(parseBoard(md).timer,null);assert.equal(parseBoard(md).sessions[0].seconds,90);assert.equal(parseBoard(md).entries.length,0);assert.equal(finishTimer(md,id,'duplicate',now+999999),md);
 });
 test('group routine timer stores a stable group reference and preserves individual evidence',()=>{
-  const now=Date.parse('2026-10-18T14:00:00Z');let md=startGroupTimer(seed(),{kind:'page',value:'Morning'},'2026-10-18',now);const timer=parseBoard(md).timer!;assert.deepEqual(parseGroupTimerId(timer.taskId),{kind:'page',value:'Morning'});assert.equal(timer.target,0);assert.equal(timer.cursor,0);md=moveGroupTimer(md,timer.id,1);assert.equal(parseBoard(md).timer!.cursor,1);md=finishTimer(md,timer.id,'Made bed and brushed teeth',now+125000);const b=parseBoard(md);assert.equal(b.timer,null);assert.equal(b.sessions[0].taskId,timer.taskId);assert.equal(b.sessions[0].seconds,125);assert.equal(b.entries.length,0);
+  const now=Date.parse('2026-10-18T14:00:00Z');let md=scheduleGroup(seed(),{kind:'page',value:'Morning'},'2026-10-18');md=startGroupTimer(md,{kind:'page',value:'Morning'},'2026-10-18',now);const timer=parseBoard(md).timer!;assert.deepEqual(parseGroupTimerId(timer.taskId),{kind:'page',value:'Morning'});assert.equal(timer.target,0);assert.equal(timer.cursor,0);md=moveGroupTimer(md,timer.id,1);assert.equal(parseBoard(md).timer!.cursor,1);md=finishTimer(md,timer.id,'Made bed and brushed teeth',now+125000);const b=parseBoard(md);assert.equal(b.timer,null);assert.equal(b.sessions[0].taskId,timer.taskId);assert.equal(b.sessions[0].seconds,125);assert.equal(b.entries.filter(entry=>entry.done).length,0);
+});
+test('schedule group adds every missing task as unchecked before group focus can begin',()=>{
+  const now=Date.parse('2026-10-18T14:00:00Z');let md=seed();assert.throws(()=>startGroupTimer(md,{kind:'color',value:'pink'},'2026-10-18',now),/Schedule every task/);md=scheduleGroup(md,{kind:'color',value:'pink'},'2026-10-18');const board=parseBoard(md);const pink=board.tasks.filter(task=>task.color==='pink');assert.equal(pink.length,3);assert.equal(board.entries.filter(entry=>entry.date==='2026-10-18'&&pink.some(task=>task.id===entry.taskId)).length,3);assert.ok(board.entries.every(entry=>!entry.done));assert.doesNotThrow(()=>startGroupTimer(md,{kind:'color',value:'pink'},'2026-10-18',now));
 });
 test('competing timers and stale controls cannot overwrite a running session',()=>{const now=Date.now();const md=startTimer(seed(),'make-bed','2026-10-18',now);assert.throws(()=>startTimer(md,'cook','2026-10-18',now+1),/already active/);assert.throws(()=>pauseTimer(md,'stale',now),/changed/);assert.throws(()=>finishTimer(md,'stale','',now),/changed/);});
 test('calendar date arithmetic works across month boundaries',()=>{assert.equal(addDays('2026-10-31',1),'2026-11-01');assert.equal(addDays('2026-11-01',-1),'2026-10-31');});

@@ -7,6 +7,7 @@ export interface Host {
   editGoal(goal?:Goal):void;
   editEntry(task:Task,day:string):void;
   schedule(task:Task,day:string,detail:string):Promise<void>;
+  scheduleGroup(group:GroupRef,day:string):Promise<void>;
   check(task:Task,day:string,done:boolean):Promise<void>;
   start(task:Task,day:string):Promise<void>;
   startGroup(group:GroupRef,day:string):Promise<void>;
@@ -57,15 +58,18 @@ export class Surface {
     this.tick();
   }
   private pages():string[]{return ['All',...new Set([...this.board!.tasks.map(t=>t.page),...this.board!.goals.map(g=>g.page)])];}
-  private pageFilter(parent:HTMLElement):void {const bar=this.el('div',parent,'cs-pages');for(const page of this.pages()){const button=this.button(bar,page,()=>{this.page=page;this.render();},page===this.page?'is-active':'');button.setAttribute('aria-pressed',String(page===this.page));}if(this.page!=='All')this.button(parent,`Start ${this.page} routine`,async()=>{this.prepareFocusCues();await this.host.startGroup({kind:'page',value:this.page},this.day);this.focusMode=true;this.render();},'cs-group-focus');}
+  private groupTasks(group:GroupRef):Task[]{return this.board!.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value);}
+  private groupIsScheduled(group:GroupRef):boolean{return this.groupTasks(group).every(task=>!!entryFor(this.board!,task.id,this.day));}
+  private groupAction(parent:HTMLElement,group:GroupRef,label:string):void {if(this.groupIsScheduled(group))this.button(parent,`Focus ${label}`,async()=>{this.prepareFocusCues();await this.host.startGroup(group,this.day);this.focusMode=true;this.render();},'cs-group-focus');else this.button(parent,`Schedule ${label}`,()=>this.host.scheduleGroup(group,this.day),'cs-group-focus');}
+  private pageFilter(parent:HTMLElement):void {const bar=this.el('div',parent,'cs-pages');for(const page of this.pages()){const button=this.button(bar,page,()=>{this.page=page;this.render();},page===this.page?'is-active':'');button.setAttribute('aria-pressed',String(page===this.page));}if(this.page!=='All')this.groupAction(parent,{kind:'page',value:this.page},`${this.page} routine`);}
   private taskColor(task:Task,el:HTMLElement):void{el.style.setProperty('--cs-color',COLORS.find(c=>c.id===task.color)!.hex);el.setAttribute('data-color',task.color);}
   private renderToday():void {
     const b=this.board!;this.pageFilter(this.root);const matches=(task:Task)=>this.page==='All'||task.page===this.page;const tasks=b.tasks.filter(t=>planned(b,t,this.day)&&matches(t));const available=b.tasks.filter(t=>!planned(b,t,this.day)&&matches(t));const done=tasks.filter(t=>entryFor(b,t.id,this.day)?.done).length;
     const hero=this.el('section',this.root,'cs-summary');this.el('p',hero,'cs-eyebrow',new Date(`${this.day}T12:00:00`).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}));this.el('h2',hero,'',tasks.length?`${done} of ${tasks.length} planned tasks complete`:'Start with one clear action.');
     const progress=this.el('progress',hero);progress.max=tasks.length||1;progress.value=done;progress.setAttribute('aria-label','Planned tasks completed');this.el('p',hero,'cs-muted','Your plan can be small. Check off what actually happened.');
     if(!tasks.length)this.el('p',this.root,'cs-empty','Nothing is explicitly scheduled here yet. Choose a real next action below, then tap Plan this day.');
-    for(const color of COLORS){const groupTasks=tasks.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',this.root,'cs-group');this.el('h3',group,'cs-group-title',color.name);this.button(group,`Focus ${color.name} group`,async()=>{this.prepareFocusCues();await this.host.startGroup({kind:'color',value:color.id},this.day);this.focusMode=true;this.render();},'cs-group-focus');for(const task of groupTasks)this.taskCard(task,group,true);}
-    if(available.length){const availableSection=this.el('section',this.root,'cs-available');this.el('h2',availableSection,'','Available to plan');this.el('p',availableSection,'cs-muted','These are not scheduled or due. They stay visible so one planned task does not make the rest of your tracker disappear.');for(const color of COLORS){const groupTasks=available.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',availableSection,'cs-group');this.el('h3',group,'cs-group-title',color.name);for(const task of groupTasks)this.taskCard(task,group,false);}}
+    for(const color of COLORS){const groupTasks=tasks.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',this.root,'cs-group');this.el('h3',group,'cs-group-title',color.name);this.groupAction(group,{kind:'color',value:color.id},`${color.name} group`);for(const task of groupTasks)this.taskCard(task,group,true);}
+    if(available.length){const availableSection=this.el('section',this.root,'cs-available');this.el('h2',availableSection,'','Available to plan');this.el('p',availableSection,'cs-muted','These are not scheduled or due. They stay visible so one planned task does not make the rest of your tracker disappear.');for(const color of COLORS){const groupTasks=available.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',availableSection,'cs-group');this.el('h3',group,'cs-group-title',color.name);this.groupAction(group,{kind:'color',value:color.id},`${color.name} group`);for(const task of groupTasks)this.taskCard(task,group,false);}}
     this.button(this.root,'+ Add task',()=>this.host.editTask(),'cs-add');
   }
   private taskCard(task:Task,parent:HTMLElement,scheduledToday:boolean):void{

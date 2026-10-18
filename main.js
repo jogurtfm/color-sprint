@@ -265,6 +265,20 @@ function setEntry(text, date, id, done, detail) {
     return p[0] === date && p[1] === id;
   }, () => row, row);
 }
+function scheduleGroup(text, group, date) {
+  let board = parseBoard(text);
+  if (!validDay(date) || !group.value.trim()) throw new Error("A schedule group needs a valid date and group.");
+  const tasks = board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
+  if (!tasks.length) throw new Error("This schedule group has no tasks.");
+  let next = text;
+  for (const task of tasks) {
+    if (!entryFor(board, task.id, date)) {
+      next = setEntry(next, date, task.id, false);
+      board = parseBoard(next);
+    }
+  }
+  return next;
+}
 function addWorkoutLog(text, log) {
   const board = parseBoard(text);
   if (!validDay(log.date) || log.taskId !== "workout" && log.taskId !== "treadmill" || !Number.isFinite(log.minutes) || log.minutes < 0 || !Number.isFinite(log.distance) || log.distance < 0) throw new Error("Workout log needs a valid date, Workout or Treadmill, and nonnegative duration and distance.");
@@ -325,8 +339,9 @@ function startGroupTimer(text, group, date, now = Date.now()) {
   const board = parseBoard(text);
   if (board.timer) throw new Error("A timer is already active. Save it before starting another.");
   if (!validDay(date) || !group.value.trim()) throw new Error("A group timer needs a valid date and group.");
-  const hasTask = group.kind === "page" ? board.tasks.some((task) => task.page === group.value) : board.tasks.some((task) => task.color === group.value);
-  if (!hasTask) throw new Error("This focus group has no tasks.");
+  const tasks = board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
+  if (!tasks.length) throw new Error("This focus group has no tasks.");
+  if (tasks.some((task) => !entryFor(board, task.id, date))) throw new Error("Schedule every task in this group before starting routine focus.");
   return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId: groupTimerId(group), date, started: new Date(now).toISOString(), elapsed: 0, target: 0, cursor: 0 });
 }
 function moveGroupTimer(text, id, delta) {
@@ -600,6 +615,21 @@ var Surface = class {
   pages() {
     return ["All", .../* @__PURE__ */ new Set([...this.board.tasks.map((t) => t.page), ...this.board.goals.map((g) => g.page)])];
   }
+  groupTasks(group) {
+    return this.board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
+  }
+  groupIsScheduled(group) {
+    return this.groupTasks(group).every((task) => !!entryFor(this.board, task.id, this.day));
+  }
+  groupAction(parent, group, label) {
+    if (this.groupIsScheduled(group)) this.button(parent, `Focus ${label}`, async () => {
+      this.prepareFocusCues();
+      await this.host.startGroup(group, this.day);
+      this.focusMode = true;
+      this.render();
+    }, "cs-group-focus");
+    else this.button(parent, `Schedule ${label}`, () => this.host.scheduleGroup(group, this.day), "cs-group-focus");
+  }
   pageFilter(parent) {
     const bar = this.el("div", parent, "cs-pages");
     for (const page of this.pages()) {
@@ -609,12 +639,7 @@ var Surface = class {
       }, page === this.page ? "is-active" : "");
       button.setAttribute("aria-pressed", String(page === this.page));
     }
-    if (this.page !== "All") this.button(parent, `Start ${this.page} routine`, async () => {
-      this.prepareFocusCues();
-      await this.host.startGroup({ kind: "page", value: this.page }, this.day);
-      this.focusMode = true;
-      this.render();
-    }, "cs-group-focus");
+    if (this.page !== "All") this.groupAction(parent, { kind: "page", value: this.page }, `${this.page} routine`);
   }
   taskColor(task, el) {
     el.style.setProperty("--cs-color", COLORS.find((c) => c.id === task.color).hex);
@@ -641,12 +666,7 @@ var Surface = class {
       if (!groupTasks.length) continue;
       const group = this.el("section", this.root, "cs-group");
       this.el("h3", group, "cs-group-title", color.name);
-      this.button(group, `Focus ${color.name} group`, async () => {
-        this.prepareFocusCues();
-        await this.host.startGroup({ kind: "color", value: color.id }, this.day);
-        this.focusMode = true;
-        this.render();
-      }, "cs-group-focus");
+      this.groupAction(group, { kind: "color", value: color.id }, `${color.name} group`);
       for (const task of groupTasks) this.taskCard(task, group, true);
     }
     if (available.length) {
@@ -658,6 +678,7 @@ var Surface = class {
         if (!groupTasks.length) continue;
         const group = this.el("section", availableSection, "cs-group");
         this.el("h3", group, "cs-group-title", color.name);
+        this.groupAction(group, { kind: "color", value: color.id }, `${color.name} group`);
         for (const task of groupTasks) this.taskCard(task, group, false);
       }
     }
@@ -1253,6 +1274,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
         if (board.entries.some((e) => e.taskId === task.id && e.date === day)) throw new Error("Task already has an entry on this day.");
         return setEntry(text, day, task.id, false, detail);
       }),
+      scheduleGroup: (group, day) => change((text) => scheduleGroup(text, group, day)),
       check: (task, day, done) => change((text) => setEntry(text, day, task.id, done)),
       start: (task, day) => change((text) => startTimer(text, task.id, day)),
       startGroup: (group, day) => change((text) => startGroupTimer(text, group, day)),

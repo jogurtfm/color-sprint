@@ -74,6 +74,8 @@ Sessions record elapsed focus and actual notes. They are not automatic workouts 
 
 The plugin may use a task ID shaped like `group:page:Morning` or `group:color:pink` for a cumulative routine timer. The extra **Queue cursor** column stores which task is currently cued. This is a normal timer record: it measures the whole routine, while individual task checkboxes remain independent evidence. Older six-column Timer tables remain readable and are upgraded the next time a timer is written.
 
+Before starting a group timer, Color Sprint creates ordinary unchecked Schedule rows for every member of that group on the selected date. Existing schedule rows, details, and completion states are preserved.
+
 | Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |
 | --- | --- | --- | --- | --- | --- |
 ```
