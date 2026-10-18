@@ -1,0 +1,9 @@
+{
+  "id": "color-sprint",
+  "name": "Color Sprint",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Manage habits, tasks, goals and focus timers through a colorful, mobile-friendly surface backed by plain Markdown.",
+  "author": "jogurtfm",
+  "isDesktopOnly": false
+}

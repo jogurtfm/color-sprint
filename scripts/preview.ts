@@ -1,0 +1,21 @@
+import { Surface,Host } from '../src/surface';
+import { starter } from '../src/starter';
+import { parseBoard,setEntry,saveTask,setGoal,startTimer,pauseTimer,resumeTimer,finishTimer,localDay,addDays,entryFor,Task,Goal } from '../src/model';
+
+let md=localStorage.getItem('color-sprint-demo')||starter();
+if(!parseBoard(md).entries.length){const day=localDay();md=setEntry(md,day,'make-bed',false,'Clear the bed and straighten the bedding.');md=setEntry(md,day,'cook',false,'Chicken · prepare dinner and put away leftovers.');md=setEntry(md,day,'clean-room',false,'Baseline: note clothes, shoes, bed, and floor paths.');md=setGoal(md,{id:'room-fit',due:addDays(day,13),page:'Room',title:'Clothing and shoes fit their storage',evidence:'',done:false});}
+function dialog(title:string,fields:Record<string,string>,save:(values:Record<string,string>)=>Promise<void>|void):void{
+  const d=document.createElement('dialog');const h=document.createElement('h2');h.textContent=title;d.append(h);const values={...fields};for(const [name,value] of Object.entries(fields)){const label=document.createElement('label');label.textContent=name;const input=document.createElement(name==='Markdown'||name==='Evidence'||name==='Result'||name==='Detail'?'textarea':'input');input.value=value;input.setAttribute('aria-label',name);input.addEventListener('input',()=>values[name]=input.value);label.append(input);d.append(label);}const error=document.createElement('p');error.className='preview-error';error.setAttribute('role','alert');d.append(error);const button=document.createElement('button');button.textContent='Save';button.addEventListener('click',async()=>{try{await save(values);d.close();}catch(e){error.textContent=String(e);}});d.append(button);const cancel=document.createElement('button');cancel.textContent='Cancel';cancel.addEventListener('click',()=>d.close());d.append(cancel);d.addEventListener('close',()=>d.remove());document.body.append(d);d.showModal();
+}
+async function change(fn:(s:string)=>string):Promise<void>{const next=fn(md);parseBoard(next);md=next;localStorage.setItem('color-sprint-demo',md);await surface.refresh();}
+const host:Host={read:async()=>md,change,
+  editTask:(t?:Task)=>dialog(t?'Edit task':'Add task',{Task:t?.title||'',Page:t?.page||'Morning',Color:t?.color||'pink',Repeat:t?.repeat||'-','Timer minutes':String(t?.minutes??10),'Done means':t?.definition||''},async v=>{await change(s=>saveTask(s,{id:t?.id||`task-${Date.now()}`,title:v.Task,page:v.Page,color:v.Color as Task['color'],repeat:v.Repeat,minutes:Number(v['Timer minutes']),definition:v['Done means'],kind:t?.kind||'habit'}));}),
+  editGoal:(g?:Goal)=>dialog('Goal progress',{Goal:g?.title||'',Page:g?.page||'Room',Due:g?.due||'-',Evidence:g?.evidence||'',Status:g?.done?'done':'open'},v=>change(s=>setGoal(s,{id:g?.id||`goal-${Date.now()}`,title:v.Goal,page:v.Page,due:v.Due,evidence:v.Evidence,done:v.Status==='done'}))),
+  editEntry:(t,day)=>dialog('Day details',{Detail:entryFor(parseBoard(md),t.id,day)?.detail||''},v=>change(s=>setEntry(s,day,t.id,entryFor(parseBoard(s),t.id,day)?.done||false,v.Detail))),
+  schedule:(t,day,detail)=>change(s=>setEntry(s,day,t.id,false,detail)),check:(t,day,done)=>change(s=>setEntry(s,day,t.id,done)),
+  start:(t,day)=>change(s=>startTimer(s,t.id,day)),pause:id=>change(s=>pauseTimer(s,id)),resume:id=>change(s=>resumeTimer(s,id)),finish:id=>dialog('Save session',{Result:''},v=>change(s=>finishTimer(s,id,v.Result))),
+  openNote:()=>dialog('Tracker Markdown',{Markdown:md},v=>change(()=>v.Markdown)),createNote:()=>change(()=>starter()),settings:()=>dialog('Preview settings',{Info:'In Obsidian, this chooses your vault Markdown path.'},()=>{}),error:e=>dialog('Could not save',{Error:String(e)},()=>{})
+};
+const surface=new Surface(document.getElementById('app')!,host);void surface.refresh();
+// Test hook for validating external Markdown edits; never included in the plugin bundle.
+Object.assign(window,{colorSprintPreview:{getMarkdown:()=>md,setMarkdown:(value:string)=>change(()=>value)}});

@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+preview.bundle.js
+*.zip
+test-results/
+data.json
+.env*
