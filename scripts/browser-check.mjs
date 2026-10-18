@@ -5,7 +5,7 @@ const browser=await chromium.launch({channel:'chrome',headless:true});
 const context=await browser.newContext({viewport:{width:393,height:852},deviceScaleFactor:2,isMobile:true,hasTouch:true});
 const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try {
-  await page.goto('http://127.0.0.1:8776');await page.waitForSelector('.cs-card');
+  await page.goto('http://127.0.0.1:8776');await page.waitForSelector('.cs-card');assert.ok((await page.locator('.cs-card').first().boundingBox()).y<430,'The first action card should be available without a long phone scroll.');
   assert.equal(await page.locator('.cs-card').count(),22);
   await page.getByRole('checkbox',{name:'Complete Make Bed',exact:true}).check();
   await page.waitForFunction(()=>window.colorSprintPreview.getMarkdown().includes('- [x]'));

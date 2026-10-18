@@ -70,5 +70,36 @@
 .cs-embed-frame .cs-expand { display:block; margin:10px 12px 0 auto; min-height:44px; padding:8px 14px; cursor:pointer; }
 .cs-root.cs-embedded { height:auto; max-height:none; overflow:visible; padding:18px; }
 .cs-embedded h1 { font-size:26px; }
-@media(max-width:500px) { .cs-root { padding:18px 14px max(24px,env(safe-area-inset-bottom)); } .cs-header { gap:4px; } .cs-toolbar { width:100%; justify-content:flex-end; } .cs-tabs { margin-top:8px; } .cs-tabs button { font-size:12px; padding:8px; } .cs-summary { padding:20px; } .cs-summary h2 { font-size:24px; } .cs-card { padding:14px 12px; } .cs-root input.cs-check { width:32px; height:32px; flex-basis:32px; } }
+@media(max-width:500px) {
+  /* Phone-first: put the first concrete action ahead of branding and status chrome. */
+  .cs-root { padding:10px 12px max(20px,env(safe-area-inset-bottom)); }
+  .cs-header { min-height:44px; justify-content:flex-end; }
+  .cs-header > div:first-child { display:none; }
+  .cs-toolbar { width:auto; margin-left:auto; gap:2px; flex-wrap:nowrap; }
+  .cs-toolbar .cs-link { min-height:40px; padding:6px 8px; font-size:12px; }
+  .cs-toolbar .cs-icon { min-height:40px; height:40px; width:40px; font-size:20px; }
+  .cs-tabs { margin:6px 0 8px; padding-bottom:4px; gap:2px; }
+  .cs-tabs button { min-height:40px; flex:1 0 auto; font-size:12px; padding:7px 10px; }
+  .cs-controls { gap:6px; }
+  .cs-root button.cs-icon { min-height:40px; height:40px; width:40px; }
+  .cs-root input.cs-date { min-height:40px; max-width:156px; }
+  .cs-controls .cs-link { min-height:40px; padding:6px 8px; }
+  .cs-sprint { display:none; }
+  .cs-pages { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:8px -12px 10px; padding:0 12px 2px; scrollbar-width:none; }
+  .cs-pages::-webkit-scrollbar { display:none; }
+  .cs-pages button { flex:0 0 auto; min-height:36px; font-size:12px; padding:5px 11px; }
+  .cs-summary { border-radius:16px; padding:13px 14px; margin:6px 0 10px; }
+  .cs-summary h2 { font-size:20px; line-height:1.2; margin:6px 0 0; }
+  .cs-summary progress,.cs-summary .cs-muted { display:none; }
+  .cs-group-title { margin:12px 0 6px!important; }
+  .cs-card { border-radius:14px; padding:10px; margin:7px 0; }
+  .cs-card .cs-meta { display:none; }
+  .cs-definition { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; margin:5px 0 8px; }
+  .cs-detail { margin:4px 0; }
+  .cs-actions { margin-top:8px; gap:6px; }
+  .cs-root button.cs-small { min-height:44px; padding:7px 10px; }
+  .cs-root input.cs-check { width:30px; height:30px; flex-basis:30px; }
+  .cs-check-target { width:38px; min-width:38px; flex-basis:38px; }
+  .cs-available h2 { font-size:18px; margin-top:20px; }
+}
 @media(prefers-reduced-motion:reduce) { .cs-root * { scroll-behavior:auto!important; transition:none!important; } }
