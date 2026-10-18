@@ -37,7 +37,8 @@ var COLORS = [
 ];
 var TASK_HEADER = "| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |";
 var SESSION_HEADER = "| Session ID | Date | Task ID | Seconds | Note |";
-var TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |";
+var TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |";
+var LEGACY_TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |";
 var WORKOUT_LOG_HEADER = "| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |";
 var QUICK_COUNT_HEADER = "| ID | Date | Task ID | Amount | Unit |";
 var SECTIONS = ["Tasks", "Schedule", "Goals", "Sessions", "Timer"];
@@ -120,12 +121,29 @@ function table(lines, range, header) {
     return parts;
   });
 }
+function timerTable(lines, range) {
+  const rows = dataLines(lines, range).filter((x) => x.trim().startsWith("|"));
+  if (rows.length < 2) throw new Error(`Expected table header: ${TIMER_HEADER}`);
+  const header = rows[0].replace(/\s/g, "");
+  const width = header === TIMER_HEADER.replace(/\s/g, "") ? 7 : header === LEGACY_TIMER_HEADER.replace(/\s/g, "") ? 6 : 0;
+  if (!width) throw new Error(`Expected table header: ${TIMER_HEADER}`);
+  if (!splitCells(rows[1]).every((x) => /^:?-{3,}:?$/.test(x))) throw new Error("Table requires a Markdown separator row.");
+  return rows.slice(2).map((x) => {
+    const parts = splitCells(x);
+    if (parts.length !== width) throw new Error(`Expected ${width} cells: ${x}`);
+    return parts;
+  });
+}
 function unique(ids, kind) {
   if (ids.some((x) => !/^[-a-z0-9]+$/.test(x))) throw new Error(`${kind} IDs must use lowercase letters, numbers, and hyphens.`);
   if (new Set(ids).size !== ids.length) throw new Error(`Duplicate ${kind} ID. Give every item its own stable ID.`);
 }
 function number(value) {
   if (!/^\d+(\.\d+)?$/.test(value) || !Number.isFinite(Number(value))) throw new Error(`Invalid nonnegative number: ${value}`);
+  return Number(value);
+}
+function integer(value) {
+  if (!/^\d+$/.test(value)) throw new Error(`Invalid nonnegative integer: ${value}`);
   return Number(value);
 }
 function checkboxRows(lines, range) {
@@ -162,7 +180,7 @@ function parseBoard(text) {
   const sessions = table(lines, rs.get("Sessions"), SESSION_HEADER).map((p) => ({ id: p[0], date: p[1], taskId: p[2], seconds: number(p[3]), note: p[4] }));
   unique(sessions.map((x) => x.id), "session");
   for (const session of sessions) if (!validDay(session.date)) throw new Error("Invalid session date.");
-  const timers = table(lines, rs.get("Timer"), TIMER_HEADER).map((p) => ({ id: p[0], taskId: p[1], date: p[2], started: p[3], elapsed: number(p[4]), target: number(p[5]) }));
+  const timers = timerTable(lines, rs.get("Timer")).map((p) => ({ id: p[0], taskId: p[1], date: p[2], started: p[3], elapsed: number(p[4]), target: number(p[5]), cursor: p.length === 7 ? integer(p[6]) : 0 }));
   if (timers.length > 1) throw new Error("Only one active timer is supported per tracker.");
   const timer = timers[0] || null;
   if (timer) {
@@ -284,10 +302,15 @@ function timerSeconds(timer, now = Date.now()) {
   return Math.floor(timer.elapsed + (timer.started === "-" ? 0 : Math.max(0, now - Date.parse(timer.started)) / 1e3));
 }
 function writeTimer(text, timer) {
-  const board = parseBoard(text);
+  const lines = text.split(/\r?\n/);
+  const timerRange = ranges(lines).get("Timer");
+  if (!timerRange) throw new Error("Missing ## Timer section. Open the Markdown format guide.");
+  if (lines[timerRange.start].replace(/\s/g, "") === LEGACY_TIMER_HEADER.replace(/\s/g, "")) lines[timerRange.start] = TIMER_HEADER;
+  const source = lines.join(text.includes("\r\n") ? "\r\n" : "\n");
+  const board = parseBoard(source);
   const existing = board.timer;
-  const row = timer ? `| ${[timer.id, timer.taskId, timer.date, timer.started, String(timer.elapsed), String(timer.target)].map(cell).join(" | ")} |` : "";
-  const next = lineEdit(text, "Timer", (line) => !!existing && line.trim().startsWith("|") && splitCells(line)[0] === existing.id, () => row, row);
+  const row = timer ? `| ${[timer.id, timer.taskId, timer.date, timer.started, String(timer.elapsed), String(timer.target), String(timer.cursor)].map(cell).join(" | ")} |` : "";
+  const next = lineEdit(source, "Timer", (line) => !!existing && line.trim().startsWith("|") && splitCells(line)[0] === existing.id, () => row, row);
   parseBoard(next);
   return next;
 }
@@ -296,7 +319,7 @@ function startTimer(text, taskId, date, now = Date.now()) {
   if (board.timer) throw new Error("A timer is already active. Save it before starting another.");
   const task = board.tasks.find((t) => t.id === taskId);
   if (!task) throw new Error("Task not found.");
-  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60 });
+  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60, cursor: 0 });
 }
 function startGroupTimer(text, group, date, now = Date.now()) {
   const board = parseBoard(text);
@@ -304,7 +327,15 @@ function startGroupTimer(text, group, date, now = Date.now()) {
   if (!validDay(date) || !group.value.trim()) throw new Error("A group timer needs a valid date and group.");
   const hasTask = group.kind === "page" ? board.tasks.some((task) => task.page === group.value) : board.tasks.some((task) => task.color === group.value);
   if (!hasTask) throw new Error("This focus group has no tasks.");
-  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId: groupTimerId(group), date, started: new Date(now).toISOString(), elapsed: 0, target: 0 });
+  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId: groupTimerId(group), date, started: new Date(now).toISOString(), elapsed: 0, target: 0, cursor: 0 });
+}
+function moveGroupTimer(text, id, delta) {
+  const board = parseBoard(text);
+  const timer = board.timer;
+  const group = timer && parseGroupTimerId(timer.taskId);
+  if (!timer || timer.id !== id || !group) throw new Error("Routine timer changed. Refresh and try again.");
+  const length = board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value).length;
+  return writeTimer(text, { ...timer, cursor: Math.max(0, Math.min(length - 1, timer.cursor + delta)) });
 }
 function pauseTimer(text, id, now = Date.now()) {
   const timer = parseBoard(text).timer;
@@ -853,6 +884,8 @@ var Surface = class {
   }
   renderGroupFocusMode(timer, group) {
     const tasks = this.board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
+    const cursor = Math.min(timer.cursor, tasks.length - 1);
+    const current = tasks[cursor];
     const top = this.el("header", this.root, "cs-focus-header");
     this.el("p", top, "cs-eyebrow", timer.started === "-" ? "ROUTINE PAUSED" : "ROUTINE FOCUS");
     this.button(top, "Back to plan", () => {
@@ -861,34 +894,35 @@ var Surface = class {
     }, "cs-link");
     const card = this.el("main", this.root, "cs-focus-card");
     this.groupColor(group, card);
-    this.el("p", card, "cs-eyebrow", group.kind === "page" ? group.value : "COLOR GROUP");
-    this.el("h1", card, "", this.groupTitle(group));
-    this.el("p", card, "cs-definition", "One cumulative timer. Check each step only when it actually happens.");
-    const quote = this.reflectionFor(timer.id);
+    this.el("p", card, "cs-eyebrow", `${this.groupTitle(group)} \xB7 Step ${cursor + 1} of ${tasks.length}`);
+    this.el("h1", card, "", current.title);
+    const entry = entryFor(this.board, current.id, timer.date);
+    if (entry?.detail) this.el("p", card, "cs-focus-detail", entry.detail);
+    this.el("p", card, "cs-definition", current.definition);
+    const quote = this.reflectionFor(`${timer.id}-${cursor}`);
     if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
     this.timerDisplay = this.el("div", card, "cs-time");
     this.timerDisplay.setAttribute("role", "timer");
     this.timerDisplay.setAttribute("aria-label", "Elapsed routine time");
-    this.el("h2", card, "cs-activity-history", "Routine steps");
-    for (const task of tasks) {
-      const entry = entryFor(this.board, task.id, timer.date);
-      const step = this.el("label", card, "cs-group-step");
-      const check = this.el("input", step, "");
-      check.type = "checkbox";
-      check.checked = !!entry?.done;
-      check.setAttribute("aria-label", `Mark ${task.title} complete`);
-      check.addEventListener("change", () => void this.run(() => this.host.check(task, timer.date, check.checked)));
-      this.el("span", step, "", task.title);
-      if (entry?.detail) this.el("small", step, "", entry.detail);
-    }
+    const complete = this.button(card, entry?.done ? "Completed \u2014 reopen if needed" : "Mark this step done", async () => {
+      await this.host.check(current, timer.date, !entry?.done);
+      if (!entry?.done && cursor < tasks.length - 1) await this.host.moveGroup(timer.id, 1);
+    }, entry?.done ? "cs-small" : "cs-primary");
+    complete.setAttribute("aria-pressed", String(!!entry?.done));
+    const queue = this.el("div", card, "cs-routine-queue");
+    this.el("p", queue, "cs-eyebrow", "UP NEXT");
+    for (const [index, task] of tasks.entries()) if (index > cursor) this.el("p", queue, "cs-muted", `${index + 1}. ${task.title}`);
+    if (cursor === tasks.length - 1) this.el("p", queue, "cs-muted", "Final step. End and log when the routine is actually over.");
     const actions = this.el("div", card, "cs-actions");
+    if (cursor > 0) this.button(actions, "Back", () => this.host.moveGroup(timer.id, -1), "cs-small");
+    if (cursor < tasks.length - 1) this.button(actions, "Next step", () => this.host.moveGroup(timer.id, 1), "cs-small");
     this.button(actions, timer.started === "-" ? "Resume routine" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
     this.button(actions, "Refresh timer", async () => {
       await this.host.refresh(timer.id);
       this.prepareFocusCues();
     }, "cs-small");
     this.button(actions, "End routine & log", () => this.host.finish(timer.id), "cs-primary");
-    this.el("p", card, "cs-muted", "Ending saves the cumulative focus session. It never checks every step for you.");
+    this.el("p", card, "cs-muted", "Next changes the cue, not your completion record. Checking this step advances the queue only after your tap.");
   }
   activityField(parent, label, type, placeholder) {
     const wrap = this.el("label", parent, "cs-activity-field");
@@ -1222,6 +1256,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       check: (task, day, done) => change((text) => setEntry(text, day, task.id, done)),
       start: (task, day) => change((text) => startTimer(text, task.id, day)),
       startGroup: (group, day) => change((text) => startGroupTimer(text, group, day)),
+      moveGroup: (id, delta) => change((text) => moveGroupTimer(text, id, delta)),
       pause: (id) => change((text) => pauseTimer(text, id)),
       resume: (id) => change((text) => resumeTimer(text, id)),
       refresh: (id) => change((text) => refreshTimer(text, id)),

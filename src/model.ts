@@ -11,14 +11,15 @@ export interface Task {id:string; title:string; color:ColorId; page:string; kind
 export interface Entry {date:string; taskId:string; detail:string; done:boolean}
 export interface Goal {id:string; due:string; page:string; title:string; evidence:string; done:boolean}
 export interface Session {id:string; date:string; taskId:string; seconds:number; note:string}
-export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number}
+export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number; cursor:number}
 export interface WorkoutLog {id:string; date:string; taskId:'workout'|'treadmill'; minutes:number; distance:number; details:string; note:string}
 export interface QuickCount {id:string; date:string; taskId:string; amount:number; unit:string}
 export interface GroupRef {kind:'page'|'color'; value:string}
 export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
-export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |';
+export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |';
+const LEGACY_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |';
 export const WORKOUT_LOG_HEADER='| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |';
 export const QUICK_COUNT_HEADER='| ID | Date | Task ID | Amount | Unit |';
 const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts'];
@@ -47,8 +48,12 @@ function table(lines:string[],range:Range,header:string):string[][]{
   if(!splitCells(rows[1]).every(x=>/^:?-{3,}:?$/.test(x)))throw new Error('Table requires a Markdown separator row.');
   const width=splitCells(header).length;return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
 }
+function timerTable(lines:string[],range:Range):string[][]{
+  const rows=dataLines(lines,range).filter(x=>x.trim().startsWith('|'));if(rows.length<2)throw new Error(`Expected table header: ${TIMER_HEADER}`);const header=rows[0].replace(/\s/g,'');const width=header===TIMER_HEADER.replace(/\s/g,'')?7:header===LEGACY_TIMER_HEADER.replace(/\s/g,'')?6:0;if(!width)throw new Error(`Expected table header: ${TIMER_HEADER}`);if(!splitCells(rows[1]).every(x=>/^:?-{3,}:?$/.test(x)))throw new Error('Table requires a Markdown separator row.');return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
+}
 function unique(ids:string[],kind:string):void {if(ids.some(x=>!/^[-a-z0-9]+$/.test(x)))throw new Error(`${kind} IDs must use lowercase letters, numbers, and hyphens.`);if(new Set(ids).size!==ids.length)throw new Error(`Duplicate ${kind} ID. Give every item its own stable ID.`);}
 function number(value:string):number {if(!/^\d+(\.\d+)?$/.test(value)||!Number.isFinite(Number(value)))throw new Error(`Invalid nonnegative number: ${value}`);return Number(value);}
+function integer(value:string):number {if(!/^\d+$/.test(value))throw new Error(`Invalid nonnegative integer: ${value}`);return Number(value);}
 function checkboxRows(lines:string[],range:Range):{done:boolean;parts:string[]}[]{return dataLines(lines,range).filter(x=>/^\s*- \[[ xX]\]/.test(x)).map(x=>{const match=x.match(/^\s*- \[([ xX])\]\s*(.*)$/)!;return {done:match[1].toLowerCase()==='x',parts:splitCells(match[2])};});}
 export function parseBoard(text:string):Board {
   const lines=text.split(/\r?\n/);const rs=ranges(lines);for(const section of SECTIONS)if(!rs.has(section))throw new Error(`Missing ## ${section} section. Open the Markdown format guide.`);
@@ -58,7 +63,7 @@ export function parseBoard(text:string):Board {
   if(new Set(entries.map(x=>`${x.date}/${x.taskId}`)).size!==entries.length)throw new Error('Duplicate task/date in Schedule. Combine details or give separate tasks unique IDs.');
   const goals=checkboxRows(lines,rs.get('Goals')!).map(({done,parts:p})=>{if(p.length!==5)throw new Error('Goals rows need ID | Due date or - | Page | Goal | Evidence.');if(p[1]!=='-'&&!validDay(p[1]))throw new Error(`Invalid goal due date: ${p[1]}`);if(!p[2]||p[2]==='All'||!p[3])throw new Error('Goals need a title and page. All is a reserved page name.');return {id:p[0],due:p[1],page:p[2],title:p[3],evidence:p[4],done};});unique(goals.map(x=>x.id),'goal');
   const sessions=table(lines,rs.get('Sessions')!,SESSION_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],seconds:number(p[3]),note:p[4]}));unique(sessions.map(x=>x.id),'session');for(const session of sessions)if(!validDay(session.date))throw new Error('Invalid session date.');
-  const timers=table(lines,rs.get('Timer')!,TIMER_HEADER).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5])}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
+  const timers=timerTable(lines,rs.get('Timer')!).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5]),cursor:p.length===7?integer(p[6]):0}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
   if(timer){unique([timer.id],'timer');if(!validDay(timer.date)|| (timer.started!=='-'&&!Number.isFinite(Date.parse(timer.started))))throw new Error('Invalid timer date or start timestamp.');}
   const workoutRange=rs.get('Workout Log');const workoutLogs=workoutRange?table(lines,workoutRange,WORKOUT_LOG_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2] as WorkoutLog['taskId'],minutes:number(p[3]),distance:number(p[4]),details:p[5],note:p[6]})):[];unique(workoutLogs.map(x=>x.id),'workout log');for(const log of workoutLogs)if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill'))throw new Error('Workout Log rows must use a valid date and Workout or Treadmill task ID.');
   const quickRange=rs.get('Quick Counts');const quickCounts=quickRange?table(lines,quickRange,QUICK_COUNT_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],amount:number(p[3]),unit:p[4]})):[];unique(quickCounts.map(x=>x.id),'quick count');for(const count of quickCounts)if(!validDay(count.date)||count.amount<=0||!count.unit)throw new Error('Quick Counts need a valid date, positive amount, and unit.');
@@ -98,15 +103,18 @@ export function setGoal(text:string,goal:Goal):string{
 }
 export function timerSeconds(timer:Timer,now=Date.now()):number{return Math.floor(timer.elapsed+(timer.started==='-'?0:Math.max(0,now-Date.parse(timer.started))/1000));}
 export function writeTimer(text:string,timer:Timer|null):string{
-  const board=parseBoard(text);const existing=board.timer;
-  const row=timer?`| ${[timer.id,timer.taskId,timer.date,timer.started,String(timer.elapsed),String(timer.target)].map(cell).join(' | ')} |`:'';
-  const next=lineEdit(text,'Timer',line=>!!existing&&line.trim().startsWith('|')&&splitCells(line)[0]===existing.id,()=>row,row);parseBoard(next);return next;
+  const lines=text.split(/\r?\n/);const timerRange=ranges(lines).get('Timer');if(!timerRange)throw new Error('Missing ## Timer section. Open the Markdown format guide.');if(lines[timerRange.start].replace(/\s/g,'')===LEGACY_TIMER_HEADER.replace(/\s/g,''))lines[timerRange.start]=TIMER_HEADER;const source=lines.join(text.includes('\r\n')?'\r\n':'\n');const board=parseBoard(source);const existing=board.timer;
+  const row=timer?`| ${[timer.id,timer.taskId,timer.date,timer.started,String(timer.elapsed),String(timer.target),String(timer.cursor)].map(cell).join(' | ')} |`:'';
+  const next=lineEdit(source,'Timer',line=>!!existing&&line.trim().startsWith('|')&&splitCells(line)[0]===existing.id,()=>row,row);parseBoard(next);return next;
 }
 export function startTimer(text:string,taskId:string,date:string,now=Date.now()):string{
-  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');const task=board.tasks.find(t=>t.id===taskId);if(!task)throw new Error('Task not found.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:task.minutes*60});
+  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');const task=board.tasks.find(t=>t.id===taskId);if(!task)throw new Error('Task not found.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:task.minutes*60,cursor:0});
 }
 export function startGroupTimer(text:string,group:GroupRef,date:string,now=Date.now()):string{
-  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const hasTask=group.kind==='page'?board.tasks.some(task=>task.page===group.value):board.tasks.some(task=>task.color===group.value);if(!hasTask)throw new Error('This focus group has no tasks.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0});
+  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const hasTask=group.kind==='page'?board.tasks.some(task=>task.page===group.value):board.tasks.some(task=>task.color===group.value);if(!hasTask)throw new Error('This focus group has no tasks.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0,cursor:0});
+}
+export function moveGroupTimer(text:string,id:string,delta:number):string{
+  const board=parseBoard(text);const timer=board.timer;const group=timer&&parseGroupTimerId(timer.taskId);if(!timer||timer.id!==id||!group)throw new Error('Routine timer changed. Refresh and try again.');const length=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value).length;return writeTimer(text,{...timer,cursor:Math.max(0,Math.min(length-1,timer.cursor+delta))});
 }
 export function pauseTimer(text:string,id:string,now=Date.now()):string{
   const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:timerSeconds(timer,now),started:'-'});

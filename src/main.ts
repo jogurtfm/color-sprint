@@ -1,5 +1,5 @@
 import { App, ItemView, MarkdownRenderChild, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce } from 'obsidian';
-import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, parseBoard, saveTask, setGoal, setEntry, entryFor, startTimer, startGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay } from './model';
+import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, parseBoard, saveTask, setGoal, setEntry, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay } from './model';
 import { starter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
@@ -57,7 +57,7 @@ export default class ColorSprint extends Plugin {
       editEntry:(task,day)=>{void this.read(path).then(text=>new EntryModal(this.app,this,task,day,text,path).open()).catch(e=>this.error(e));},
       schedule:(task,day,detail)=>change(text=>{const board=parseBoard(text);if(board.entries.some(e=>e.taskId===task.id&&e.date===day))throw new Error('Task already has an entry on this day.');return setEntry(text,day,task.id,false,detail);}),
       check:(task,day,done)=>change(text=>setEntry(text,day,task.id,done)),
-      start:(task,day)=>change(text=>startTimer(text,task.id,day)),startGroup:(group,day)=>change(text=>startGroupTimer(text,group,day)),
+      start:(task,day)=>change(text=>startTimer(text,task.id,day)),startGroup:(group,day)=>change(text=>startGroupTimer(text,group,day)),moveGroup:(id,delta)=>change(text=>moveGroupTimer(text,id,delta)),
       pause:id=>change(text=>pauseTimer(text,id)),resume:id=>change(text=>resumeTimer(text,id)),refresh:id=>change(text=>refreshTimer(text,id)),logWorkout:log=>change(text=>addWorkoutLog(text,log)),quickCount:count=>change(text=>addQuickCount(text,count)),
       finish:id=>new SessionModal(this.app,this,id,path).open(),openNote:()=>{void this.openNote(path).catch(e=>this.error(e));},
       openDaily:context.dailyNote&&!context.embedded?()=>{void this.openDailyMarkdown(context.dailyNote!).catch(e=>this.error(e));}:undefined,

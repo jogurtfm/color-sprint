@@ -54,6 +54,8 @@
 .cs-group-step { display:flex; align-items:center; gap:10px; min-height:46px; padding:9px 0; border-top:1px solid var(--background-modifier-border,#d7d7d2); cursor:pointer; font-weight:650; }
 .cs-group-step input { width:24px; height:24px; accent-color:var(--cs-color); flex:0 0 auto; }
 .cs-group-step small { margin-left:auto; color:var(--cs-muted); font-weight:400; text-align:right; }
+.cs-routine-queue { margin:20px 0 0; padding:12px; border-radius:12px; background:var(--cs-paper); }
+.cs-routine-queue p { margin:4px 0; }
 .cs-timer h2 { font-size:18px; }
 .cs-time { font-size:50px; font-weight:350; letter-spacing:-2px; font-variant-numeric:tabular-nums; margin:10px 0; }
 .cs-time[data-target-reached=true] { color:var(--interactive-accent,#6159a7); }
