@@ -21,6 +21,7 @@ For a manual installation, download `manifest.json`, `main.js`, and `styles.css`
 - **Today:** the selected day's explicitly planned tasks, color-coded completion progress, plus an **Available to plan** section for the remaining tasks. The planned count stays honest; a task is not made due merely because it is visible.
 - **Digest / itinerary:** a compact chronological timeline of protected time and suggested task blocks, followed by flexible tasks without a clock time. Start the first open task, check items off, or adjust their times directly. Completed items stay visible. Daily task/step wins and planned task minutes exclude protected time. Open the Digest tab or run **Color Sprint: Open daily digest / itinerary**. It reads your existing Markdown; it does not create calendar events.
 - **Completion feedback:** a gentle three-note chime, color-matched check animation and small particle burst after a successful completion save. Queued steps celebrate individually; quick increments get lighter feedback. Use the music-note button to mute, or **Effects** / **Settings → Color Sprint → Completion feedback** to independently control sound, animation and supported haptics. Reduce Motion removes animations. No feedback is played for failed saves or merely viewing existing completions.
+- **Voice reflections:** tap the microphone shortcut for the selected day, or run **Color Sprint: Capture a voice reflection** for today. Open a dated Markdown voice journal, record with Obsidian's Audio recorder, and replay embedded recordings in the panel. Your reflections are not tasks and do not change daily wins.
 - **Fast phone layout:** on narrow screens, branding and secondary status collapse, page filters become a single swipe row, and the first task card comes before the fold. Tap targets remain at least 40–44 px.
 - **Week:** a task-per-row, day-per-column grid. A blank `+` means unscheduled. Tap to plan; tap a planned cell to check it.
 - **Pages:** your Markdown page labels become navigation filters. Morning, Workouts, Kitchen, Room, Learning, Creative, Admin, and Portfolio are starter interpretations you can change.
@@ -48,6 +49,18 @@ See [FORMAT.md](FORMAT.md) for the complete schema and [examples/Color Sprint.md
 The existing planning document stays useful context. A prose plan is not automatically imported: explicit task IDs, dates, and checkboxes in the tracker determine what appears. This avoids guessing completion, frequency, or workout programming from ordinary prose. A planning assistant can edit the tracker using the same documented format.
 
 Completed cards remain visible with checked boxes. Starting focus creates an unchecked dated entry when one is missing. Legacy log-only task sessions and dated completed subtasks also keep their parent visible for that day, without inventing parent completion. Finish and Cancel return to the full daily list for the timer's date (or Digest if you started there), so page filters do not hide the item you just used.
+
+## Capture a voice reflection · new in 0.7.0
+
+1. Enable **Settings → Core plugins → Audio recorder** on the device where you will record. Microphone permission must also be allowed on that device.
+2. Tap **🎙** in Color Sprint. It uses the selected date, including when you review an older day.
+3. Tap **Record in journal**. Color Sprint opens `Sync/Reflection/Voice/YYYY-MM-DD.md` in the Markdown editor and requests the core **Audio recorder: Start recording** command. It appends at the end of the note without replacing existing content.
+4. Speak, then use Obsidian's microphone button or **Audio recorder: Stop recording**. **Keep the journal active until the recording has saved**, because the core recorder embeds into the active note at stop time.
+5. Return to Color Sprint and open the microphone panel for that day to replay its embedded recordings. **Open journal** also lets you write, edit, or attach audio manually.
+
+Change the folder under **Settings → Color Sprint → Voice journal folder**. Voice notes are ordinary Markdown with standard `![[Recording.m4a]]` / `![[Recording.webm]]` embeds; audio files use Obsidian's normal attachment location and your own sync settings. The journal is created only when opened for capture/editing, never just by viewing the microphone panel. Existing notes are preserved. No speech transcription or external upload is requested by Color Sprint. These journals are independent of the tracker's `## Reflections` quote list.
+
+The integration checks the core recorder's runtime command bridge. Missing/changed controls fail safely with manual instructions; an existing recording is never toggled off or redirected into another journal. Automatic command dispatch is verified against the installed Obsidian 1.14.4 source and in the plugin harness, not by recording from a real iPhone. Recording permission, audio quality, saving and sync still need a real-device check. See [Obsidian's Audio recorder documentation](https://obsidian.md/help/plugins/audio-recorder).
 
 ## Daily notes and embedded dashboards · new in 0.2.0
 

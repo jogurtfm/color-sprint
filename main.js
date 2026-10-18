@@ -932,6 +932,7 @@ var Surface = class {
     this.button(tools, "\u2699", () => this.host.settings(), "cs-icon", "Tracker settings");
     const nav = this.el("nav", this.root, "cs-tabs");
     nav.setAttribute("aria-label", "Tracker views");
+    if (this.host.openVoiceReflection) this.button(nav, "\u{1F399}", () => this.host.openVoiceReflection(this.day), "cs-voice-shortcut", "Voice reflection");
     for (const tab of ["Today", "Digest", "Week", "Pages", "Goals", "History"]) {
       const btn = this.button(nav, tab, () => {
         this.tab = tab;
@@ -1718,12 +1719,117 @@ function dailyScaffold(date, tracker, autoOpen = true) {
   return scaffold(date, title, tracker, autoOpen);
 }
 
+// src/voice.ts
+var DEFAULT_VOICE_FOLDER = "Sync/Reflection/Voice";
+function voicePath(folder, day) {
+  if (!validDay(day)) throw new Error("Choose a real YYYY-MM-DD date for your reflection.");
+  return `${vaultPath(folder, true)}/${day}.md`;
+}
+function voiceScaffold(day) {
+  if (!validDay(day)) throw new Error("Choose a real YYYY-MM-DD date for your reflection.");
+  return `---
+voice-reflection-date: "${day}"
+---
+
+# Voice reflection \xB7 ${day}
+
+Say what is on your mind. It does not have to be polished or turn into a task.
+
+Use Audio recorder: Start recording, then Stop recording (or tap the microphone again). Stay in this note until you stop so the recording is embedded here. Allow microphone access if asked.
+
+Audio files stay in your vault and follow your own attachment and sync settings. No transcription is requested by Color Sprint.
+
+## Notes (optional)
+
+
+## Recordings
+
+`;
+}
+function recorderState(bridge) {
+  const start = bridge?.commands?.["audio-recorder:start"], stop = bridge?.commands?.["audio-recorder:stop"];
+  if (!start || !stop || typeof bridge?.executeCommandById !== "function") return { available: false, recording: null };
+  try {
+    const recording = stop.checkCallback?.(true);
+    return { available: true, recording: typeof recording === "boolean" ? recording : null };
+  } catch {
+    return { available: true, recording: null };
+  }
+}
+function requireRecorder(bridge) {
+  const state = recorderState(bridge);
+  if (!state.available) throw new Error("Enable Audio recorder in Obsidian Settings \u2192 Core plugins on this device. You can still open the journal and insert recordings manually.");
+  if (state.recording === true) throw new Error("Audio recorder is already recording. Stop and save that recording in its current note before starting another.");
+  if (state.recording === null) throw new Error("Recorder status is unavailable in this Obsidian version. Open the journal and use Audio recorder: Start recording manually.");
+}
+function mountVoicePanel(root, options) {
+  let closed = false, pending = false;
+  const doc = root.ownerDocument;
+  root.classList.add("cs-voice");
+  const el = (tag, parent, cls, text = "") => {
+    const node = doc.createElement(tag);
+    node.className = cls;
+    node.textContent = text;
+    parent.append(node);
+    return node;
+  };
+  el("p", root, "cs-voice-intro", "What is on your mind? Say it as it is. No need to turn every thought into a task.");
+  const state = options.state;
+  el("p", root, "cs-voice-status", state.recording === true ? "Audio recorder is already recording. Save it in its current note first." : !state.available ? "Audio recorder is not enabled on this device. Enable it in Settings \u2192 Core plugins, or open your journal and attach audio manually." : state.recording === null ? "Automatic recorder controls are unavailable. Open your journal and use Audio recorder manually." : "Uses your enabled Obsidian Audio recorder. You will move into the journal to record.");
+  const error = el("p", root, "cs-form-error");
+  error.setAttribute("role", "alert");
+  const actions = el("div", root, "cs-voice-actions");
+  const open = async (record2) => {
+    if (pending || closed) return;
+    pending = true;
+    recordButton.disabled = true;
+    journal.disabled = true;
+    try {
+      await options.open(record2);
+    } catch (e) {
+      if (closed) options.error(e);
+      else error.textContent = e instanceof Error ? e.message : String(e);
+    } finally {
+      pending = false;
+      if (!closed) {
+        recordButton.disabled = !state.available || state.recording !== false;
+        journal.disabled = false;
+      }
+    }
+  };
+  const recordButton = el("button", actions, "mod-cta", "Record in journal");
+  recordButton.type = "button";
+  recordButton.setAttribute("aria-label", "Record voice reflection in journal");
+  recordButton.disabled = !state.available || state.recording !== false;
+  recordButton.addEventListener("click", () => void open(true));
+  const journal = el("button", actions, "", "Open journal");
+  journal.type = "button";
+  journal.addEventListener("click", () => void open(false));
+  el("p", root, "cs-voice-hint", "Stop with Obsidian\u2019s microphone button or Audio recorder: Stop recording. Keep this journal active until the audio is saved. No automatic transcription or upload by Color Sprint.");
+  const saved = el("section", root, "cs-voice-saved");
+  el("h3", saved, "", "This day\u2019s reflections");
+  void options.read().then(async (note) => {
+    if (closed) return;
+    if (!note.text) {
+      el("p", saved, "cs-muted", "Nothing captured yet. Record a thought, or open the journal to write.");
+      return;
+    }
+    const body = el("div", saved, "cs-voice-preview");
+    await options.renderMarkdown(note, body);
+  }).catch((e) => {
+    if (!closed) error.textContent = e instanceof Error ? e.message : String(e);
+  });
+  return () => {
+    closed = true;
+  };
+}
+
 // src/main.ts
 var VIEW = "color-sprint-view";
 var ColorSprint = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
-    this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY", feedback: { ...DEFAULT_FEEDBACK } };
+    this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY", feedback: { ...DEFAULT_FEEDBACK }, voiceFolder: DEFAULT_VOICE_FOLDER };
     this.queue = Promise.resolve();
     this.surfaces = /* @__PURE__ */ new Map();
     this.dailyRequest = 0;
@@ -1736,6 +1842,10 @@ var ColorSprint = class extends import_obsidian.Plugin {
     if (typeof saved?.autoOpenDaily === "boolean") this.settings.autoOpenDaily = saved.autoOpenDaily;
     if (typeof saved?.dailyFolder === "string") this.settings.dailyFolder = saved.dailyFolder;
     if (saved?.dailyFormat === "YYYY-MM-DD" || saved?.dailyFormat === "MM-DD-YYYY") this.settings.dailyFormat = saved.dailyFormat;
+    if (typeof saved?.voiceFolder === "string") try {
+      this.settings.voiceFolder = vaultPath(saved.voiceFolder, true);
+    } catch {
+    }
     for (const key of ["sound", "haptics", "motion"]) if (typeof saved?.feedback?.[key] === "boolean") this.settings.feedback[key] = saved.feedback[key];
     this.registerView(VIEW, (leaf) => new SprintView(leaf, this));
     this.addSettingTab(new SprintSettings(this.app, this));
@@ -1751,6 +1861,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
     this.addCommand({ id: "open-digest", name: "Open daily digest / itinerary", callback: () => {
       void this.open({ tab: "Digest" }).catch((e) => this.error(e));
     } });
+    this.addCommand({ id: "voice-reflection", name: "Capture a voice reflection", callback: () => this.openVoiceReflection(localDay()) });
     this.addCommand({ id: "choose-note", name: "Choose tracker Markdown note", callback: () => this.chooseNote() });
     this.addCommand({ id: "create-starter", name: "Create starter Markdown note", callback: () => {
       void this.createNote().catch((e) => this.error(e));
@@ -1848,6 +1959,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
         this.settings.feedback = { ...prefs };
         this.refresh();
       },
+      openVoiceReflection: (day) => this.openVoiceReflection(day),
       editTask: (task) => new TaskModal(this.app, this, task, path).open(),
       editSubtask: (task, sub) => new SubtaskModal(this.app, this, task, sub, path).open(),
       editGoal: (goal) => new GoalModal(this.app, this, goal, path).open(),
@@ -1889,6 +2001,42 @@ var ColorSprint = class extends import_obsidian.Plugin {
   }
   async openNote(path = this.settings.path) {
     await this.app.workspace.getLeaf("tab").openFile(this.file(path));
+  }
+  recorderBridge() {
+    return this.app.commands;
+  }
+  openVoiceReflection(day) {
+    new VoiceReflectionModal(this.app, this, day).open();
+  }
+  async readVoiceReflection(day) {
+    const path = voicePath(this.settings.voiceFolder, day);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file && !(file instanceof import_obsidian.TFile)) throw new Error("Voice journal path is a folder, not a note.");
+    return { path, text: file instanceof import_obsidian.TFile ? await this.app.vault.read(file) : "" };
+  }
+  async openVoiceJournal(day, record2 = false) {
+    const bridge = this.recorderBridge();
+    if (record2) requireRecorder(bridge);
+    const path = voicePath(this.settings.voiceFolder, day);
+    if (recorderState(bridge).recording === true && this.app.workspace.getActiveFile()?.path !== path) throw new Error("Stop and save the current recording before switching journals.");
+    let file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) {
+      await this.ensureFolder(path);
+      file = this.app.vault.getAbstractFileByPath(path) || await this.app.vault.create(path, voiceScaffold(day));
+    }
+    if (!(file instanceof import_obsidian.TFile)) throw new Error("Voice journal path is a folder, not a note.");
+    if (recorderState(bridge).recording === true && this.app.workspace.getActiveFile()?.path !== path) throw new Error("Stop and save the current recording before switching journals.");
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.openFile(file, { active: true, state: { mode: "source" } });
+    await this.app.workspace.revealLeaf(leaf);
+    if (!record2) return;
+    const active = this.app.workspace.activeEditor;
+    if (this.app.workspace.getActiveFile()?.path !== path || active?.file?.path !== path || !active.editor) throw new Error("Journal opened. Use Audio recorder: Start recording here after the editor is ready.");
+    const last = active.editor.lastLine();
+    active.editor.setCursor({ line: last, ch: active.editor.getLine(last).length });
+    requireRecorder(bridge);
+    if (!bridge.executeCommandById("audio-recorder:start")) throw new Error("Journal opened, but the recorder could not start. Use Audio recorder: Start recording manually.");
+    new import_obsidian.Notice("Recorder requested. Allow microphone access if asked. Stay in this note and use Audio recorder: Stop recording to save.");
   }
   async openDailyMarkdown(path) {
     const file = this.file(path);
@@ -2066,12 +2214,46 @@ var SprintSettings = class extends import_obsidian.PluginSettingTab {
       await this.plugin.saveData(this.plugin.settings);
     }));
     new import_obsidian.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
+    containerEl.createEl("h2", { text: "Voice reflections" });
+    new import_obsidian.Setting(containerEl).setName("Voice journal folder").setDesc("Dated Markdown journals. Audio recorder uses your normal attachment location.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
+      try {
+        const folder = vaultPath(value, true);
+        await this.plugin.saveData({ ...this.plugin.settings, voiceFolder: folder });
+        this.plugin.settings.voiceFolder = folder;
+      } catch {
+      }
+    }));
     containerEl.createEl("h2", { text: "Completion feedback" });
     for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) new import_obsidian.Setting(containerEl).setName(label).setDesc(key === "motion" ? "Always respects system Reduce Motion." : key === "haptics" ? "Uses vibration only when the device exposes it." : "Quiet synthesized chimes after successful saves.").addToggle((toggle) => toggle.setValue(this.plugin.settings.feedback[key]).onChange(async (value) => {
       this.plugin.settings.feedback[key] = value;
       await this.plugin.saveData(this.plugin.settings);
       this.plugin.refresh();
     }));
+  }
+};
+var VoiceReflectionModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, day) {
+    super(app);
+    this.plugin = plugin;
+    this.day = day;
+    this.component = null;
+    this.shouldRestoreSelection = false;
+    this.setTitle(`Voice reflection \xB7 ${day}`);
+    this.dispose = mountVoicePanel(this.contentEl, { day, state: recorderState(plugin.recorderBridge()), read: () => plugin.readVoiceReflection(day), renderMarkdown: async (note, body) => {
+      this.component = new import_obsidian.Component();
+      this.component.load();
+      await import_obsidian.MarkdownRenderer.render(app, note.text, body, note.path, this.component);
+    }, open: async (record2) => {
+      if (record2) requireRecorder(plugin.recorderBridge());
+      this.close();
+      await plugin.openVoiceJournal(day, record2);
+    }, error: (e) => plugin.error(e) });
+  }
+  onClose() {
+    this.dispose();
+    this.component?.unload();
+    this.component = null;
+    this.contentEl.empty();
   }
 };
 var FormModal = class extends import_obsidian.Modal {

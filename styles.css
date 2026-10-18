@@ -156,6 +156,19 @@
   .cs-focus-card .cs-time { font-size:70px; margin:16px 0 8px; }
 }
 .cs-tabs .cs-sound-toggle { flex:0 0 34px; padding:4px; min-width:34px; font-size:18px; }
+.cs-tabs .cs-voice-shortcut { flex:0 0 34px; min-width:34px; padding:4px; font-size:19px; }
+.cs-voice { padding:0 2px 8px; }
+.cs-voice-intro { font-size:16px; line-height:1.5; margin:8px 0 16px; }
+.cs-voice-status { font-size:13px; line-height:1.5; padding:12px; background:var(--background-secondary,#eeede8); border-radius:12px; }
+.cs-voice-actions { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+.cs-voice-actions button { min-height:44px; padding:10px 16px; border-radius:12px; font-size:14px; touch-action:manipulation; cursor:pointer; }
+.cs-voice-actions button:disabled { cursor:default; opacity:.5; }
+.cs-voice-hint { font-size:12px; line-height:1.5; color:var(--text-muted,#767681); }
+.cs-voice-saved { border-top:1px solid var(--background-modifier-border,#d7d7d2); padding-top:14px; margin-top:18px; }
+.cs-voice-saved h3 { margin:0 0 12px; font-size:15px; }
+.cs-voice-preview { overflow-wrap:anywhere; font-size:13px; }
+.cs-voice-preview audio { display:block; width:100%; max-width:100%; margin:10px 0; }
+.cs-voice-preview .internal-embed { max-width:100%; }
 .cs-digest { max-width:760px; margin:auto; }
 .cs-digest-summary { padding:12px 0 8px; }
 .cs-digest-summary h2 { margin:4px 0 10px; }

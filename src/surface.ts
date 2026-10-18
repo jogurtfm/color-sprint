@@ -29,6 +29,7 @@ export interface Host {
   error(error:unknown):void;
   getFeedback?():FeedbackSettings;
   saveFeedback?(settings:FeedbackSettings):Promise<void>;
+  openVoiceReflection?(day:string):void;
 }
 type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History';
 export interface SurfaceOptions {day?:string;page?:string;tab?:Tab;embedded?:boolean}
@@ -56,6 +57,7 @@ export class Surface {
     const head=this.el('header',this.root,'cs-header');const title=this.el('div',head);this.el('p',title,'cs-eyebrow','COLOR SPRINT · MARKDOWN FIRST');this.el('h1',title,'','A little more intentional.');
     const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(tools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
     const nav=this.el('nav',this.root,'cs-tabs');nav.setAttribute('aria-label','Tracker views');
+    if(this.host.openVoiceReflection)this.button(nav,'🎙',()=>this.host.openVoiceReflection!(this.day),'cs-voice-shortcut','Voice reflection');
     for(const tab of ['Today','Digest','Week','Pages','Goals','History'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}const sound=this.button(nav,this.feedbackSettings.sound?'♫':'♫̸',()=>this.setFeedback({sound:!this.feedbackSettings.sound}),'cs-sound-toggle',this.feedbackSettings.sound?'Mute completion sounds':'Enable completion sounds');sound.setAttribute('aria-pressed',String(this.feedbackSettings.sound));
     const controls=this.el('div',this.root,'cs-controls');this.button(controls,'‹',()=>{this.day=addDays(this.day,-1);this.render();},'cs-icon','Previous day');
     const date=this.el('input',controls,'cs-date');date.type='date';date.value=this.day;date.setAttribute('aria-label','Selected date');date.addEventListener('change',()=>{if(date.value){this.day=date.value;this.render();}});

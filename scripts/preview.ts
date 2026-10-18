@@ -1,6 +1,7 @@
 import { Surface,Host } from '../src/surface';
 import { starter } from '../src/starter';
 import { FeedbackSettings, DEFAULT_FEEDBACK } from '../src/feedback';
+import { mountVoicePanel, voicePath } from '../src/voice';
 import { parseBoard,setEntry,saveTask,saveSubtask,setGoal,scheduleGroup,startTimer,startGroupTimer,moveGroupTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal,timeBlockFor,saveTimeBlock,clearTimeBlock } from '../src/model';
 
 let md=localStorage.getItem('color-sprint-demo')||starter();
@@ -10,6 +11,7 @@ function dialog(title:string,fields:Record<string,string>,save:(values:Record<st
 }
 async function change(fn:(s:string)=>string):Promise<void>{const next=fn(md);parseBoard(next);md=next;localStorage.setItem('color-sprint-demo',md);await surface.refresh();}
 const host:Host={read:async()=>md,change,
+  openVoiceReflection:day=>{const modal=document.createElement('dialog');const heading=document.createElement('h2');heading.textContent=`Voice reflection · ${day}`;modal.append(heading);const body=document.createElement('div');modal.append(body);const dispose=mountVoicePanel(body,{day,state:{available:false,recording:null},read:async()=>({path:voicePath('Sync/Reflection/Voice',day),text:''}),renderMarkdown:async(note,el)=>{el.textContent=note.text;},open:async()=>{const info=document.createElement('p');info.textContent='Browser preview only. In Obsidian this opens a dated vault journal; no microphone is accessed here.';body.append(info);},error:()=>{}});const close=document.createElement('button');close.textContent='Close voice reflections';close.addEventListener('click',()=>modal.close());modal.append(close);modal.addEventListener('close',()=>{dispose();modal.remove();});document.body.append(modal);modal.showModal();},
   getFeedback:()=>{try{return {...DEFAULT_FEEDBACK,...JSON.parse(localStorage.getItem('color-sprint-feedback')||'{}')};}catch{return {...DEFAULT_FEEDBACK};}},saveFeedback:async prefs=>{localStorage.setItem('color-sprint-feedback',JSON.stringify(prefs));},
   editSubtask:(task,sub)=>dialog('Roadmap step',{Step:sub?.title||'',Minutes:String(sub?.minutes??10),Context:sub?.context||'-','Done means':sub?.definition||''},v=>change(s=>saveSubtask(s,{id:sub?.id||`step-${Date.now()}`,taskId:task.id,title:v.Step,minutes:Number(v.Minutes),context:v.Context||'-',definition:v['Done means'],done:sub?.done||false,completed:sub?.completed||'-'}))),
   editTask:(t?:Task)=>dialog(t?'Edit task':'Add task',{Task:t?.title||'',Page:t?.page||'Morning',Color:t?.color||'pink',Repeat:t?.repeat||'-','Timer minutes':String(t?.minutes??10),'Done means':t?.definition||''},async v=>{await change(s=>saveTask(s,{id:t?.id||`task-${Date.now()}`,title:v.Task,page:v.Page,color:v.Color as Task['color'],repeat:v.Repeat,minutes:Number(v['Timer minutes']),definition:v['Done means'],kind:t?.kind||'habit'}));}),
