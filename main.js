@@ -278,7 +278,7 @@ function entryFor(board, id, day) {
   return board.entries.find((e) => e.taskId === id && e.date === day);
 }
 function planned(board, task, day) {
-  return !!entryFor(board, task.id, day) || day >= board.start && day <= board.end && scheduled(task, day);
+  return !!entryFor(board, task.id, day) || board.sessions.some((session) => session.date === day && session.taskId === task.id) || board.subtasks.some((sub) => sub.taskId === task.id && sub.done && sub.completed === day) || day >= board.start && day <= board.end && scheduled(task, day);
 }
 function groupTimerId(group) {
   return `group:${group.kind}:${encodeURIComponent(group.value)}`;
@@ -443,10 +443,11 @@ function writeTimer(text, timer) {
 }
 function startTimer(text, taskId, date, now = Date.now()) {
   const board = parseBoard(text);
-  if (board.timer) throw new Error("A timer is already active. Open its focus screen to resume or save it.");
+  if (board.timer) throw new Error("A timer is already active. Open its focus screen to resume or finish it.");
   const task = board.tasks.find((t) => t.id === taskId);
   if (!task || !validDay(date)) throw new Error("Task or date not found.");
-  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60, cursor: 0, stepOffset: 0 });
+  const scheduledText = entryFor(board, taskId, date) ? text : setEntry(text, date, taskId, false);
+  return writeTimer(scheduledText, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60, cursor: 0, stepOffset: 0 });
 }
 function startGroupTimer(text, group, date, now = Date.now()) {
   const board = parseBoard(text);
@@ -497,6 +498,27 @@ function finishTimer(text, id, note, now = Date.now()) {
   if (!timer || timer.id !== id) throw new Error("Timer changed. No session saved.");
   const row = `| ${[id, timer.date, timer.taskId, String(timerSeconds(timer, now)), note].map(cell).join(" | ")} |`;
   return writeTimer(lineEdit(text, "Sessions", () => false, (x) => x, row), null);
+}
+function finishFocus(text, id, expectedStepId, note = "", now = Date.now()) {
+  const board = parseBoard(text);
+  if (board.sessions.some((session) => session.id === id) && board.timer?.id !== id) return text;
+  const timer = board.timer;
+  if (!timer || timer.id !== id) throw new Error("Timer changed. Refresh before finishing.");
+  const queue = focusQueue(board, timer);
+  const step = queue[Math.min(timer.cursor, Math.max(0, queue.length - 1))];
+  if (!step || step.id !== expectedStepId) throw new Error("Focus item changed. Check the current item before finishing.");
+  let next = entryFor(board, step.taskId, timer.date) ? text : setEntry(text, timer.date, step.taskId, false);
+  next = step.subtask ? step.done ? next : setSubtaskDone(next, step.subtask.id, true, timer.date) : setEntry(next, timer.date, step.taskId, true);
+  return finishTimer(next, id, `Finished: ${step.title}${note.trim() ? `. ${note.trim()}` : ""}`, now);
+}
+function cancelTimer(text, id) {
+  const board = parseBoard(text);
+  const timer = board.timer;
+  if (!timer || timer.id !== id) throw new Error("Timer changed. Refresh before cancelling.");
+  let next = text;
+  const step = focusQueue(board, timer)[Math.min(timer.cursor, Math.max(0, focusQueue(board, timer).length - 1))];
+  if (step && !entryFor(board, step.taskId, timer.date)) next = setEntry(next, timer.date, step.taskId, false);
+  return writeTimer(next, null);
 }
 function duration(seconds) {
   const s = Math.max(0, Math.floor(seconds));
@@ -667,6 +689,7 @@ var Surface = class {
     this.cuedTimerId = "";
     this.audioContext = null;
     this.timerDisplay = null;
+    this.focusNotes = /* @__PURE__ */ new Map();
     this.day = options.day || this.day;
     this.page = options.page || "All";
     this.tab = options.tab || "Today";
@@ -827,6 +850,24 @@ var Surface = class {
     }
     await start();
     this.focusMode = true;
+    await this.refresh();
+  }
+  async endFocus(finish) {
+    const board = this.board;
+    const timer = board.timer;
+    if (!timer) return;
+    const queue = focusQueue(board, timer);
+    const step = queue[Math.min(timer.cursor, Math.max(0, queue.length - 1))];
+    if (finish && !step) throw new Error("This queue is empty. Cancel the timer to return to the list.");
+    await this.host.change((text) => finish ? finishFocus(text, timer.id, step.id, this.focusNotes.get(timer.id) || "") : cancelTimer(text, timer.id));
+    this.focusNotes.delete(timer.id);
+    this.focusMode = false;
+    this.roadmapSurface = null;
+    this.activitySurface = null;
+    this.tab = "Today";
+    this.page = "All";
+    this.filter = "";
+    this.day = timer.date;
     await this.refresh();
   }
   groupAction(parent, group, label) {
@@ -1042,7 +1083,7 @@ var Surface = class {
   renderHistory() {
     this.pageFilter(this.root);
     this.el("h2", this.root, "", "Sessions, honestly logged");
-    this.el("p", this.root, "cs-muted", "Timer sessions measure focus. They do not automatically complete a task or count as a workout.");
+    this.el("p", this.root, "cs-muted", "Finish records focus and checks off the current task or subtask. Earlier log-only sessions retain their original completion state.");
     const sessions = [...this.board.sessions].reverse().filter((s) => {
       const task = this.board.tasks.find((t) => t.id === s.taskId);
       const group = parseGroupTimerId(s.taskId);
@@ -1068,12 +1109,14 @@ var Surface = class {
     const timer = this.board.timer;
     const task = this.board.tasks.find((t) => t.id === timer.taskId);
     const group = parseGroupTimerId(timer.taskId);
+    const queue = focusQueue(this.board, timer);
+    const step = queue[Math.min(timer.cursor, Math.max(0, queue.length - 1))];
     const box = this.el("section", this.root, "cs-timer");
     if (task) this.taskColor(task, box);
     else if (group) this.groupColor(group, box);
     const details = this.el("div", box);
     this.el("p", details, "cs-eyebrow", timer.started === "-" ? "PAUSED" : "IN FOCUS");
-    this.el("h2", details, "", task?.title || (group ? this.groupTitle(group) : "Focus session"));
+    this.el("h2", details, "", step?.title || task?.title || (group ? this.groupTitle(group) : "Focus session"));
     this.timerDisplay = this.el("div", box, "cs-time");
     this.timerDisplay.setAttribute("role", "timer");
     this.timerDisplay.setAttribute("aria-label", "Elapsed focus time");
@@ -1083,8 +1126,9 @@ var Surface = class {
       await this.host.refresh(timer.id);
       this.prepareFocusCues();
     }, "cs-small");
-    this.button(actions, "Save session", () => this.host.finish(timer.id), "cs-primary");
-    this.el("p", box, "cs-muted", "Refresh restarts at zero without saving a session. Save the actual result before starting another task.");
+    this.button(actions, "Cancel", () => this.endFocus(false), "cs-small");
+    if (step) this.button(actions, "Finish", () => this.endFocus(true), "cs-primary");
+    this.el("p", box, "cs-muted", "Finish saves and checks off this item. Cancel discards the running timer; already completed work stays checked.");
   }
   renderFocusMode() {
     const board = this.board;
@@ -1109,12 +1153,19 @@ var Surface = class {
     this.timerDisplay = this.el("div", card, "cs-time");
     this.timerDisplay.setAttribute("role", "timer");
     this.timerDisplay.setAttribute("aria-label", step?.minutes ? "Remaining step time" : "Elapsed step time");
-    if (step) {
-      this.button(card, step.done ? "Step complete \u2713" : "Done & next", async () => {
-        if (step.done && cursor < queue.length - 1) await this.host.moveGroup(timer.id, 1);
-        else if (!step.done) await this.host.change((text) => completeFocusStep(text, timer.id, timer.cursor));
+    if (step && cursor < queue.length - 1) {
+      this.button(card, step.done ? "Next completed step \u2713" : "Done & next", async () => {
+        if (step.done) await this.host.moveGroup(timer.id, 1);
+        else await this.host.change((text) => completeFocusStep(text, timer.id, timer.cursor));
       }, step.done ? "cs-small" : "cs-primary");
     }
+    const noteDetails = this.el("details", card, "cs-focus-note");
+    this.el("summary", noteDetails, "", "Add a result note (optional)");
+    const note = this.el("textarea", noteDetails);
+    note.value = this.focusNotes.get(timer.id) || "";
+    note.setAttribute("aria-label", "Focus result note");
+    note.placeholder = "What changed?";
+    note.addEventListener("input", () => this.focusNotes.set(timer.id, note.value));
     const actions = this.el("div", card, "cs-actions");
     if (cursor > 0) this.button(actions, "Back", () => this.host.moveGroup(timer.id, -1), "cs-small");
     if (cursor < queue.length - 1) this.button(actions, "Skip / next", () => this.host.moveGroup(timer.id, 1), "cs-small");
@@ -1123,7 +1174,8 @@ var Surface = class {
       await this.host.refresh(timer.id);
       this.prepareFocusCues();
     }, "cs-small");
-    this.button(actions, meditation ? "End & log" : "Stop & log", () => this.host.finish(timer.id), "cs-primary");
+    this.button(actions, "Cancel", () => this.endFocus(false), "cs-small");
+    if (step) this.button(actions, "Finish", () => this.endFocus(true), "cs-primary");
     if (queue.length > 1) {
       const next = this.el("details", card, "cs-routine-queue");
       this.el("summary", next, "", `Up next \xB7 ${Math.max(0, queue.length - cursor - 1)} steps`);
@@ -1131,7 +1183,7 @@ var Surface = class {
     }
     const quote = this.reflectionFor(`${timer.id}-${cursor}`);
     if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
-    this.el("p", card, "cs-muted", meditation ? "Breathe, notice, return." : "Tap Done for real work; Skip moves the cue. Parent tasks stay open until you mark them complete.");
+    this.el("p", card, "cs-muted", step ? `Finish checks off \u201C${step.title}\u201D and returns to the daily list. Cancel discards the timer and keeps your tasks.` : "Cancel returns to the daily list.");
   }
   groupTitle(group) {
     return group.kind === "page" ? `${group.value} routine` : `${COLORS.find((color) => color.id === group.value)?.name || group.value} group`;
@@ -1521,7 +1573,6 @@ var ColorSprint = class extends import_obsidian.Plugin {
       refresh: (id) => change((text) => refreshTimer(text, id)),
       logWorkout: (log) => change((text) => addWorkoutLog(text, log)),
       quickCount: (count) => change((text) => addQuickCount(text, count)),
-      finish: (id) => new SessionModal(this.app, this, id, path).open(),
       openNote: () => {
         void this.openNote(path).catch((e) => this.error(e));
       },
@@ -1814,14 +1865,6 @@ var SubtaskModal = class extends FormModal {
       if (!Number.isFinite(sub.minutes) || sub.minutes < 0 || sub.minutes > 1440) throw new Error("Use 0\u20131440 minutes.");
       return saveSubtask(text, sub);
     }, path));
-  }
-};
-var SessionModal = class extends FormModal {
-  constructor(app, plugin, id, path = plugin.settings.path) {
-    super(app, "Save your focus session");
-    let note = "";
-    this.text("Actual result", "Record what happened. For training, include actual sets/reps/distance. A saved timer does not mark the task complete.", note, (v) => note = v);
-    this.save(() => plugin.change((text) => finishTimer(text, id, note), path), "Save session");
   }
 };
 var EntryModal = class extends FormModal {

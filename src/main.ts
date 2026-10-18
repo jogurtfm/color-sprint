@@ -59,7 +59,7 @@ export default class ColorSprint extends Plugin {
       check:(task,day,done)=>change(text=>setEntry(text,day,task.id,done)),
       start:(task,day)=>change(text=>startTimer(text,task.id,day)),startGroup:(group,day)=>change(text=>startGroupTimer(text,group,day)),moveGroup:(id,delta)=>change(text=>moveGroupTimer(text,id,delta)),
       pause:id=>change(text=>pauseTimer(text,id)),resume:id=>change(text=>resumeTimer(text,id)),refresh:id=>change(text=>refreshTimer(text,id)),logWorkout:log=>change(text=>addWorkoutLog(text,log)),quickCount:count=>change(text=>addQuickCount(text,count)),
-      finish:id=>new SessionModal(this.app,this,id,path).open(),openNote:()=>{void this.openNote(path).catch(e=>this.error(e));},
+      openNote:()=>{void this.openNote(path).catch(e=>this.error(e));},
       openDaily:context.dailyNote&&!context.embedded?()=>{void this.openDailyMarkdown(context.dailyNote!).catch(e=>this.error(e));}:undefined,
       createNote:()=>this.createNote(path),settings:()=>this.chooseNote(),error:e=>this.error(e)
     };const surface=new Surface(root,host,context);this.surfaces.set(surface,path);return surface;
@@ -150,9 +150,6 @@ class SubtaskModal extends FormModal {
     super(app,original?'Edit roadmap step':'Add roadmap step');const sub:Subtask=original?{...original}:{id:`step-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,taskId:task.id,context:'-',minutes:10,title:'',definition:'',done:false,completed:'-'};
     this.field('Step','A concrete next action.',sub.title,v=>sub.title=v.trim());this.field('Suggested minutes','0 runs an open stopwatch.',String(sub.minutes),v=>sub.minutes=Number(v),'number');this.field('Context','- for all days; or a schedule detail such as 2020 Tax or Letters.',sub.context,v=>sub.context=v.trim()||'-');this.text('Done means','What visible result finishes this step?',sub.definition,v=>sub.definition=v.trim());this.save(()=>plugin.change(text=>{const current=parseBoard(text).subtasks.find(item=>item.id===sub.id);if(original&&JSON.stringify(current)!==JSON.stringify(original))throw new Error('This step changed in Markdown. Reopen it.');if(!Number.isFinite(sub.minutes)||sub.minutes<0||sub.minutes>1440)throw new Error('Use 0–1440 minutes.');return saveSubtask(text,sub);},path));
   }
-}
-class SessionModal extends FormModal {
-  constructor(app:App,plugin:ColorSprint,id:string,path=plugin.settings.path){super(app,'Save your focus session');let note='';this.text('Actual result','Record what happened. For training, include actual sets/reps/distance. A saved timer does not mark the task complete.',note,v=>note=v);this.save(()=>plugin.change(text=>finishTimer(text,id,note),path),'Save session');}
 }
 class EntryModal extends FormModal {
   constructor(app:App,plugin:ColorSprint,task:Task,day:string,text:string,path=plugin.settings.path){

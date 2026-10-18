@@ -65,7 +65,7 @@ Five fields: stable Goal ID | due date or `-` | Page | goal title | evidence. Co
 | s-example | 2026-10-18 | make-bed | 90 | Bedding straightened |
 ```
 
-Sessions record elapsed focus and actual notes. They are not automatic workouts or task completions. You can add a manual record with a unique ID and actual seconds, or correct an existing result directly. IDs prevent a repeated Save action from duplicating the same timer session.
+Sessions record elapsed focus and actual notes. A manual or legacy log-only row does not infer task completion. The explicit **Finish** action atomically checks off the current task (or subtask), saves its session, and clears the timer. It does not complete unvisited queue items or a subtask's parent project. IDs prevent repeat Finish actions from creating duplicate sessions. **Cancel** clears the running timer without creating a session or changing completion.
 
 ## Active timer
 
@@ -92,7 +92,7 @@ Group timer IDs use `group:page:Morning` or `group:color:pink`. Schedule the gro
 
 Each subtask has a stable lowercase ID, a real parent task ID, suggested minutes (0 for stopwatch), and a completion date. `-` context means every occurrence of the parent; other contexts appear only when that day's Schedule detail contains the text, case-insensitively. This keeps tax and letter roadmaps separate under Hard Task. Rows stay in Markdown order. Proposed roadmaps can be generated and edited from a task's Roadmap screen.
 
-Focus expands a parent or group into these steps. Done records the subtask date and advances; Skip advances without completion. Completing all subtasks does not mark the parent done. The daily wins display counts dated task completions and dated subtask completions separately; sessions and quick increments do not add completion wins. If you edit a subtask checkbox directly, fill its Completed date to include it in that day's count.
+Focus expands a parent or group into these steps. Done & next records the subtask date and advances; Skip advances without completion. Finish records the current step and ends the focus session. Completing all subtasks does not mark the parent done. The daily wins display counts dated task completions and dated subtask completions separately; sessions and quick increments do not add completion wins. If you edit a subtask checkbox directly, fill its Completed date to include it in that day's count.
 
 ## Time Blocks and Availability (optional)
 

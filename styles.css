@@ -63,6 +63,9 @@
 .cs-group-step small { margin-left:auto; color:var(--cs-muted); font-weight:400; text-align:right; }
 .cs-routine-queue { margin:20px 0 0; padding:12px; border-radius:12px; background:var(--cs-paper); }
 .cs-routine-queue p { margin:4px 0; }
+.cs-focus-note { margin:12px 0; font-size:12px; color:var(--cs-muted); }
+.cs-focus-note summary { cursor:pointer; min-height:36px; display:flex; align-items:center; }
+.cs-focus-note textarea { width:100%; min-height:70px; margin-top:6px; resize:vertical; }
 .cs-timer h2 { font-size:18px; }
 .cs-time { font-size:50px; font-weight:350; letter-spacing:-2px; font-variant-numeric:tabular-nums; margin:10px 0; }
 .cs-time[data-target-reached=true] { color:var(--interactive-accent,#6159a7); }
@@ -143,7 +146,7 @@
   .cs-root input.cs-check { width:26px; height:26px; flex-basis:26px; }
   .cs-check-target { width:32px; min-width:32px; min-height:32px; flex-basis:32px; margin:-3px 0 0 -3px; }
   .cs-available h2 { font-size:18px; margin-top:20px; }
-  .cs-focus-mode { display:flex; flex-direction:column; align-items:stretch; min-height:100%; padding:8px 0; gap:10px; }
+  .cs-focus-mode { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; min-height:100%; padding:8px 0; gap:10px; }
   .cs-focus-header { padding:0 4px; }
   .cs-focus-card { padding:18px 16px; border-radius:18px; }
   .cs-activity-card { margin:14px 0; padding:18px 14px; border-radius:16px; }
