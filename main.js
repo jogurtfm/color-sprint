@@ -670,6 +670,144 @@ function addRoadmap(text, taskId, context = "-") {
   return next;
 }
 
+// src/digest.ts
+function itinerary(board, date) {
+  const fixed = availabilityFor(board, date).map((block) => ({ key: `fixed:${block.id}`, kind: "protected", title: block.label, start: block.start, end: block.end, timezone: block.timezone, fixed: block, done: false, conflict: false }));
+  const blocks = board.timeBlocks.filter((block) => block.date === date).flatMap((block) => {
+    const task = board.tasks.find((task2) => task2.id === block.taskId);
+    return task ? [{ key: task.id, kind: "task", title: task.title, start: block.start, end: block.end, timezone: block.timezone, task, block, done: !!entryFor(board, task.id, date)?.done, conflict: false }] : [];
+  });
+  const timed = [...fixed, ...blocks].sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end) || a.key.localeCompare(b.key));
+  for (const item of timed) item.conflict = timed.some((other) => other !== item && other.timezone === item.timezone && item.start < other.end && item.end > other.start);
+  const timedIds = new Set(blocks.map((item) => item.task.id));
+  const flexible = board.tasks.filter((task) => planned(board, task, date) && !timedIds.has(task.id));
+  const available = board.tasks.filter((task) => !planned(board, task, date) && !timedIds.has(task.id));
+  const minutes = blocks.reduce((total, block) => {
+    const toMinutes = (value) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+    return total + toMinutes(block.end) - toMinutes(block.start);
+  }, 0);
+  return { timed, flexible, available, minutes };
+}
+
+// src/feedback.ts
+var DEFAULT_FEEDBACK = { sound: true, haptics: true, motion: true };
+var Feedback = class {
+  constructor(root, settings) {
+    this.root = root;
+    this.settings = settings;
+    this.context = null;
+    this.layer = null;
+    this.timeout = null;
+    this.stopped = false;
+  }
+  prepare() {
+    if (this.stopped || !this.settings().sound) return;
+    const win = this.root.ownerDocument.defaultView;
+    try {
+      const Audio = win?.AudioContext || win?.webkitAudioContext;
+      if (Audio) {
+        this.context = this.context || new Audio();
+        void Promise.resolve(this.context.resume()).catch(() => {
+        });
+      }
+    } catch {
+    }
+  }
+  play(kind) {
+    if (this.stopped) return;
+    const prefs = this.settings();
+    const win = this.root.ownerDocument.defaultView;
+    if (prefs.haptics) try {
+      win?.navigator?.vibrate?.(kind === "complete" ? [20, 35, 45] : kind === "timer" ? [80, 60, 120] : 10);
+    } catch {
+    }
+    if (!prefs.sound) return;
+    const play = () => {
+      try {
+        const ctx = this.context;
+        if (!ctx || this.stopped || !this.settings().sound) return;
+        const notes = kind === "complete" ? [523.25, 659.25, 783.99] : kind === "timer" ? [659.25, 880] : kind === "saved" ? [523.25, 659.25] : [740];
+        for (const [index, hz] of notes.entries()) {
+          const time = ctx.currentTime + index * 0.075;
+          const oscillator = ctx.createOscillator(), gain = ctx.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = hz;
+          gain.gain.setValueAtTime(1e-4, time);
+          gain.gain.exponentialRampToValueAtTime(0.055, time + 0.012);
+          gain.gain.exponentialRampToValueAtTime(1e-4, time + 0.17);
+          oscillator.connect(gain).connect(ctx.destination);
+          oscillator.start(time);
+          oscillator.stop(time + 0.19);
+          oscillator.onended = () => {
+            oscillator.disconnect();
+            gain.disconnect();
+          };
+        }
+      } catch {
+      }
+    };
+    try {
+      if (this.context?.state === "suspended") void this.context.resume().then(play).catch(() => {
+      });
+      else play();
+    } catch {
+    }
+  }
+  show(message, color = "#8a59ed", kind = "complete") {
+    if (this.stopped) return;
+    this.play(kind);
+    if (this.timeout) clearTimeout(this.timeout);
+    const doc = this.root.ownerDocument;
+    const win = doc.defaultView;
+    this.layer = this.layer || doc.createElement("div");
+    this.layer.className = "cs-feedback-layer";
+    this.layer.replaceChildren();
+    this.layer.style.setProperty("--cs-celebrate-color", color);
+    if (!this.layer.isConnected) doc.body.append(this.layer);
+    const moving = this.settings().motion && !win?.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    this.layer.classList.toggle("cs-feedback-motion", moving);
+    const toast = doc.createElement("div");
+    toast.className = "cs-feedback-toast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    const icon = doc.createElement("span");
+    icon.className = "cs-feedback-check";
+    icon.textContent = kind === "complete" ? "\u2713" : kind === "increment" ? "+" : "\u2713";
+    icon.setAttribute("aria-hidden", "true");
+    toast.append(icon, doc.createTextNode(message));
+    this.layer.append(toast);
+    if (moving && kind === "complete") {
+      const burst = doc.createElement("div");
+      burst.className = "cs-feedback-burst";
+      burst.setAttribute("aria-hidden", "true");
+      for (let i = 0; i < 12; i++) {
+        const particle = doc.createElement("i");
+        const angle = i / 12 * Math.PI * 2;
+        particle.style.setProperty("--dx", `${Math.round(Math.cos(angle) * 100)}px`);
+        particle.style.setProperty("--dy", `${Math.round(-65 + Math.sin(angle) * 75)}px`);
+        particle.style.setProperty("--twist", `${i * 61}deg`);
+        particle.style.setProperty("--delay", `${i % 3 * 15}ms`);
+        burst.append(particle);
+      }
+      this.layer.append(burst);
+    }
+    this.timeout = setTimeout(() => {
+      this.layer?.remove();
+      this.timeout = null;
+    }, kind === "increment" ? 1100 : 1900);
+  }
+  destroy() {
+    this.stopped = true;
+    if (this.timeout) clearTimeout(this.timeout);
+    this.layer?.remove();
+    try {
+      void this.context?.close().catch(() => {
+      });
+    } catch {
+    }
+  }
+};
+
 // src/surface.ts
 var Surface = class {
   constructor(root, host, options = {}) {
@@ -687,12 +825,15 @@ var Surface = class {
     this.activitySurface = null;
     this.roadmapSurface = null;
     this.cuedTimerId = "";
-    this.audioContext = null;
     this.timerDisplay = null;
     this.focusNotes = /* @__PURE__ */ new Map();
+    this.effectsOpen = false;
+    this.returnTab = "Today";
     this.day = options.day || this.day;
     this.page = options.page || "All";
     this.tab = options.tab || "Today";
+    this.feedbackSettings = { ...DEFAULT_FEEDBACK, ...host.getFeedback?.() };
+    this.feedback = new Feedback(root, () => this.host.getFeedback?.() || this.feedbackSettings);
     root.classList.add("cs-root");
     if (options.embedded) root.classList.add("cs-embedded");
     this.ticker = setInterval(() => this.tick(), 1e3);
@@ -703,7 +844,7 @@ var Surface = class {
   destroy() {
     this.destroyed = true;
     clearInterval(this.ticker);
-    void this.audioContext?.close();
+    this.feedback.destroy();
     this.root.replaceChildren();
   }
   async refresh() {
@@ -729,6 +870,7 @@ var Surface = class {
     b.type = "button";
     if (label) b.setAttribute("aria-label", label);
     b.addEventListener("click", () => {
+      this.feedback.prepare();
       void this.run(action);
     });
     return b;
@@ -757,6 +899,7 @@ var Surface = class {
   }
   render() {
     if (!this.board) return;
+    this.feedbackSettings = this.host.getFeedback?.() || this.feedbackSettings;
     const b = this.board;
     this.root.replaceChildren();
     this.timerDisplay = null;
@@ -782,16 +925,22 @@ var Surface = class {
     const tools = this.el("div", head, "cs-toolbar");
     if (this.host.openDaily) this.button(tools, "Daily note \u2197", () => this.host.openDaily(), "cs-link");
     this.button(tools, "Markdown \u2197", () => this.host.openNote(), "cs-link");
+    this.button(tools, "Effects", () => {
+      this.effectsOpen = !this.effectsOpen;
+      this.render();
+    }, "cs-link");
     this.button(tools, "\u2699", () => this.host.settings(), "cs-icon", "Tracker settings");
     const nav = this.el("nav", this.root, "cs-tabs");
     nav.setAttribute("aria-label", "Tracker views");
-    for (const tab of ["Today", "Week", "Pages", "Goals", "History"]) {
+    for (const tab of ["Today", "Digest", "Week", "Pages", "Goals", "History"]) {
       const btn = this.button(nav, tab, () => {
         this.tab = tab;
         this.render();
       }, tab === this.tab ? "is-active" : "");
       btn.setAttribute("aria-current", String(tab === this.tab));
     }
+    const sound = this.button(nav, this.feedbackSettings.sound ? "\u266B" : "\u266B\u0338", () => this.setFeedback({ sound: !this.feedbackSettings.sound }), "cs-sound-toggle", this.feedbackSettings.sound ? "Mute completion sounds" : "Enable completion sounds");
+    sound.setAttribute("aria-pressed", String(this.feedbackSettings.sound));
     const controls = this.el("div", this.root, "cs-controls");
     this.button(controls, "\u2039", () => {
       this.day = addDays(this.day, -1);
@@ -820,8 +969,10 @@ var Surface = class {
     this.el("p", this.root, "cs-muted cs-sprint", `Sprint ${b.start} \u2192 ${b.end}`);
     const fixed = availabilityFor(b, this.day);
     if (fixed.length) this.el("p", this.root, "cs-day-availability", fixed.map((block) => `${block.label} ${clockLabel(block.start)}\u2013${clockLabel(block.end)}`).join(" \xB7 "));
+    if (this.effectsOpen) this.renderFeedbackSettings();
     if (b.timer) this.renderTimer();
     if (this.tab === "Today") this.renderToday();
+    else if (this.tab === "Digest") this.renderDigest();
     else if (this.tab === "Week") this.renderWeek();
     else if (this.tab === "Pages") this.renderPages();
     else if (this.tab === "Goals") this.renderGoals();
@@ -829,6 +980,10 @@ var Surface = class {
     const mobileTools = this.el("footer", this.root, "cs-mobile-tools");
     this.button(mobileTools, "Markdown \u2197", () => this.host.openNote(), "cs-link");
     this.button(mobileTools, "Settings", () => this.host.settings(), "cs-link");
+    this.button(mobileTools, "Effects", () => {
+      this.effectsOpen = !this.effectsOpen;
+      this.render();
+    }, "cs-link");
     if (this.host.openDaily) this.button(mobileTools, "Daily note \u2197", () => this.host.openDaily(), "cs-link");
     this.tick();
   }
@@ -842,6 +997,7 @@ var Surface = class {
     return this.groupTasks(group).every((task) => !!entryFor(this.board, task.id, this.day));
   }
   async beginFocus(start) {
+    this.returnTab = this.tab === "Digest" ? "Digest" : "Today";
     this.prepareFocusCues();
     if (this.board?.timer) {
       this.focusMode = true;
@@ -864,11 +1020,49 @@ var Surface = class {
     this.focusMode = false;
     this.roadmapSurface = null;
     this.activitySurface = null;
-    this.tab = "Today";
+    this.tab = this.returnTab;
     this.page = "All";
     this.filter = "";
     this.day = timer.date;
     await this.refresh();
+    if (finish) this.feedback.show(step.done ? "Focus session saved" : `${step.title} \u2713`, this.colorHex(board.tasks.find((task) => task.id === step.taskId)), step.done ? "saved" : "complete");
+  }
+  colorHex(task) {
+    return COLORS.find((color) => color.id === task.color)?.hex || "#8a59ed";
+  }
+  async checkTask(task, day, done) {
+    const wasDone = !!entryFor(this.board, task.id, day)?.done;
+    this.feedback.prepare();
+    await this.host.check(task, day, done);
+    if (done && !wasDone) this.feedback.show(`${task.title} \u2713`, this.colorHex(task));
+  }
+  async setFeedback(patch) {
+    const next = { ...this.feedbackSettings, ...patch };
+    await this.host.saveFeedback?.(next);
+    this.feedbackSettings = next;
+    this.render();
+  }
+  renderFeedbackSettings() {
+    const panel = this.el("section", this.root, "cs-effects-settings");
+    this.el("h3", panel, "", "Feedback");
+    for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) {
+      const row = this.el("label", panel, "cs-effect-setting");
+      const check = this.el("input", row);
+      check.type = "checkbox";
+      check.checked = this.feedbackSettings[key];
+      check.setAttribute("aria-label", label);
+      check.addEventListener("change", () => void this.run(() => this.setFeedback({ [key]: check.checked })));
+      this.el("span", row, "", label);
+    }
+    this.el("p", panel, "cs-muted", "Animation follows Reduce Motion. Sound and haptics depend on device support.");
+    this.button(panel, "Test feedback", () => {
+      this.feedback.prepare();
+      this.feedback.show("A little win. A little momentum.");
+    }, "cs-small");
+    this.button(panel, "Close effects", () => {
+      this.effectsOpen = false;
+      this.render();
+    }, "cs-small");
   }
   groupAction(parent, group, label) {
     if (this.groupIsScheduled(group)) this.button(parent, `Focus ${label}`, () => this.beginFocus(() => this.host.startGroup(group, this.day)), "cs-group-focus");
@@ -888,6 +1082,118 @@ var Surface = class {
   taskColor(task, el) {
     el.style.setProperty("--cs-color", COLORS.find((c) => c.id === task.color).hex);
     el.setAttribute("data-color", task.color);
+  }
+  renderDigest() {
+    const board = this.board, day = this.day, plan = itinerary(board, day), wins = dailyWins(board, day);
+    const digest = this.el("section", this.root, "cs-digest");
+    const hero = this.el("header", digest, "cs-digest-summary");
+    this.el("p", hero, "cs-eyebrow", (/* @__PURE__ */ new Date(`${day}T12:00:00`)).toLocaleDateString(void 0, { weekday: "long", month: "short", day: "numeric" }));
+    this.el("h2", hero, "", "Your day, in order.");
+    const stats = this.el("div", hero, "cs-digest-stats");
+    for (const [count, label] of [[wins.tasks, "tasks done"], [wins.subtasks, "steps done"], [plan.minutes, "planned min"]]) {
+      const stat = this.el("div", stats);
+      this.el("strong", stat, "", String(count));
+      this.el("span", stat, "", label);
+    }
+    this.el("p", hero, "cs-muted", "Local itinerary \xB7 suggested blocks stay flexible.");
+    const next = plan.timed.find((item) => item.task && !item.done)?.task || plan.flexible.find((task) => !entryFor(board, task.id, day)?.done);
+    if (next) {
+      const cue = this.el("section", digest, "cs-digest-next");
+      this.taskColor(next, cue);
+      const text = this.el("div", cue);
+      this.el("p", text, "cs-eyebrow", "FIRST OPEN TASK");
+      this.el("strong", text, "", next.title);
+      this.button(cue, board.timer ? "Open focus" : "Start", () => this.beginFocus(() => this.host.start(next, day)), "cs-primary");
+    }
+    const timeline = this.el("ol", digest, "cs-itinerary");
+    timeline.setAttribute("aria-label", "Daily itinerary");
+    for (const item of plan.timed) {
+      const row = this.el("li", timeline, `cs-itinerary-item ${item.kind === "protected" ? "cs-itinerary-protected" : ""} ${item.done ? "is-done" : ""}`);
+      row.setAttribute("data-itinerary-key", item.key);
+      if (item.task) this.taskColor(item.task, row);
+      const clock = this.el("div", row, "cs-itinerary-clock");
+      this.el("strong", clock, "", clockLabel(item.start));
+      this.el("span", clock, "", clockLabel(item.end));
+      clock.title = item.timezone;
+      const content = this.el("div", row, "cs-itinerary-content");
+      this.el("p", content, "cs-eyebrow", item.kind === "protected" ? "PROTECTED" : item.block?.status === "scheduled" ? "ON CALENDAR" : item.block?.status === "needs-review" ? "REVIEW TIME" : "SUGGESTED");
+      this.el("h3", content, "", item.title);
+      this.el("p", content, "cs-itinerary-zone", item.timezone);
+      if (item.conflict) this.el("p", content, "cs-conflict", "Time overlap \xB7 adjust this block.");
+      if (item.task) {
+        const task = item.task;
+        const entry = entryFor(board, task.id, day), steps = taskSubtasks(board, task.id, day);
+        const detail = this.el("details", content, "cs-itinerary-detail");
+        this.el("summary", detail, "", entry?.detail || steps.find((step) => !step.done)?.title || task.definition);
+        this.el("p", detail, "cs-definition", task.definition);
+        if (steps.length) this.el("p", detail, "cs-muted", `${steps.filter((step) => step.done).length}/${steps.length} roadmap steps complete`);
+        const actions = this.el("div", content, "cs-actions");
+        this.button(actions, "Time / details", () => this.host.editEntry(task, day), "cs-small");
+        this.button(actions, "Focus", () => this.beginFocus(() => this.host.start(task, day)), "cs-small");
+        const label = this.el("label", row, "cs-itinerary-check");
+        const check = this.el("input", label, "cs-check");
+        check.type = "checkbox";
+        check.checked = item.done;
+        check.setAttribute("aria-label", `Complete ${task.title} in digest`);
+        check.addEventListener("change", () => void this.run(async () => {
+          try {
+            await this.checkTask(task, day, check.checked);
+          } catch (error) {
+            check.checked = !check.checked;
+            throw error;
+          }
+        }));
+      }
+    }
+    if (!plan.timed.length) this.el("p", digest, "cs-muted", "No clock times yet. Flexible tasks stay below; set a time in Day details when useful.");
+    if (plan.flexible.length) {
+      const section = this.el("section", digest, "cs-digest-flexible");
+      this.el("h3", section, "", "Flexible \xB7 no clock time");
+      for (const task of plan.flexible) {
+        const row = this.el("article", section, `cs-flexible-item ${entryFor(board, task.id, day)?.done ? "is-done" : ""}`);
+        this.taskColor(task, row);
+        const label = this.el("label", row, "cs-itinerary-check");
+        const check = this.el("input", label, "cs-check");
+        check.type = "checkbox";
+        check.checked = !!entryFor(board, task.id, day)?.done;
+        check.setAttribute("aria-label", `Complete ${task.title} in digest`);
+        check.addEventListener("change", () => void this.run(async () => {
+          try {
+            await this.checkTask(task, day, check.checked);
+          } catch (error) {
+            check.checked = !check.checked;
+            throw error;
+          }
+        }));
+        const title = this.el("strong", row, "", task.title);
+        if (check.checked) title.title = "Completed";
+        this.button(row, "Focus", () => this.beginFocus(() => this.host.start(task, day)), "cs-small");
+      }
+    }
+    const due = board.goals.filter((goal) => goal.due === day);
+    if (due.length) {
+      const goals = this.el("details", digest, "cs-digest-more");
+      this.el("summary", goals, "", `Milestones today \xB7 ${due.length}`);
+      for (const goal of due) this.button(goals, `${goal.done ? "\u2713 " : ""}${goal.title}`, () => this.host.editGoal(goal), "cs-link");
+    }
+    const quote = this.reflectionFor(day);
+    if (quote) {
+      const reflection = this.el("details", digest, "cs-digest-more");
+      this.el("summary", reflection, "", "Reflection");
+      this.el("blockquote", reflection, "cs-reflection", `\u201C${quote}\u201D`);
+    }
+    const remaining = this.el("details", digest, "cs-digest-more");
+    this.el("summary", remaining, "", `Available, not due \xB7 ${plan.available.length}`);
+    for (const task of plan.available) {
+      const row = this.el("div", remaining, "cs-digest-available");
+      this.el("span", row, "", task.title);
+      this.button(row, "+ Plan", () => this.host.schedule(task, day, ""), "cs-small");
+    }
+    this.button(digest, "Show all task cards", () => {
+      this.tab = "Today";
+      this.page = "All";
+      this.render();
+    }, "cs-add");
   }
   renderToday() {
     const b = this.board;
@@ -945,7 +1251,7 @@ var Surface = class {
       check.addEventListener("change", () => {
         void this.run(async () => {
           try {
-            await this.host.check(task, this.day, check.checked);
+            await this.checkTask(task, this.day, check.checked);
           } catch (e) {
             check.checked = !check.checked;
             throw e;
@@ -981,7 +1287,10 @@ var Surface = class {
     if (increments.length) {
       const total = this.board.quickCounts.filter((count) => count.date === this.day && count.taskId === task.id && count.unit === increments[0].unit).reduce((sum, count) => sum + count.amount, 0);
       if (total) this.el("span", actions, "cs-quick-total", `Today: ${total} ${increments[0].unit}`);
-      for (const increment of increments) this.button(actions, `+${increment.amount} ${increment.unit}`, () => this.host.quickCount({ date: this.day, taskId: task.id, amount: increment.amount, unit: increment.unit }), "cs-small cs-quick", `Add ${increment.amount} ${increment.unit} for ${task.title}`);
+      for (const increment of increments) this.button(actions, `+${increment.amount} ${increment.unit}`, async () => {
+        await this.host.quickCount({ date: this.day, taskId: task.id, amount: increment.amount, unit: increment.unit });
+        this.feedback.show(`+${increment.amount} ${increment.unit}`, this.colorHex(task), "increment");
+      }, "cs-small cs-quick", `Add ${increment.amount} ${increment.unit} for ${task.title}`);
     }
     const subs = taskSubtasks(b, task.id, this.day);
     if (subs.length || ["project", "obligation"].includes(task.kind)) this.button(actions, subs.length ? `Steps ${subs.filter((sub) => sub.done).length}/${subs.length}` : "Roadmap", () => {
@@ -1056,7 +1365,7 @@ var Surface = class {
           const isPlanned = planned(this.board, task, day);
           const block = timeBlockFor(this.board, task.id, day);
           const cell2 = this.el("td", row);
-          const btn = this.button(cell2, entry?.done ? "\u2713" : isPlanned ? "\u25CB" : "+", () => isPlanned ? this.host.check(task, day, !entry?.done) : this.host.schedule(task, day, ""), entry?.done ? "cs-cell done" : isPlanned ? "cs-cell planned" : "cs-cell", `${task.title}, ${day}: ${entry?.done ? "completed" : isPlanned ? "planned" : "add to plan"}${block ? `, ${timeBlockLabel(block)}, ${block.timezone}` : ""}`);
+          const btn = this.button(cell2, entry?.done ? "\u2713" : isPlanned ? "\u25CB" : "+", () => isPlanned ? this.checkTask(task, day, !entry?.done) : this.host.schedule(task, day, ""), entry?.done ? "cs-cell done" : isPlanned ? "cs-cell planned" : "cs-cell", `${task.title}, ${day}: ${entry?.done ? "completed" : isPlanned ? "planned" : "add to plan"}${block ? `, ${timeBlockLabel(block)}, ${block.timezone}` : ""}`);
           if (block) {
             this.el("span", btn, "cs-cell-time", `${block.status === "scheduled" ? "" : "~"}${clockLabel(block.start)}`);
             btn.title = `${timeBlockLabel(block)} \xB7 ${block.timezone}`;
@@ -1156,7 +1465,10 @@ var Surface = class {
     if (step && cursor < queue.length - 1) {
       this.button(card, step.done ? "Next completed step \u2713" : "Done & next", async () => {
         if (step.done) await this.host.moveGroup(timer.id, 1);
-        else await this.host.change((text) => completeFocusStep(text, timer.id, timer.cursor));
+        else {
+          await this.host.change((text) => completeFocusStep(text, timer.id, timer.cursor));
+          this.feedback.show(`${step.title} \u2713`, task ? this.colorHex(task) : "#8a59ed");
+        }
       }, step.done ? "cs-small" : "cs-primary");
     }
     const noteDetails = this.el("details", card, "cs-focus-note");
@@ -1220,7 +1532,13 @@ var Surface = class {
       check.type = "checkbox";
       check.checked = sub.done;
       check.setAttribute("aria-label", `Complete subtask ${sub.title}`);
-      check.addEventListener("change", () => void this.run(() => this.host.change((text) => setSubtaskDone(text, sub.id, check.checked, this.day))));
+      check.addEventListener("change", () => {
+        this.feedback.prepare();
+        void this.run(async () => {
+          await this.host.change((text) => setSubtaskDone(text, sub.id, check.checked, this.day));
+          if (check.checked && !sub.done) this.feedback.show(`${sub.title} \u2713`, this.colorHex(task));
+        });
+      });
       this.el("span", label, "", sub.title);
       this.el("small", label, "", sub.minutes ? `${sub.minutes}m` : "Open");
       this.el("p", row, "cs-definition", sub.definition);
@@ -1287,16 +1605,8 @@ var Surface = class {
   }
   prepareFocusCues() {
     this.cuedTimerId = "";
+    this.feedback.prepare();
     const win = this.root.ownerDocument.defaultView;
-    const Audio = win?.AudioContext || win?.webkitAudioContext;
-    try {
-      if (Audio) {
-        const context = this.audioContext || (this.audioContext = new Audio());
-        void Promise.resolve(context.resume()).catch(() => {
-        });
-      }
-    } catch {
-    }
     const NotificationApi = win?.Notification;
     try {
       if (NotificationApi?.permission === "default" && typeof NotificationApi.requestPermission === "function") void Promise.resolve(NotificationApi.requestPermission()).catch(() => {
@@ -1307,37 +1617,13 @@ var Surface = class {
   cue(timerId, title) {
     if (this.cuedTimerId === timerId) return;
     this.cuedTimerId = timerId;
+    this.feedback.show(`${title}: time reached`, "#8a59ed", "timer");
     const win = this.root.ownerDocument.defaultView;
-    try {
-      win?.navigator?.vibrate?.([120, 80, 180, 80, 240]);
-    } catch {
-    }
     const NotificationApi = win?.Notification;
     try {
-      if (NotificationApi?.permission === "granted") new NotificationApi("Color Sprint focus complete", { body: `${title}: target reached. Stop and log what happened.` });
+      if (NotificationApi?.permission === "granted") new NotificationApi("Color Sprint focus complete", { body: `${title}: target reached. Choose Finish when the item is done, or Cancel.` });
     } catch {
     }
-    const play = () => {
-      try {
-        const context = this.audioContext;
-        if (!context) return;
-        for (const [offset, hz] of [[0, 660], [0.18, 880]]) {
-          const oscillator = context.createOscillator();
-          const gain = context.createGain();
-          oscillator.frequency.value = hz;
-          gain.gain.setValueAtTime(1e-4, context.currentTime + offset);
-          gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + offset + 0.015);
-          gain.gain.exponentialRampToValueAtTime(1e-4, context.currentTime + offset + 0.16);
-          oscillator.connect(gain).connect(context.destination);
-          oscillator.start(context.currentTime + offset);
-          oscillator.stop(context.currentTime + offset + 0.18);
-        }
-      } catch {
-      }
-    };
-    if (this.audioContext?.state === "suspended") void this.audioContext.resume().then(play).catch(() => {
-    });
-    else play();
   }
   tick() {
     const timer = this.board?.timer;
@@ -1383,9 +1669,9 @@ function embedLink(config, frontmatter, fallbackTracker) {
   const rawDate = cfg.date === "today" ? localDay() : cfg.date ?? fm["sprint-date"];
   const tracker = typeof cfg.tracker === "string" ? cfg.tracker : typeof fm["sprint-tracker"] === "string" ? fm["sprint-tracker"] : fallbackTracker;
   const page = typeof cfg.page === "string" ? cfg.page : typeof fm["sprint-page"] === "string" ? fm["sprint-page"] : "All";
-  const views = { today: "Today", week: "Week", pages: "Pages", goals: "Goals", history: "History" };
+  const views = { today: "Today", digest: "Digest", week: "Week", pages: "Pages", goals: "Goals", history: "History" };
   const view = views[String(cfg.view ?? "today").toLowerCase()];
-  if (!view) throw new Error("Embed view must be today, week, pages, goals, or history.");
+  if (!view) throw new Error("Embed view must be today, digest, week, pages, goals, or history.");
   return { date: dateValue(rawDate), tracker: vaultPath(tracker), page: page.trim() || "All", autoOpen: false, view };
 }
 function dailyFilename(day, format = "MM-DD-YYYY") {
@@ -1437,7 +1723,7 @@ var VIEW = "color-sprint-view";
 var ColorSprint = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
-    this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY" };
+    this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY", feedback: { ...DEFAULT_FEEDBACK } };
     this.queue = Promise.resolve();
     this.surfaces = /* @__PURE__ */ new Map();
     this.dailyRequest = 0;
@@ -1450,6 +1736,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
     if (typeof saved?.autoOpenDaily === "boolean") this.settings.autoOpenDaily = saved.autoOpenDaily;
     if (typeof saved?.dailyFolder === "string") this.settings.dailyFolder = saved.dailyFolder;
     if (saved?.dailyFormat === "YYYY-MM-DD" || saved?.dailyFormat === "MM-DD-YYYY") this.settings.dailyFormat = saved.dailyFormat;
+    for (const key of ["sound", "haptics", "motion"]) if (typeof saved?.feedback?.[key] === "boolean") this.settings.feedback[key] = saved.feedback[key];
     this.registerView(VIEW, (leaf) => new SprintView(leaf, this));
     this.addSettingTab(new SprintSettings(this.app, this));
     this.registerMarkdownCodeBlockProcessor("color-sprint", (source, el, ctx) => {
@@ -1460,6 +1747,9 @@ var ColorSprint = class extends import_obsidian.Plugin {
     });
     this.addCommand({ id: "open", name: "Open tracker", callback: () => {
       void this.open().catch((e) => this.error(e));
+    } });
+    this.addCommand({ id: "open-digest", name: "Open daily digest / itinerary", callback: () => {
+      void this.open({ tab: "Digest" }).catch((e) => this.error(e));
     } });
     this.addCommand({ id: "choose-note", name: "Choose tracker Markdown note", callback: () => this.chooseNote() });
     this.addCommand({ id: "create-starter", name: "Create starter Markdown note", callback: () => {
@@ -1552,6 +1842,12 @@ var ColorSprint = class extends import_obsidian.Plugin {
     const host = {
       read: () => this.read(path),
       change,
+      getFeedback: () => ({ ...this.settings.feedback }),
+      saveFeedback: async (prefs) => {
+        await this.saveData({ ...this.settings, feedback: prefs });
+        this.settings.feedback = { ...prefs };
+        this.refresh();
+      },
       editTask: (task) => new TaskModal(this.app, this, task, path).open(),
       editSubtask: (task, sub) => new SubtaskModal(this.app, this, task, sub, path).open(),
       editGoal: (goal) => new GoalModal(this.app, this, goal, path).open(),
@@ -1683,7 +1979,7 @@ var SprintView = class extends import_obsidian.ItemView {
   }
   async setState(state, result) {
     const data = state && typeof state === "object" ? state : {};
-    this.context = { tracker: typeof data.tracker === "string" ? vaultPath(data.tracker) : this.plugin.settings.path, day: typeof data.date === "string" && validDay(data.date) ? data.date : localDay(), page: typeof data.page === "string" ? data.page : "All", tab: ["Today", "Week", "Pages", "Goals", "History"].includes(String(data.tab)) ? data.tab : "Today", dailyNote: typeof data.dailyNote === "string" ? vaultPath(data.dailyNote) : void 0 };
+    this.context = { tracker: typeof data.tracker === "string" ? vaultPath(data.tracker) : this.plugin.settings.path, day: typeof data.date === "string" && validDay(data.date) ? data.date : localDay(), page: typeof data.page === "string" ? data.page : "All", tab: ["Today", "Digest", "Week", "Pages", "Goals", "History"].includes(String(data.tab)) ? data.tab : "Today", dailyNote: typeof data.dailyNote === "string" ? vaultPath(data.dailyNote) : void 0 };
     if (this.surface) this.plugin.detach(this.surface);
     this.surface = this.plugin.attach(this.contentEl, this.context);
     await this.surface.refresh();
@@ -1770,6 +2066,12 @@ var SprintSettings = class extends import_obsidian.PluginSettingTab {
       await this.plugin.saveData(this.plugin.settings);
     }));
     new import_obsidian.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
+    containerEl.createEl("h2", { text: "Completion feedback" });
+    for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) new import_obsidian.Setting(containerEl).setName(label).setDesc(key === "motion" ? "Always respects system Reduce Motion." : key === "haptics" ? "Uses vibration only when the device exposes it." : "Quiet synthesized chimes after successful saves.").addToggle((toggle) => toggle.setValue(this.plugin.settings.feedback[key]).onChange(async (value) => {
+      this.plugin.settings.feedback[key] = value;
+      await this.plugin.saveData(this.plugin.settings);
+      this.plugin.refresh();
+    }));
   }
 };
 var FormModal = class extends import_obsidian.Modal {

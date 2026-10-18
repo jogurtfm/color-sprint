@@ -1,5 +1,6 @@
 import { Surface,Host } from '../src/surface';
 import { starter } from '../src/starter';
+import { FeedbackSettings, DEFAULT_FEEDBACK } from '../src/feedback';
 import { parseBoard,setEntry,saveTask,saveSubtask,setGoal,scheduleGroup,startTimer,startGroupTimer,moveGroupTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal,timeBlockFor,saveTimeBlock,clearTimeBlock } from '../src/model';
 
 let md=localStorage.getItem('color-sprint-demo')||starter();
@@ -9,6 +10,7 @@ function dialog(title:string,fields:Record<string,string>,save:(values:Record<st
 }
 async function change(fn:(s:string)=>string):Promise<void>{const next=fn(md);parseBoard(next);md=next;localStorage.setItem('color-sprint-demo',md);await surface.refresh();}
 const host:Host={read:async()=>md,change,
+  getFeedback:()=>{try{return {...DEFAULT_FEEDBACK,...JSON.parse(localStorage.getItem('color-sprint-feedback')||'{}')};}catch{return {...DEFAULT_FEEDBACK};}},saveFeedback:async prefs=>{localStorage.setItem('color-sprint-feedback',JSON.stringify(prefs));},
   editSubtask:(task,sub)=>dialog('Roadmap step',{Step:sub?.title||'',Minutes:String(sub?.minutes??10),Context:sub?.context||'-','Done means':sub?.definition||''},v=>change(s=>saveSubtask(s,{id:sub?.id||`step-${Date.now()}`,taskId:task.id,title:v.Step,minutes:Number(v.Minutes),context:v.Context||'-',definition:v['Done means'],done:sub?.done||false,completed:sub?.completed||'-'}))),
   editTask:(t?:Task)=>dialog(t?'Edit task':'Add task',{Task:t?.title||'',Page:t?.page||'Morning',Color:t?.color||'pink',Repeat:t?.repeat||'-','Timer minutes':String(t?.minutes??10),'Done means':t?.definition||''},async v=>{await change(s=>saveTask(s,{id:t?.id||`task-${Date.now()}`,title:v.Task,page:v.Page,color:v.Color as Task['color'],repeat:v.Repeat,minutes:Number(v['Timer minutes']),definition:v['Done means'],kind:t?.kind||'habit'}));}),
   editGoal:(g?:Goal)=>dialog('Goal progress',{Goal:g?.title||'',Page:g?.page||'Room',Due:g?.due||'-',Evidence:g?.evidence||'',Status:g?.done?'done':'open'},v=>change(s=>setGoal(s,{id:g?.id||`goal-${Date.now()}`,title:v.Goal,page:v.Page,due:v.Due,evidence:v.Evidence,done:v.Status==='done'}))),
@@ -18,6 +20,7 @@ const host:Host={read:async()=>md,change,
   openNote:()=>dialog('Tracker Markdown',{Markdown:md},v=>change(()=>v.Markdown)),createNote:()=>change(()=>starter()),settings:()=>dialog('Preview settings',{Info:'In Obsidian, this chooses your vault Markdown path.'},()=>{}),error:e=>dialog('Could not save',{Error:String(e)},()=>{})
 };
 const params=new URLSearchParams(location.search);
-const surface=new Surface(document.getElementById('app')!,host,{embedded:params.has('embed'),day:params.get('date')||undefined,page:params.get('page')||undefined});void surface.refresh();
+const requestedTab=params.get('view')||'';const tab=({'today':'Today','digest':'Digest','week':'Week','pages':'Pages','goals':'Goals','history':'History'} as const)[requestedTab as 'today'];
+const surface=new Surface(document.getElementById('app')!,host,{embedded:params.has('embed'),day:params.get('date')||undefined,page:params.get('page')||undefined,tab});void surface.refresh();
 // Test hook for validating external Markdown edits; never included in the plugin bundle.
 Object.assign(window,{colorSprintPreview:{getMarkdown:()=>md,setMarkdown:(value:string)=>change(()=>value)}});

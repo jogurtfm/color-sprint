@@ -112,6 +112,8 @@ Focus expands a parent or group into these steps. Done & next records the subtas
 
 Time Blocks adds a clock time separately from Schedule details and completion. Use 24-hour `HH:MM`, same-day end after start, and an IANA time zone. Status is `suggested`, `scheduled`, or `needs-review`. A `scheduled` block requires a provider event ID; absent IDs/URLs use `-`. Card labels show the range and status, week cells show `~` before suggested start times, and accessible labels include the time zone. Edit start/end from Day details. Saving a new time also creates an unchecked Schedule entry if needed, and retains existing details/completions.
 
+The Digest view merges Time Blocks and Availability chronologically for the selected date. Its planned-minutes total counts task blocks only, not protected availability. Planned tasks without a Time Block remain in Flexible, including completed tasks. Other tasks are collapsed under Available, not due. The view is derived entirely from these existing sections; it does not introduce a second schedule or completion store.
+
 Availability is protected time, not a spreadsheet task or completion win. Days use `daily` or comma-separated weekday tokens like Repeat. The editor rejects overlap with protected blocks or other task blocks in the same time zone; different-zone conflict checks must be performed by the calendar reconciliation workflow. A linked Google event must be reconciled separately after changing its proposed time. This plugin does not hold Google credentials or create events itself; the scheduling assistant uses the connected Google Calendar integration and writes verified provider references back to Markdown.
 
 ## Workout Log (optional)

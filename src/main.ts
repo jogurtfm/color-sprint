@@ -3,12 +3,13 @@ import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoa
 import { starter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
+import { FeedbackSettings, DEFAULT_FEEDBACK } from './feedback';
 
 const VIEW='color-sprint-view';
-interface Settings {path:string;autoOpenDaily:boolean;dailyFolder:string;dailyFormat:string}
+interface Settings {path:string;autoOpenDaily:boolean;dailyFolder:string;dailyFormat:string;feedback:FeedbackSettings}
 interface Context extends SurfaceOptions {tracker?:string;dailyNote?:string}
 export default class ColorSprint extends Plugin {
-  settings:Settings={path:'Sync/Color Sprint.md',autoOpenDaily:true,dailyFolder:'Sync/Daily',dailyFormat:'MM-DD-YYYY'};
+  settings:Settings={path:'Sync/Color Sprint.md',autoOpenDaily:true,dailyFolder:'Sync/Daily',dailyFormat:'MM-DD-YYYY',feedback:{...DEFAULT_FEEDBACK}};
   private queue:Promise<void>=Promise.resolve();
   private surfaces=new Map<Surface,string>();
   private dailyRequest=0;
@@ -19,11 +20,13 @@ export default class ColorSprint extends Plugin {
     if(typeof saved?.autoOpenDaily==='boolean')this.settings.autoOpenDaily=saved.autoOpenDaily;
     if(typeof saved?.dailyFolder==='string')this.settings.dailyFolder=saved.dailyFolder;
     if(saved?.dailyFormat==='YYYY-MM-DD'||saved?.dailyFormat==='MM-DD-YYYY')this.settings.dailyFormat=saved.dailyFormat;
+    for(const key of ['sound','haptics','motion'] as const)if(typeof saved?.feedback?.[key]==='boolean')this.settings.feedback[key]=saved.feedback[key];
     this.registerView(VIEW,leaf=>new SprintView(leaf,this));
     this.addSettingTab(new SprintSettings(this.app,this));
     this.registerMarkdownCodeBlockProcessor('color-sprint',(source,el,ctx)=>{ctx.addChild(new SprintEmbed(el,this,source,ctx.sourcePath));});
     this.addRibbonIcon('calendar-check','Open Color Sprint',()=>{void this.open().catch(e=>this.error(e));});
     this.addCommand({id:'open',name:'Open tracker',callback:()=>{void this.open().catch(e=>this.error(e));}});
+    this.addCommand({id:'open-digest',name:'Open daily digest / itinerary',callback:()=>{void this.open({tab:'Digest'}).catch(e=>this.error(e));}});
     this.addCommand({id:'choose-note',name:'Choose tracker Markdown note',callback:()=>this.chooseNote()});
     this.addCommand({id:'create-starter',name:'Create starter Markdown note',callback:()=>{void this.createNote().catch(e=>this.error(e));}});
     this.addCommand({id:'open-source',name:'Open tracker Markdown',callback:()=>{void this.openNote().catch(e=>this.error(e));}});
@@ -53,6 +56,7 @@ export default class ColorSprint extends Plugin {
     const change=(fn:(text:string)=>string)=>this.change(fn,path);
     const host:Host={
       read:()=>this.read(path),change,
+      getFeedback:()=>({...this.settings.feedback}),saveFeedback:async prefs=>{await this.saveData({...this.settings,feedback:prefs});this.settings.feedback={...prefs};this.refresh();},
       editTask:task=>new TaskModal(this.app,this,task,path).open(),editSubtask:(task,sub)=>new SubtaskModal(this.app,this,task,sub,path).open(),editGoal:goal=>new GoalModal(this.app,this,goal,path).open(),
       editEntry:(task,day)=>{void this.read(path).then(text=>new EntryModal(this.app,this,task,day,text,path).open()).catch(e=>this.error(e));},
       schedule:(task,day,detail)=>change(text=>{const board=parseBoard(text);if(board.entries.some(e=>e.taskId===task.id&&e.date===day))throw new Error('Task already has an entry on this day.');return setEntry(text,day,task.id,false,detail);}),scheduleGroup:(group,day)=>change(text=>scheduleGroup(text,group,day)),
@@ -95,7 +99,7 @@ class SprintView extends ItemView {
   getDisplayText():string{return 'Color Sprint';}
   getIcon():string{return 'calendar-check';}
   getState():Record<string,unknown>{const selected=this.surface?.context;return {tracker:this.context.tracker||this.plugin.settings.path,date:selected?.day||this.context.day||localDay(),page:selected?.page||this.context.page||'All',tab:selected?.tab||this.context.tab||'Today',dailyNote:this.context.dailyNote};}
-  async setState(state:unknown,result:ViewStateResult):Promise<void>{const data=(state&&typeof state==='object'?state:{}) as Record<string,unknown>;this.context={tracker:typeof data.tracker==='string'?vaultPath(data.tracker):this.plugin.settings.path,day:typeof data.date==='string'&&validDay(data.date)?data.date:localDay(),page:typeof data.page==='string'?data.page:'All',tab:['Today','Week','Pages','Goals','History'].includes(String(data.tab))?data.tab as SurfaceOptions['tab']:'Today',dailyNote:typeof data.dailyNote==='string'?vaultPath(data.dailyNote):undefined};if(this.surface)this.plugin.detach(this.surface);this.surface=this.plugin.attach(this.contentEl,this.context);await this.surface.refresh();await super.setState(state,result);}
+  async setState(state:unknown,result:ViewStateResult):Promise<void>{const data=(state&&typeof state==='object'?state:{}) as Record<string,unknown>;this.context={tracker:typeof data.tracker==='string'?vaultPath(data.tracker):this.plugin.settings.path,day:typeof data.date==='string'&&validDay(data.date)?data.date:localDay(),page:typeof data.page==='string'?data.page:'All',tab:['Today','Digest','Week','Pages','Goals','History'].includes(String(data.tab))?data.tab as SurfaceOptions['tab']:'Today',dailyNote:typeof data.dailyNote==='string'?vaultPath(data.dailyNote):undefined};if(this.surface)this.plugin.detach(this.surface);this.surface=this.plugin.attach(this.contentEl,this.context);await this.surface.refresh();await super.setState(state,result);}
   async onOpen():Promise<void>{this.surface=this.plugin.attach(this.contentEl,this.context);await this.surface.refresh();}
   async onClose():Promise<void>{if(this.surface)this.plugin.detach(this.surface);}
 }
@@ -113,6 +117,7 @@ class SprintSettings extends PluginSettingTab {
     new Setting(containerEl).setName('Daily note folder').setDesc('Used by the daily dashboard creation commands.').addText(input=>input.setValue(this.plugin.settings.dailyFolder).onChange(async value=>{try{this.plugin.settings.dailyFolder=vaultPath(value,true);await this.plugin.saveData(this.plugin.settings);}catch{}}));
     new Setting(containerEl).setName('Daily filename format').addDropdown(input=>input.addOptions({'MM-DD-YYYY':'MM-DD-YYYY','YYYY-MM-DD':'YYYY-MM-DD'}).setValue(this.plugin.settings.dailyFormat).onChange(async value=>{this.plugin.settings.dailyFormat=value;await this.plugin.saveData(this.plugin.settings);}));
     new Setting(containerEl).setName('Tracker note').setDesc(this.plugin.settings.path).addButton(button=>button.setButtonText('Choose note').onClick(()=>this.plugin.chooseNote()));
+    containerEl.createEl('h2',{text:'Completion feedback'});for(const [key,label] of [['sound','Completion sounds'],['haptics','Haptics when supported'],['motion','Completion animations']] as const)new Setting(containerEl).setName(label).setDesc(key==='motion'?'Always respects system Reduce Motion.':key==='haptics'?'Uses vibration only when the device exposes it.':'Quiet synthesized chimes after successful saves.').addToggle(toggle=>toggle.setValue(this.plugin.settings.feedback[key]).onChange(async value=>{this.plugin.settings.feedback[key]=value;await this.plugin.saveData(this.plugin.settings);this.plugin.refresh();}));
   }
 }
 class FormModal extends Modal {

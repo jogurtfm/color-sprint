@@ -7,7 +7,7 @@ import { starter } from '../src/starter';
 import { parseBoard, setEntry, startTimer, localDay } from '../src/model';
 import { dailyScaffold } from '../src/daily';
 import { addRoadmap } from '../src/roadmaps';
-import { timeBlockFor } from '../src/model';
+import { timeBlockFor, saveTimeBlock } from '../src/model';
 const require=createRequire(import.meta.url);
 const {JSDOM}=require('jsdom');
 const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
@@ -59,6 +59,24 @@ async function harness(initial=starter(),initialFiles:Record<string,string>={}) 
   const plugin:any=new module.exports.default(app,{});await plugin.onload();const view:any=app.workspace.factory(leaf);leaf.view=view;await view.onOpen();
   return {dom,document,plugin,view,commands,notices,modals,opened,files,get text(){return md;},get writes(){return writes;},async external(fn:(s:string)=>string){md=fn(md);for(const cb of events.get('modify')||[])cb(file);await settle();},async openFile(path:string){const target=files.get(path)?.file;assert.ok(target);await leaf.openFile(target);await settle();},async embed(source:string,sourcePath:string){const el=document.createElement('article');document.body.append(el);let child:any;blocks.get('color-sprint')(source,el,{sourcePath,addChild:(c:any)=>{child=c;children.push(c);c.onload();}});await settle();return {el,child};},async close(){for(const child of children)child.unload();await view.onClose();plugin.onunload();for(const cleanup of plugin.cleanups)cleanup();dom.window.close();},button(label:string,within:any=view.contentEl){const b=[...within.querySelectorAll('button')].find((e:any)=>e.textContent===label);assert.ok(b,`Button not found: ${label}`);return b as HTMLButtonElement;}};
 }
+test('digest reads the Markdown itinerary and keeps completed tasks after a save and focus',async()=>{
+  const day=localDay();let md=setEntry(setEntry(starter(),day,'japanese',true,'Lesson saved'),day,'make-bed',false);
+  md=saveTimeBlock(md,{date:day,taskId:'cook',start:'19:00',end:'19:30',timezone:'America/Chicago',status:'suggested',eventId:'-',eventUrl:'-'});
+  const h=await harness(md);try{assert.ok(h.commands.has('open-digest'));h.button('Digest').click();await settle();assert.equal(h.writes,0);assert.match(h.document.querySelector('.cs-itinerary')!.textContent!,/7 PM/);assert.match(h.document.querySelector('.cs-itinerary')!.textContent!,/SUGGESTED/);
+    const done=h.document.querySelector('[aria-label="Complete Study Japanese in digest"]') as HTMLInputElement;assert.equal(done.checked,true);
+    (h.document.querySelector('[aria-label="Complete Cook in digest"]') as HTMLInputElement).click();await settle();assert.equal(parseBoard(h.text).entries.find(e=>e.taskId==='cook')!.done,true);assert.match(h.document.querySelector('.cs-feedback-toast')!.textContent!,/Cook/);assert.equal(h.document.querySelectorAll('.cs-itinerary-item.is-done').length,1);
+    const flexible=h.document.querySelector('.cs-flexible-item:not(.is-done)')!;h.button('Focus',flexible).click();await settle();h.button('Finish').click();await settle();assert.ok(h.document.querySelector('.cs-digest'));assert.equal(parseBoard(h.text).entries.find(e=>e.taskId==='make-bed')!.done,true);assert.equal(h.document.querySelectorAll('.cs-flexible-item.is-done').length,2);
+  }finally{await h.close();}
+});
+
+test('failed completion does not celebrate and sound controls do not edit tracker data',async()=>{
+  const h=await harness(setEntry(starter(),localDay(),'make-bed',false));try{
+    h.button('♫').click();await settle();assert.equal(h.plugin.settings.feedback.sound,false);assert.ok(h.button('♫̸'));assert.equal(h.writes,0);
+    h.plugin.app.vault.process=async()=>{throw new Error('Save rejected');};const check=h.document.querySelector('[aria-label="Complete Make Bed"]') as HTMLInputElement;check.click();await settle();assert.equal(check.checked,false);assert.equal(h.document.querySelectorAll('.cs-feedback-toast').length,0);assert.match(h.notices[0],/Save rejected/);assert.equal(h.writes,0);
+    const embedded=await h.embed('view: digest\ndate: today','ordinary.md');assert.ok(embedded.el.querySelector('.cs-digest'));const flexible=embedded.el.querySelector('[aria-label="Complete Make Bed in digest"]') as HTMLInputElement;flexible.click();await settle();assert.equal(flexible.checked,false);assert.equal(h.document.querySelectorAll('.cs-feedback-toast').length,0);assert.equal(h.writes,0);
+  }finally{await h.close();}
+});
+
 test('actual bundled plugin registers views/commands and writes real checkbox edits through Vault.process',async()=>{
   const day=localDay();const h=await harness(setEntry(starter(),day,'make-bed',false,'Clear the bed first'));
   try {assert.ok(h.commands.has('open'));assert.equal(h.document.querySelectorAll('.cs-card').length,22);assert.match(h.document.body.textContent,/Clear the bed first/);assert.match(h.document.body.textContent,/Available to plan/);const check=h.document.querySelector('.cs-check') as HTMLInputElement;check.click();await settle();assert.equal(parseBoard(h.text).entries[0].done,true);assert.equal(h.writes,1);assert.match(h.document.body.textContent,/1 of 1/);

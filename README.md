@@ -19,6 +19,8 @@ For a manual installation, download `manifest.json`, `main.js`, and `styles.css`
 ## What you get
 
 - **Today:** the selected day's explicitly planned tasks, color-coded completion progress, plus an **Available to plan** section for the remaining tasks. The planned count stays honest; a task is not made due merely because it is visible.
+- **Digest / itinerary:** a compact chronological timeline of protected time and suggested task blocks, followed by flexible tasks without a clock time. Start the first open task, check items off, or adjust their times directly. Completed items stay visible. Daily task/step wins and planned task minutes exclude protected time. Open the Digest tab or run **Color Sprint: Open daily digest / itinerary**. It reads your existing Markdown; it does not create calendar events.
+- **Completion feedback:** a gentle three-note chime, color-matched check animation and small particle burst after a successful completion save. Queued steps celebrate individually; quick increments get lighter feedback. Use the music-note button to mute, or **Effects** / **Settings → Color Sprint → Completion feedback** to independently control sound, animation and supported haptics. Reduce Motion removes animations. No feedback is played for failed saves or merely viewing existing completions.
 - **Fast phone layout:** on narrow screens, branding and secondary status collapse, page filters become a single swipe row, and the first task card comes before the fold. Tap targets remain at least 40–44 px.
 - **Week:** a task-per-row, day-per-column grid. A blank `+` means unscheduled. Tap to plan; tap a planned cell to check it.
 - **Pages:** your Markdown page labels become navigation filters. Morning, Workouts, Kitchen, Room, Learning, Creative, Admin, and Portfolio are starter interpretations you can change.
@@ -45,7 +47,7 @@ See [FORMAT.md](FORMAT.md) for the complete schema and [examples/Color Sprint.md
 
 The existing planning document stays useful context. A prose plan is not automatically imported: explicit task IDs, dates, and checkboxes in the tracker determine what appears. This avoids guessing completion, frequency, or workout programming from ordinary prose. A planning assistant can edit the tracker using the same documented format.
 
-Completed cards remain visible with checked boxes. Starting focus creates an unchecked dated entry when one is missing. Legacy log-only task sessions and dated completed subtasks also keep their parent visible for that day, without inventing parent completion. Finish and Cancel return to Today / All for the timer's date so page filters do not hide the item you just used.
+Completed cards remain visible with checked boxes. Starting focus creates an unchecked dated entry when one is missing. Legacy log-only task sessions and dated completed subtasks also keep their parent visible for that day, without inventing parent completion. Finish and Cancel return to the full daily list for the timer's date (or Digest if you started there), so page filters do not hide the item you just used.
 
 ## Daily notes and embedded dashboards · new in 0.2.0
 
@@ -64,6 +66,8 @@ Optional Markdown Time Blocks display suggested start/end times on cards and in 
 No Node.js, filesystem, Electron, or network APIs are used by the plugin. Obsidian's Vault API performs reads and atomic edits. No account, analytics, or external service is required.
 
 iOS can suspend Obsidian. The timer uses persisted timestamps instead of counting background ticks, so elapsed time is reconstructed on return. **There is no background alarm or push notification.** The timer continues until you pause/save; reaching the focus target does not end it or mark work complete. Before changing devices, pause or save the timer. Vault sync conflicts across two simultaneously active devices still require your sync provider's conflict handling.
+
+Sounds use Web Audio after an interaction; volume, silent mode, or audio routing can affect what you hear. Haptics use the browser Vibration API where available and are **not guaranteed on iPhone**. There is no native Taptic Engine bridge or new phone permission that enables unsupported vibration. Feedback failures never block a saved checkbox. Preferences are stored in plugin settings, not the task Markdown.
 
 **Verification:** parser/write/timer tests, actual plugin lifecycle tests with an Obsidian API harness, and narrow-viewport browser interaction checks are provided. Browser checks are not real-device iPhone validation. A real iPhone installation remains the final device check.
 

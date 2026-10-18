@@ -52,7 +52,19 @@ view: pages
 ```
 ````
 
-`view` accepts `today`, `week`, `pages`, `goals`, or `history`. Use `view: pages` to browse a whole page's task catalog; `view: today` shows only that date's planned tasks. Explicit embed values take precedence over note properties. Use `date: today` only when you intentionally want the current day rather than the note's date. An empty embed without a note date shows an error instead of guessing.
+`view` accepts `today`, `digest`, `week`, `pages`, `goals`, or `history`. Use `view: digest` for a chronological itinerary from Time Blocks and Availability, followed by untimed planned tasks. Use `view: pages` to browse a whole page's task catalog; `view: today` shows that date's planned tasks plus the separate available catalog. Explicit embed values take precedence over note properties. Use `date: today` only when you intentionally want the current day rather than the note's date. An empty embed without a note date shows an error instead of guessing.
+
+For a reusable, always-current itinerary note:
+
+````md
+```color-sprint
+date: today
+tracker: "Sync/Color Sprint.md"
+view: digest
+```
+````
+
+Digest does not add new schedule entries or calendar events when opened. Suggested and verified calendar blocks are labeled separately. Completed tasks remain present and checkable. Timed overlaps in the same time zone are flagged for review; different-zone conflicts need separate reconciliation.
 
 Multiple embeds can point to different trackers. Edits and task/goal/session dialogs stay bound to their originating tracker, and all views of the same tracker refresh together. Note metadata does not change the global default tracker.
 
