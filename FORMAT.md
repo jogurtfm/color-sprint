@@ -90,6 +90,18 @@ Zero or one data row. Started ISO is an ISO timestamp when running; `-` means pa
 
 Use task ID `workout` or `treadmill`. Duration and distance are nonnegative numbers; use `0` where a field does not apply. The two dedicated training screens append real entries to this table. A workout-log row is evidence, not a new planned task, completion checkbox, or automatic exercise count.
 
+## Quick Counts (optional)
+
+```md
+## Quick Counts
+
+| ID | Date | Task ID | Amount | Unit |
+| --- | --- | --- | --- | --- |
+| q-example | 2026-10-18 | pushups | 5 | reps |
+```
+
+Appropriate cards expose fast increment buttons: Pushups and Dips use reps, Plank uses seconds, and Treadmill uses minutes. Each tap appends an actual increment; it does not complete the card or merge itself into a full workout log.
+
 ## Reflections (optional)
 
 ```md

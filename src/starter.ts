@@ -1,4 +1,4 @@
-import { addDays, localDay, TASK_HEADER, SESSION_HEADER, TIMER_HEADER, WORKOUT_LOG_HEADER } from './model';
+import { addDays, localDay, TASK_HEADER, SESSION_HEADER, TIMER_HEADER, WORKOUT_LOG_HEADER, QUICK_COUNT_HEADER } from './model';
 
 export function starter(start=localDay()):string{return `# Color Sprint
 
@@ -59,6 +59,11 @@ ${TIMER_HEADER}
 
 ${WORKOUT_LOG_HEADER}
 | --- | --- | --- | --- | --- | --- |
+
+## Quick Counts
+
+${QUICK_COUNT_HEADER}
+| --- | --- | --- | --- | --- |
 
 ## Reflections
 

@@ -1,4 +1,4 @@
-import { Board, COLORS, ColorId, Task, Goal, WorkoutLog, parseBoard, entryFor, planned, addDays, localDay, timerSeconds, duration } from './model';
+import { Board, COLORS, ColorId, Task, Goal, WorkoutLog, QuickCount, parseBoard, entryFor, planned, addDays, localDay, timerSeconds, duration } from './model';
 
 export interface Host {
   read():Promise<string>;
@@ -13,6 +13,7 @@ export interface Host {
   resume(id:string):Promise<void>;
   refresh(id:string):Promise<void>;
   logWorkout(log:Omit<WorkoutLog,'id'>):Promise<void>;
+  quickCount(count:Omit<QuickCount,'id'>):Promise<void>;
   finish(id:string):void;
   openNote():void;
   openDaily?():void;
@@ -72,7 +73,7 @@ export class Surface {
     const body=this.el('div',row,'cs-card-body');this.el('h3',body,'cs-task-title',task.title);this.el('p',body,'cs-meta',`${task.page} · ${task.kind}`);if(entry?.detail)this.el('p',body,'cs-detail',entry.detail);this.el('p',body,'cs-definition',task.definition);
     const actions=this.el('div',card,'cs-actions');if(!scheduledToday)this.button(actions,'+ Plan this day',()=>this.host.schedule(task,this.day,''),'cs-small');
     if(scheduledToday)this.button(actions,'Day details',()=>this.host.editEntry(task,this.day),'cs-small');
-    if(task.id==='workout'||task.id==='treadmill')this.button(actions,task.id==='workout'?'Manage workout':'Manage treadmill',()=>{this.activitySurface=task.id as 'workout'|'treadmill';this.render();},'cs-small');
+    if(task.id==='workout'||task.id==='treadmill')this.button(actions,task.id==='workout'?'Manage workout':'Manage treadmill',()=>{this.activitySurface=task.id as 'workout'|'treadmill';this.render();},'cs-small');const increments=this.quickIncrements(task);if(increments.length){const total=this.board!.quickCounts.filter(count=>count.date===this.day&&count.taskId===task.id&&count.unit===increments[0].unit).reduce((sum,count)=>sum+count.amount,0);if(total)this.el(actions,'span','cs-quick-total',`Today: ${total} ${increments[0].unit}`);for(const increment of increments)this.button(actions,`+${increment.amount} ${increment.unit}`,()=>this.host.quickCount({date:this.day,taskId:task.id,amount:increment.amount,unit:increment.unit}),'cs-small cs-quick',`Add ${increment.amount} ${increment.unit} for ${task.title}`);}
     this.button(actions,task.minutes?`Start focus · ${task.minutes}m`:'Start focus',async()=>{this.prepareFocusCues();await this.host.start(task,this.day);this.focusMode=true;this.render();},'cs-small cs-start-focus',`Start focus for ${task.title}`);
     this.button(actions,'Edit',()=>this.host.editTask(task),'cs-small');
   }
@@ -81,6 +82,7 @@ export class Surface {
     const list=this.el('div',this.root);const render=()=>{list.replaceChildren();const tasks=this.board!.tasks.filter(t=>(this.page==='All'||t.page===this.page)&&`${t.title} ${t.definition}`.toLowerCase().includes(this.filter.toLowerCase()));for(const color of COLORS){const group=tasks.filter(t=>t.color===color.id);if(!group.length)continue;this.el('h3',list,'cs-group-title',color.name);for(const task of group)this.taskCard(task,list,planned(this.board!,task,this.day));}if(!tasks.length)this.el('p',list,'cs-empty','No tasks in this page yet. Add one below.');};
     search.addEventListener('input',()=>{this.filter=search.value;render();});render();this.button(this.root,'+ Add task',()=>this.host.editTask(),'cs-add');
   }
+  private quickIncrements(task:Task):{amount:number;unit:string}[]{switch(task.id){case 'pushups':case 'dips':return [{amount:1,unit:'reps'},{amount:5,unit:'reps'}];case 'plank':return [{amount:10,unit:'sec'},{amount:30,unit:'sec'}];case 'treadmill':return [{amount:1,unit:'min'},{amount:5,unit:'min'}];default:return [];}}
   private renderWeek():void {
     this.pageFilter(this.root);this.el('h2',this.root,'','The next seven days');this.el('p',this.root,'cs-muted','✓ completed · ○ planned · + unscheduled. Tap + to plan; tap a planned day to check it.');
     const wrap=this.el('div',this.root,'cs-grid-scroll');const table=this.el('table',wrap,'cs-grid');const thead=this.el('thead',table);const head=this.el('tr',thead);this.el('th',head,'','Task');const days=Array.from({length:7},(_,i)=>addDays(this.day,i));for(const day of days){const th=this.el('th',head,'',new Date(`${day}T12:00:00`).toLocaleDateString(undefined,{weekday:'short',day:'numeric'}));th.scope='col';}

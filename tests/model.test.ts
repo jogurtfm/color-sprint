@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { starter } from '../src/starter';
-import { parseBoard, setEntry, saveTask, setGoal, startTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, timerSeconds, planned, splitCells, cell, addDays } from '../src/model';
+import { parseBoard, setEntry, saveTask, setGoal, startTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, timerSeconds, planned, splitCells, cell, addDays } from '../src/model';
 
 const seed=()=>starter('2026-10-18');
 test('all 22 exact task labels and all six source colors survive Markdown parsing',()=>{
@@ -31,6 +31,7 @@ test('malformed table shape and unsupported colors are reported',()=>{assert.thr
 test('recurrences are opt-in and only apply within sprint',()=>{const b=parseBoard(saveTask(seed(),{...parseBoard(seed()).tasks[0],repeat:'daily'}));assert.equal(planned(b,b.tasks[0],'2026-10-18'),true);assert.equal(planned(b,b.tasks[0],'2026-11-01'),false);});
 test('reflection quotes are optional plain Markdown and do not affect schedule state',()=>{const md=seed().replace('<!-- Optional: one plain reflection quote per line. Focus and meditation mode show one at a time. -->','Keep moving.\n\nTry again.');const b=parseBoard(md);assert.deepEqual(b.reflections,['Keep moving.','Try again.']);assert.equal(b.entries.length,0);});
 test('workout log preserves actual data without checking or scheduling a task',()=>{const md=addWorkoutLog(seed(),{id:'w-tread-1',date:'2026-10-18',taskId:'treadmill',minutes:20,distance:.8,details:'2.8 mph',note:'Easy start'});const b=parseBoard(md);assert.deepEqual(b.workoutLogs,[{id:'w-tread-1',date:'2026-10-18',taskId:'treadmill',minutes:20,distance:.8,details:'2.8 mph',note:'Easy start'}]);assert.equal(b.entries.length,0);});
+test('quick counts append a real increment without completing a task',()=>{const md=addQuickCount(seed(),{id:'q-push-1',date:'2026-10-18',taskId:'pushups',amount:5,unit:'reps'});const b=parseBoard(md);assert.deepEqual(b.quickCounts,[{id:'q-push-1',date:'2026-10-18',taskId:'pushups',amount:5,unit:'reps'}]);assert.equal(b.entries.length,0);});
 test('goal evidence and completion persist without modifying task entries',()=>{const md=setGoal(seed(),{id:'room-fit',due:'2026-10-31',page:'Room',title:'Keepers fit',evidence:'2 bags left | closet shuts',done:true});const b=parseBoard(md);assert.equal(b.goals[0].done,true);assert.equal(b.goals[0].evidence,'2 bags left | closet shuts');assert.equal(b.entries.length,0);});
 test('timer survives sleep/restart through timestamps, pauses and resumes',()=>{
   const now=Date.parse('2026-10-18T14:00:00Z');let md=startTimer(seed(),'make-bed','2026-10-18',now);let timer=parseBoard(md).timer!;assert.equal(timerSeconds(timer,now+600000),600);

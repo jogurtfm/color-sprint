@@ -43,6 +43,8 @@
 .cs-detail { font-size:14px; font-weight:650; margin:6px 0; }
 .cs-card.is-done .cs-task-title { text-decoration:line-through; color:var(--cs-muted); }
 .cs-actions { margin-top:12px; }
+.cs-quick-total { width:100%; color:var(--cs-muted); font-size:12px; font-weight:700; }
+.cs-root button.cs-quick { border-color:var(--cs-color); }
 .cs-root button.cs-small { min-height:44px; font-size:12px; padding:7px 12px; }
 .cs-root button.cs-add { width:100%; margin:18px 0; border-style:dashed; background:transparent; }
 .cs-empty { padding:24px 12px; text-align:center; color:var(--cs-muted); }

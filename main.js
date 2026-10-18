@@ -39,8 +39,9 @@ var TASK_HEADER = "| ID | Task | Color | Page | Kind | Repeat | Timer minutes | 
 var SESSION_HEADER = "| Session ID | Date | Task ID | Seconds | Note |";
 var TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |";
 var WORKOUT_LOG_HEADER = "| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |";
+var QUICK_COUNT_HEADER = "| ID | Date | Task ID | Amount | Unit |";
 var SECTIONS = ["Tasks", "Schedule", "Goals", "Sessions", "Timer"];
-var OPTIONAL_SECTIONS = ["Reflections", "Workout Log"];
+var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts"];
 function localDay(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -172,15 +173,19 @@ function parseBoard(text) {
   const workoutLogs = workoutRange ? table(lines, workoutRange, WORKOUT_LOG_HEADER).map((p) => ({ id: p[0], date: p[1], taskId: p[2], minutes: number(p[3]), distance: number(p[4]), details: p[5], note: p[6] })) : [];
   unique(workoutLogs.map((x) => x.id), "workout log");
   for (const log of workoutLogs) if (!validDay(log.date) || log.taskId !== "workout" && log.taskId !== "treadmill") throw new Error("Workout Log rows must use a valid date and Workout or Treadmill task ID.");
+  const quickRange = rs.get("Quick Counts");
+  const quickCounts = quickRange ? table(lines, quickRange, QUICK_COUNT_HEADER).map((p) => ({ id: p[0], date: p[1], taskId: p[2], amount: number(p[3]), unit: p[4] })) : [];
+  unique(quickCounts.map((x) => x.id), "quick count");
+  for (const count of quickCounts) if (!validDay(count.date) || count.amount <= 0 || !count.unit) throw new Error("Quick Counts need a valid date, positive amount, and unit.");
   const taskIds = new Set(tasks.map((x) => x.id));
-  for (const item of [...entries, ...sessions, ...timers]) if (!taskIds.has(item.taskId)) throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
+  for (const item of [...entries, ...sessions, ...timers, ...quickCounts]) if (!taskIds.has(item.taskId)) throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
   const reflectionRange = rs.get("Reflections");
   const reflections = reflectionRange ? dataLines(lines, reflectionRange).map((line) => line.trim().replace(/^[-*]\s+|^>\s?/, "")).filter((line) => line && !line.startsWith("<!--")) : [];
   const match = text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);
   const start = match?.[1] || localDay();
   const end = match?.[2] || addDays(start, 13);
   if (!validDay(start) || !validDay(end) || end < start) throw new Error("Invalid Sprint date range.");
-  return { tasks, entries, goals, sessions, timer, workoutLogs, reflections, start, end };
+  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, start, end };
 }
 function validRepeat(value) {
   return value === "-" || value === "daily" || /^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);
@@ -236,6 +241,14 @@ function addWorkoutLog(text, log) {
   if (board.workoutLogs.some((item) => item.id === id)) throw new Error("Workout log ID already exists.");
   const row = `| ${[id, log.date, log.taskId, String(log.minutes), String(log.distance), log.details, log.note].map(cell).join(" | ")} |`;
   return lineEdit(text, "Workout Log", () => false, () => row, row);
+}
+function addQuickCount(text, count) {
+  const board = parseBoard(text);
+  if (!validDay(count.date) || !board.tasks.some((task) => task.id === count.taskId) || !Number.isFinite(count.amount) || count.amount <= 0 || !count.unit.trim()) throw new Error("Quick count needs a valid date, task, positive amount, and unit.");
+  const id = count.id || `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  if (board.quickCounts.some((item) => item.id === id)) throw new Error("Quick count ID already exists.");
+  const row = `| ${[id, count.date, count.taskId, String(count.amount), count.unit].map(cell).join(" | ")} |`;
+  return lineEdit(text, "Quick Counts", () => false, () => row, row);
 }
 function saveTask(text, task) {
   parseBoard(text);
@@ -361,6 +374,11 @@ ${TIMER_HEADER}
 
 ${WORKOUT_LOG_HEADER}
 | --- | --- | --- | --- | --- | --- |
+
+## Quick Counts
+
+${QUICK_COUNT_HEADER}
+| --- | --- | --- | --- | --- |
 
 ## Reflections
 
@@ -616,6 +634,12 @@ var Surface = class {
       this.activitySurface = task.id;
       this.render();
     }, "cs-small");
+    const increments = this.quickIncrements(task);
+    if (increments.length) {
+      const total = this.board.quickCounts.filter((count) => count.date === this.day && count.taskId === task.id && count.unit === increments[0].unit).reduce((sum, count) => sum + count.amount, 0);
+      if (total) this.el(actions, "span", "cs-quick-total", `Today: ${total} ${increments[0].unit}`);
+      for (const increment of increments) this.button(actions, `+${increment.amount} ${increment.unit}`, () => this.host.quickCount({ date: this.day, taskId: task.id, amount: increment.amount, unit: increment.unit }), "cs-small cs-quick", `Add ${increment.amount} ${increment.unit} for ${task.title}`);
+    }
     this.button(actions, task.minutes ? `Start focus \xB7 ${task.minutes}m` : "Start focus", async () => {
       this.prepareFocusCues();
       await this.host.start(task, this.day);
@@ -649,6 +673,19 @@ var Surface = class {
     });
     render();
     this.button(this.root, "+ Add task", () => this.host.editTask(), "cs-add");
+  }
+  quickIncrements(task) {
+    switch (task.id) {
+      case "pushups":
+      case "dips":
+        return [{ amount: 1, unit: "reps" }, { amount: 5, unit: "reps" }];
+      case "plank":
+        return [{ amount: 10, unit: "sec" }, { amount: 30, unit: "sec" }];
+      case "treadmill":
+        return [{ amount: 1, unit: "min" }, { amount: 5, unit: "min" }];
+      default:
+        return [];
+    }
   }
   renderWeek() {
     this.pageFilter(this.root);
@@ -1098,6 +1135,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       resume: (id) => change((text) => resumeTimer(text, id)),
       refresh: (id) => change((text) => refreshTimer(text, id)),
       logWorkout: (log) => change((text) => addWorkoutLog(text, log)),
+      quickCount: (count) => change((text) => addQuickCount(text, count)),
       finish: (id) => new SessionModal(this.app, this, id, path).open(),
       openNote: () => {
         void this.openNote(path).catch((e) => this.error(e));
