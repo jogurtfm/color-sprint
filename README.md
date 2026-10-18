@@ -18,7 +18,7 @@ For a manual installation, download `manifest.json`, `main.js`, and `styles.css`
 
 ## What you get
 
-- **Today:** only the selected day's planned tasks, color-coded cards, completion progress, first actions, and daily result notes.
+- **Today:** the selected day's explicitly planned tasks, color-coded completion progress, plus an **Available to plan** section for the remaining tasks. The planned count stays honest; a task is not made due merely because it is visible.
 - **Week:** a task-per-row, day-per-column grid. A blank `+` means unscheduled. Tap to plan; tap a planned cell to check it.
 - **Pages:** your Markdown page labels become navigation filters. Morning, Workouts, Kitchen, Room, Learning, Creative, Admin, and Portfolio are starter interpretations you can change.
 - **Goals:** milestones with due dates and evidence. The interface asks for evidence before marking a goal done.

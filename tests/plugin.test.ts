@@ -59,8 +59,8 @@ async function harness(initial=starter(),initialFiles:Record<string,string>={}) 
 }
 test('actual bundled plugin registers views/commands and writes real checkbox edits through Vault.process',async()=>{
   const day=localDay();const h=await harness(setEntry(starter(),day,'make-bed',false,'Clear the bed first'));
-  try {assert.ok(h.commands.has('open'));assert.equal(h.document.querySelectorAll('.cs-card').length,1);assert.match(h.document.body.textContent,/Clear the bed first/);const check=h.document.querySelector('.cs-check') as HTMLInputElement;check.click();await settle();assert.equal(parseBoard(h.text).entries[0].done,true);assert.equal(h.writes,1);assert.match(h.document.body.textContent,/1 of 1/);
-    await h.external(s=>setEntry(s,day,'cook',false,'Chicken'));assert.equal(h.document.querySelectorAll('.cs-card').length,2);
+  try {assert.ok(h.commands.has('open'));assert.equal(h.document.querySelectorAll('.cs-card').length,22);assert.match(h.document.body.textContent,/Clear the bed first/);assert.match(h.document.body.textContent,/Available to plan/);const check=h.document.querySelector('.cs-check') as HTMLInputElement;check.click();await settle();assert.equal(parseBoard(h.text).entries[0].done,true);assert.equal(h.writes,1);assert.match(h.document.body.textContent,/1 of 1/);
+    await h.external(s=>setEntry(s,day,'cook',false,'Chicken'));assert.equal(h.document.querySelectorAll('.cs-card').length,22);assert.match(h.document.body.textContent,/1 of 2/);
   } finally {await h.close();}
 });
 test('Workouts page retains four exercise colors and does not invent schedules',async()=>{

@@ -54,11 +54,12 @@ export class Surface {
   private pageFilter(parent:HTMLElement):void {const bar=this.el('div',parent,'cs-pages');for(const page of this.pages()){const button=this.button(bar,page,()=>{this.page=page;this.render();},page===this.page?'is-active':'');button.setAttribute('aria-pressed',String(page===this.page));}}
   private taskColor(task:Task,el:HTMLElement):void{el.style.setProperty('--cs-color',COLORS.find(c=>c.id===task.color)!.hex);el.setAttribute('data-color',task.color);}
   private renderToday():void {
-    const b=this.board!;this.pageFilter(this.root);const tasks=b.tasks.filter(t=>planned(b,t,this.day)&&(this.page==='All'||t.page===this.page));const done=tasks.filter(t=>entryFor(b,t.id,this.day)?.done).length;
+    const b=this.board!;this.pageFilter(this.root);const matches=(task:Task)=>this.page==='All'||task.page===this.page;const tasks=b.tasks.filter(t=>planned(b,t,this.day)&&matches(t));const available=b.tasks.filter(t=>!planned(b,t,this.day)&&matches(t));const done=tasks.filter(t=>entryFor(b,t.id,this.day)?.done).length;
     const hero=this.el('section',this.root,'cs-summary');this.el('p',hero,'cs-eyebrow',new Date(`${this.day}T12:00:00`).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}));this.el('h2',hero,'',tasks.length?`${done} of ${tasks.length} planned tasks complete`:'Start with one clear action.');
     const progress=this.el('progress',hero);progress.max=tasks.length||1;progress.value=done;progress.setAttribute('aria-label','Planned tasks completed');this.el('p',hero,'cs-muted','Your plan can be small. Check off what actually happened.');
-    if(!tasks.length)this.el('p',this.root,'cs-empty','Nothing scheduled here. Open Pages to choose a task, or add one below.');
+    if(!tasks.length)this.el('p',this.root,'cs-empty','Nothing is explicitly scheduled here yet. Choose a real next action below, then tap Plan this day.');
     for(const color of COLORS){const groupTasks=tasks.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',this.root,'cs-group');this.el('h3',group,'cs-group-title',color.name);for(const task of groupTasks)this.taskCard(task,group,true);}
+    if(available.length){const availableSection=this.el('section',this.root,'cs-available');this.el('h2',availableSection,'','Available to plan');this.el('p',availableSection,'cs-muted','These are not scheduled or due. They stay visible so one planned task does not make the rest of your tracker disappear.');for(const color of COLORS){const groupTasks=available.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',availableSection,'cs-group');this.el('h3',group,'cs-group-title',color.name);for(const task of groupTasks)this.taskCard(task,group,false);}}
     this.button(this.root,'+ Add task',()=>this.host.editTask(),'cs-add');
   }
   private taskCard(task:Task,parent:HTMLElement,scheduledToday:boolean):void{
