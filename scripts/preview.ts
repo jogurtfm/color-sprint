@@ -1,6 +1,6 @@
 import { Surface,Host } from '../src/surface';
 import { starter } from '../src/starter';
-import { parseBoard,setEntry,saveTask,setGoal,startTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal } from '../src/model';
+import { parseBoard,setEntry,saveTask,setGoal,startTimer,startGroupTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal } from '../src/model';
 
 let md=localStorage.getItem('color-sprint-demo')||starter();
 if(!parseBoard(md).entries.length){const day=localDay();md=setEntry(md,day,'make-bed',false,'Clear the bed and straighten the bedding.');md=setEntry(md,day,'cook',false,'Chicken · prepare dinner and put away leftovers.');md=setEntry(md,day,'clean-room',false,'Baseline: note clothes, shoes, bed, and floor paths.');md=setGoal(md,{id:'room-fit',due:addDays(day,13),page:'Room',title:'Clothing and shoes fit their storage',evidence:'',done:false});}
@@ -13,7 +13,7 @@ const host:Host={read:async()=>md,change,
   editGoal:(g?:Goal)=>dialog('Goal progress',{Goal:g?.title||'',Page:g?.page||'Room',Due:g?.due||'-',Evidence:g?.evidence||'',Status:g?.done?'done':'open'},v=>change(s=>setGoal(s,{id:g?.id||`goal-${Date.now()}`,title:v.Goal,page:v.Page,due:v.Due,evidence:v.Evidence,done:v.Status==='done'}))),
   editEntry:(t,day)=>dialog('Day details',{Detail:entryFor(parseBoard(md),t.id,day)?.detail||''},v=>change(s=>setEntry(s,day,t.id,entryFor(parseBoard(s),t.id,day)?.done||false,v.Detail))),
   schedule:(t,day,detail)=>change(s=>setEntry(s,day,t.id,false,detail)),check:(t,day,done)=>change(s=>setEntry(s,day,t.id,done)),
-  start:(t,day)=>change(s=>startTimer(s,t.id,day)),pause:id=>change(s=>pauseTimer(s,id)),resume:id=>change(s=>resumeTimer(s,id)),refresh:id=>change(s=>refreshTimer(s,id)),logWorkout:log=>change(s=>addWorkoutLog(s,log)),quickCount:count=>change(s=>addQuickCount(s,count)),finish:id=>dialog('Save session',{Result:''},v=>change(s=>finishTimer(s,id,v.Result))),
+  start:(t,day)=>change(s=>startTimer(s,t.id,day)),startGroup:(group,day)=>change(s=>startGroupTimer(s,group,day)),pause:id=>change(s=>pauseTimer(s,id)),resume:id=>change(s=>resumeTimer(s,id)),refresh:id=>change(s=>refreshTimer(s,id)),logWorkout:log=>change(s=>addWorkoutLog(s,log)),quickCount:count=>change(s=>addQuickCount(s,count)),finish:id=>dialog('Save session',{Result:''},v=>change(s=>finishTimer(s,id,v.Result))),
   openNote:()=>dialog('Tracker Markdown',{Markdown:md},v=>change(()=>v.Markdown)),createNote:()=>change(()=>starter()),settings:()=>dialog('Preview settings',{Info:'In Obsidian, this chooses your vault Markdown path.'},()=>{}),error:e=>dialog('Could not save',{Error:String(e)},()=>{})
 };
 const params=new URLSearchParams(location.search);

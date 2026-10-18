@@ -72,6 +72,8 @@ Sessions record elapsed focus and actual notes. They are not automatic workouts 
 ```md
 ## Timer
 
+The plugin may use a task ID shaped like `group:page:Morning` or `group:color:pink` for a cumulative routine timer. This is a normal timer record: it measures the whole routine, while individual task checkboxes remain independent evidence.
+
 | Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |
 | --- | --- | --- | --- | --- | --- |
 ```

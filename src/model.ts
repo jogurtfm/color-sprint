@@ -14,6 +14,7 @@ export interface Session {id:string; date:string; taskId:string; seconds:number;
 export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number}
 export interface WorkoutLog {id:string; date:string; taskId:'workout'|'treadmill'; minutes:number; distance:number; details:string; note:string}
 export interface QuickCount {id:string; date:string; taskId:string; amount:number; unit:string}
+export interface GroupRef {kind:'page'|'color'; value:string}
 export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
@@ -61,7 +62,7 @@ export function parseBoard(text:string):Board {
   if(timer){unique([timer.id],'timer');if(!validDay(timer.date)|| (timer.started!=='-'&&!Number.isFinite(Date.parse(timer.started))))throw new Error('Invalid timer date or start timestamp.');}
   const workoutRange=rs.get('Workout Log');const workoutLogs=workoutRange?table(lines,workoutRange,WORKOUT_LOG_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2] as WorkoutLog['taskId'],minutes:number(p[3]),distance:number(p[4]),details:p[5],note:p[6]})):[];unique(workoutLogs.map(x=>x.id),'workout log');for(const log of workoutLogs)if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill'))throw new Error('Workout Log rows must use a valid date and Workout or Treadmill task ID.');
   const quickRange=rs.get('Quick Counts');const quickCounts=quickRange?table(lines,quickRange,QUICK_COUNT_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],amount:number(p[3]),unit:p[4]})):[];unique(quickCounts.map(x=>x.id),'quick count');for(const count of quickCounts)if(!validDay(count.date)||count.amount<=0||!count.unit)throw new Error('Quick Counts need a valid date, positive amount, and unit.');
-  const taskIds=new Set(tasks.map(x=>x.id));for(const item of [...entries,...sessions,...timers,...quickCounts])if(!taskIds.has(item.taskId))throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
+  const taskIds=new Set(tasks.map(x=>x.id));const knownReference=(id:string)=>taskIds.has(id)||!!parseGroupTimerId(id);for(const item of [...entries,...sessions,...timers,...quickCounts])if(!knownReference(item.taskId))throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
   const reflectionRange=rs.get('Reflections');const reflections=reflectionRange?dataLines(lines,reflectionRange).map(line=>line.trim().replace(/^[-*]\s+|^>\s?/,'')).filter(line=>line&&!line.startsWith('<!--')):[];
   const match=text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);const start=match?.[1]||localDay();const end=match?.[2]||addDays(start,13);if(!validDay(start)||!validDay(end)||end<start)throw new Error('Invalid Sprint date range.');
   return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,start,end};
@@ -70,6 +71,8 @@ export function validRepeat(value:string):boolean {return value==='-'||value==='
 export function scheduled(task:Task,day:string):boolean {return task.repeat==='daily'||task.repeat.split(',').includes(['sun','mon','tue','wed','thu','fri','sat'][new Date(`${day}T12:00:00`).getDay()]);}
 export function entryFor(board:Board,id:string,day:string):Entry|undefined{return board.entries.find(e=>e.taskId===id&&e.date===day);}
 export function planned(board:Board,task:Task,day:string):boolean{return !!entryFor(board,task.id,day)||(day>=board.start&&day<=board.end&&scheduled(task,day));}
+export function groupTimerId(group:GroupRef):string{return `group:${group.kind}:${encodeURIComponent(group.value)}`;}
+export function parseGroupTimerId(id:string):GroupRef|null {const match=id.match(/^group:(page|color):(.+)$/);if(!match)return null;try{return {kind:match[1] as GroupRef['kind'],value:decodeURIComponent(match[2])};}catch{return null;}}
 function lineEdit(text:string,section:string,find:(line:string)=>boolean,transform:(line:string)=>string,append:string):string{
   const nl=text.includes('\r\n')?'\r\n':'\n';const lines=text.split(/\r?\n/);const range=ranges(lines).get(section);if(!range)throw new Error(`Missing section ${section}`);
   let matches:number[]=[];let fenced=false;for(let i=range.start;i<range.end;i++){if(/^\s*(`{3,}|~{3,})/.test(lines[i])){fenced=!fenced;continue;}if(!fenced&&find(lines[i]))matches.push(i);}
@@ -101,6 +104,9 @@ export function writeTimer(text:string,timer:Timer|null):string{
 }
 export function startTimer(text:string,taskId:string,date:string,now=Date.now()):string{
   const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');const task=board.tasks.find(t=>t.id===taskId);if(!task)throw new Error('Task not found.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:task.minutes*60});
+}
+export function startGroupTimer(text:string,group:GroupRef,date:string,now=Date.now()):string{
+  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const hasTask=group.kind==='page'?board.tasks.some(task=>task.page===group.value):board.tasks.some(task=>task.color===group.value);if(!hasTask)throw new Error('This focus group has no tasks.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0});
 }
 export function pauseTimer(text:string,id:string,now=Date.now()):string{
   const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:timerSeconds(timer,now),started:'-'});

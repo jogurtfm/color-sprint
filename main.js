@@ -178,7 +178,8 @@ function parseBoard(text) {
   unique(quickCounts.map((x) => x.id), "quick count");
   for (const count of quickCounts) if (!validDay(count.date) || count.amount <= 0 || !count.unit) throw new Error("Quick Counts need a valid date, positive amount, and unit.");
   const taskIds = new Set(tasks.map((x) => x.id));
-  for (const item of [...entries, ...sessions, ...timers, ...quickCounts]) if (!taskIds.has(item.taskId)) throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
+  const knownReference = (id) => taskIds.has(id) || !!parseGroupTimerId(id);
+  for (const item of [...entries, ...sessions, ...timers, ...quickCounts]) if (!knownReference(item.taskId)) throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
   const reflectionRange = rs.get("Reflections");
   const reflections = reflectionRange ? dataLines(lines, reflectionRange).map((line) => line.trim().replace(/^[-*]\s+|^>\s?/, "")).filter((line) => line && !line.startsWith("<!--")) : [];
   const match = text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);
@@ -198,6 +199,18 @@ function entryFor(board, id, day) {
 }
 function planned(board, task, day) {
   return !!entryFor(board, task.id, day) || day >= board.start && day <= board.end && scheduled(task, day);
+}
+function groupTimerId(group) {
+  return `group:${group.kind}:${encodeURIComponent(group.value)}`;
+}
+function parseGroupTimerId(id) {
+  const match = id.match(/^group:(page|color):(.+)$/);
+  if (!match) return null;
+  try {
+    return { kind: match[1], value: decodeURIComponent(match[2]) };
+  } catch {
+    return null;
+  }
 }
 function lineEdit(text, section, find, transform, append) {
   const nl = text.includes("\r\n") ? "\r\n" : "\n";
@@ -284,6 +297,14 @@ function startTimer(text, taskId, date, now = Date.now()) {
   const task = board.tasks.find((t) => t.id === taskId);
   if (!task) throw new Error("Task not found.");
   return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60 });
+}
+function startGroupTimer(text, group, date, now = Date.now()) {
+  const board = parseBoard(text);
+  if (board.timer) throw new Error("A timer is already active. Save it before starting another.");
+  if (!validDay(date) || !group.value.trim()) throw new Error("A group timer needs a valid date and group.");
+  const hasTask = group.kind === "page" ? board.tasks.some((task) => task.page === group.value) : board.tasks.some((task) => task.color === group.value);
+  if (!hasTask) throw new Error("This focus group has no tasks.");
+  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId: groupTimerId(group), date, started: new Date(now).toISOString(), elapsed: 0, target: 0 });
 }
 function pauseTimer(text, id, now = Date.now()) {
   const timer = parseBoard(text).timer;
@@ -557,6 +578,12 @@ var Surface = class {
       }, page === this.page ? "is-active" : "");
       button.setAttribute("aria-pressed", String(page === this.page));
     }
+    if (this.page !== "All") this.button(parent, `Start ${this.page} routine`, async () => {
+      this.prepareFocusCues();
+      await this.host.startGroup({ kind: "page", value: this.page }, this.day);
+      this.focusMode = true;
+      this.render();
+    }, "cs-group-focus");
   }
   taskColor(task, el) {
     el.style.setProperty("--cs-color", COLORS.find((c) => c.id === task.color).hex);
@@ -583,6 +610,12 @@ var Surface = class {
       if (!groupTasks.length) continue;
       const group = this.el("section", this.root, "cs-group");
       this.el("h3", group, "cs-group-title", color.name);
+      this.button(group, `Focus ${color.name} group`, async () => {
+        this.prepareFocusCues();
+        await this.host.startGroup({ kind: "color", value: color.id }, this.day);
+        this.focusMode = true;
+        this.render();
+      }, "cs-group-focus");
       for (const task of groupTasks) this.taskCard(task, group, true);
     }
     if (available.length) {
@@ -738,26 +771,31 @@ var Surface = class {
     this.el("p", this.root, "cs-muted", "Timer sessions measure focus. They do not automatically complete a task or count as a workout.");
     const sessions = [...this.board.sessions].reverse().filter((s) => {
       const task = this.board.tasks.find((t) => t.id === s.taskId);
-      return this.page === "All" || task.page === this.page;
+      const group = parseGroupTimerId(s.taskId);
+      return this.page === "All" || task?.page === this.page || group?.kind === "page" && group.value === this.page;
     });
     if (!sessions.length) this.el("p", this.root, "cs-empty", "Saved timer sessions appear here.");
     for (const s of sessions) {
       const task = this.board.tasks.find((t) => t.id === s.taskId);
+      const group = parseGroupTimerId(s.taskId);
       const card = this.el("article", this.root, "cs-card");
-      this.taskColor(task, card);
+      if (task) this.taskColor(task, card);
+      else if (group) this.groupColor(group, card);
       this.el("p", card, "cs-meta", s.date);
-      this.el("h3", card, "", `${task.title} \xB7 ${duration(s.seconds)}`);
+      this.el("h3", card, "", `${task?.title || (group ? this.groupTitle(group) : "Focus session")} \xB7 ${duration(s.seconds)}`);
       this.el("p", card, "cs-definition", s.note || "No note recorded.");
     }
   }
   renderTimer() {
     const timer = this.board.timer;
     const task = this.board.tasks.find((t) => t.id === timer.taskId);
+    const group = parseGroupTimerId(timer.taskId);
     const box = this.el("section", this.root, "cs-timer");
-    this.taskColor(task, box);
+    if (task) this.taskColor(task, box);
+    else if (group) this.groupColor(group, box);
     const details = this.el("div", box);
     this.el("p", details, "cs-eyebrow", timer.started === "-" ? "PAUSED" : "IN FOCUS");
-    this.el("h2", details, "", task.title);
+    this.el("h2", details, "", task?.title || (group ? this.groupTitle(group) : "Focus session"));
     this.timerDisplay = this.el("div", box, "cs-time");
     this.timerDisplay.setAttribute("role", "timer");
     this.timerDisplay.setAttribute("aria-label", "Elapsed focus time");
@@ -772,6 +810,11 @@ var Surface = class {
   }
   renderFocusMode() {
     const timer = this.board.timer;
+    const group = parseGroupTimerId(timer.taskId);
+    if (group) {
+      this.renderGroupFocusMode(timer, group);
+      return;
+    }
     const task = this.board.tasks.find((t) => t.id === timer.taskId);
     const entry = entryFor(this.board, task.id, timer.date);
     const meditation = task.id === "mindfulness";
@@ -800,6 +843,52 @@ var Surface = class {
     }, "cs-small");
     this.button(actions, meditation ? "End & log" : "Stop & log", () => this.host.finish(timer.id), "cs-primary");
     this.el("p", card, "cs-muted", meditation ? "Keep it simple: breathe, notice, return. Refresh restarts at zero without saving a session. At the target, Color Sprint tries a chime, vibration, and permitted notification while Obsidian stays open." : "Refresh restarts at zero without saving a session. At the target, Color Sprint tries a chime, vibration, and permitted notification while Obsidian stays open. Stopping asks what actually happened; it does not auto-complete the task.");
+  }
+  groupTitle(group) {
+    return group.kind === "page" ? `${group.value} routine` : `${COLORS.find((color) => color.id === group.value)?.name || group.value} group`;
+  }
+  groupColor(group, element) {
+    const task = group.kind === "color" ? this.board.tasks.find((item) => item.color === group.value) : this.board.tasks.find((item) => item.page === group.value);
+    if (task) this.taskColor(task, element);
+  }
+  renderGroupFocusMode(timer, group) {
+    const tasks = this.board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
+    const top = this.el("header", this.root, "cs-focus-header");
+    this.el("p", top, "cs-eyebrow", timer.started === "-" ? "ROUTINE PAUSED" : "ROUTINE FOCUS");
+    this.button(top, "Back to plan", () => {
+      this.focusMode = false;
+      this.render();
+    }, "cs-link");
+    const card = this.el("main", this.root, "cs-focus-card");
+    this.groupColor(group, card);
+    this.el("p", card, "cs-eyebrow", group.kind === "page" ? group.value : "COLOR GROUP");
+    this.el("h1", card, "", this.groupTitle(group));
+    this.el("p", card, "cs-definition", "One cumulative timer. Check each step only when it actually happens.");
+    const quote = this.reflectionFor(timer.id);
+    if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
+    this.timerDisplay = this.el("div", card, "cs-time");
+    this.timerDisplay.setAttribute("role", "timer");
+    this.timerDisplay.setAttribute("aria-label", "Elapsed routine time");
+    this.el("h2", card, "cs-activity-history", "Routine steps");
+    for (const task of tasks) {
+      const entry = entryFor(this.board, task.id, timer.date);
+      const step = this.el("label", card, "cs-group-step");
+      const check = this.el("input", step, "");
+      check.type = "checkbox";
+      check.checked = !!entry?.done;
+      check.setAttribute("aria-label", `Mark ${task.title} complete`);
+      check.addEventListener("change", () => void this.run(() => this.host.check(task, timer.date, check.checked)));
+      this.el("span", step, "", task.title);
+      if (entry?.detail) this.el("small", step, "", entry.detail);
+    }
+    const actions = this.el("div", card, "cs-actions");
+    this.button(actions, timer.started === "-" ? "Resume routine" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
+    this.button(actions, "Refresh timer", async () => {
+      await this.host.refresh(timer.id);
+      this.prepareFocusCues();
+    }, "cs-small");
+    this.button(actions, "End routine & log", () => this.host.finish(timer.id), "cs-primary");
+    this.el("p", card, "cs-muted", "Ending saves the cumulative focus session. It never checks every step for you.");
   }
   activityField(parent, label, type, placeholder) {
     const wrap = this.el("label", parent, "cs-activity-field");
@@ -871,7 +960,7 @@ var Surface = class {
     if (NotificationApi?.permission === "default") void NotificationApi.requestPermission().catch(() => {
     });
   }
-  cue(timerId, task) {
+  cue(timerId, title) {
     if (this.cuedTimerId === timerId) return;
     this.cuedTimerId = timerId;
     const win = this.root.ownerDocument.defaultView;
@@ -881,7 +970,7 @@ var Surface = class {
     }
     const NotificationApi = win?.Notification;
     try {
-      if (NotificationApi?.permission === "granted") new NotificationApi("Color Sprint focus complete", { body: `${task.title}: target reached. Stop and log what happened.` });
+      if (NotificationApi?.permission === "granted") new NotificationApi("Color Sprint focus complete", { body: `${title}: target reached. Stop and log what happened.` });
     } catch {
     }
     const play = () => {
@@ -913,7 +1002,8 @@ var Surface = class {
     const target = timer.target;
     if (target > 0 && elapsed >= target) {
       const task = this.board.tasks.find((t) => t.id === timer.taskId);
-      if (task) this.cue(timer.id, task);
+      const group = parseGroupTimerId(timer.taskId);
+      this.cue(timer.id, task?.title || (group ? this.groupTitle(group) : "Focus session"));
     }
     this.timerDisplay.textContent = duration(elapsed);
     this.timerDisplay.setAttribute("data-target-reached", String(target > 0 && elapsed >= target));
@@ -1131,6 +1221,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       }),
       check: (task, day, done) => change((text) => setEntry(text, day, task.id, done)),
       start: (task, day) => change((text) => startTimer(text, task.id, day)),
+      startGroup: (group, day) => change((text) => startGroupTimer(text, group, day)),
       pause: (id) => change((text) => pauseTimer(text, id)),
       resume: (id) => change((text) => resumeTimer(text, id)),
       refresh: (id) => change((text) => refreshTimer(text, id)),
