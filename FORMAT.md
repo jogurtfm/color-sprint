@@ -72,15 +72,27 @@ Sessions record elapsed focus and actual notes. They are not automatic workouts 
 ```md
 ## Timer
 
-The plugin may use a task ID shaped like `group:page:Morning` or `group:color:pink` for a cumulative routine timer. The extra **Queue cursor** column stores which task is currently cued. This is a normal timer record: it measures the whole routine, while individual task checkboxes remain independent evidence. Older six-column Timer tables remain readable and are upgraded the next time a timer is written.
-
-Before starting a group timer, Color Sprint creates ordinary unchecked Schedule rows for every member of that group on the selected date. Existing schedule rows, details, and completion states are preserved.
-
-| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |
-| --- | --- | --- | --- | --- | --- |
+| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 ```
 
 Zero or one data row. Started ISO is an ISO timestamp when running; `-` means paused. Elapsed seconds is the accumulated time before the current run; Target seconds is optional focus intent (zero for stopwatch). Do not edit the timer row on two devices at once. Saving a timer appends its session and clears this row in one atomic Vault operation.
+
+Group timer IDs use `group:page:Morning` or `group:color:pink`. Schedule the group first to create unchecked Schedule rows for its members; existing details and completion states are preserved. Queue cursor is zero-based. Step offset seconds records the cumulative elapsed time when the current step began, so each step gets its own countdown while the session total continues. Older six- and seven-column Timer tables migrate on the next timer action, including active timers.
+
+## Subtasks (optional)
+
+```md
+## Subtasks
+
+<!-- ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or - -->
+- [ ] portfolio-scope | audio-portfolio | - | 10 | Choose the portfolio scope | Record the destination and one update to ship | -
+- [ ] tax-documents | hard-task | 2020 Tax | 15 | Gather the available documents | Save a checklist and identify missing documents | -
+```
+
+Each subtask has a stable lowercase ID, a real parent task ID, suggested minutes (0 for stopwatch), and a completion date. `-` context means every occurrence of the parent; other contexts appear only when that day's Schedule detail contains the text, case-insensitively. This keeps tax and letter roadmaps separate under Hard Task. Rows stay in Markdown order. Proposed roadmaps can be generated and edited from a task's Roadmap screen.
+
+Focus expands a parent or group into these steps. Done records the subtask date and advances; Skip advances without completion. Completing all subtasks does not mark the parent done. The daily wins display counts dated task completions and dated subtask completions separately; sessions and quick increments do not add completion wins. If you edit a subtask checkbox directly, fill its Completed date to include it in that day's count.
 
 ## Workout Log (optional)
 

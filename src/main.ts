@@ -1,5 +1,5 @@
 import { App, ItemView, MarkdownRenderChild, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce } from 'obsidian';
-import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, parseBoard, saveTask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay } from './model';
+import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay } from './model';
 import { starter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
@@ -53,7 +53,7 @@ export default class ColorSprint extends Plugin {
     const change=(fn:(text:string)=>string)=>this.change(fn,path);
     const host:Host={
       read:()=>this.read(path),change,
-      editTask:task=>new TaskModal(this.app,this,task,path).open(),editGoal:goal=>new GoalModal(this.app,this,goal,path).open(),
+      editTask:task=>new TaskModal(this.app,this,task,path).open(),editSubtask:(task,sub)=>new SubtaskModal(this.app,this,task,sub,path).open(),editGoal:goal=>new GoalModal(this.app,this,goal,path).open(),
       editEntry:(task,day)=>{void this.read(path).then(text=>new EntryModal(this.app,this,task,day,text,path).open()).catch(e=>this.error(e));},
       schedule:(task,day,detail)=>change(text=>{const board=parseBoard(text);if(board.entries.some(e=>e.taskId===task.id&&e.date===day))throw new Error('Task already has an entry on this day.');return setEntry(text,day,task.id,false,detail);}),scheduleGroup:(group,day)=>change(text=>scheduleGroup(text,group,day)),
       check:(task,day,done)=>change(text=>setEntry(text,day,task.id,done)),
@@ -143,6 +143,12 @@ class GoalModal extends FormModal {
     super(app,original?'Goal progress':'Add a goal');const goal:Goal=original?{...original}:{id:`goal-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,due:'-',page:'General',title:'',evidence:'',done:false};
     this.field('Goal','One observable milestone.',goal.title,v=>goal.title=v.trim());this.field('Page','Match a task page or make a new one.',goal.page,v=>goal.page=v.trim());this.field('Due date','YYYY-MM-DD, or - for no deadline.',goal.due,v=>goal.due=v.trim()||'-');this.text('Evidence','What actually changed? File, count, usable space, or other result.',goal.evidence,v=>goal.evidence=v.trim());this.select('Status','Completion needs real evidence.',goal.done?'done':'open',{open:'Open',done:'Done'},v=>goal.done=v==='done');
     this.save(()=>plugin.change(text=>{const current=parseBoard(text).goals.find(g=>g.id===goal.id);if(original&&JSON.stringify(current)!==JSON.stringify(original))throw new Error('This goal changed in Markdown. Reopen it.');if(!goal.title||!goal.page)throw new Error('Goal and page are required.');if(goal.done&&!goal.evidence)throw new Error('Record the evidence before marking this goal done.');return setGoal(text,goal);},path));
+  }
+}
+class SubtaskModal extends FormModal {
+  constructor(app:App,plugin:ColorSprint,task:Task,original?:Subtask,path=plugin.settings.path){
+    super(app,original?'Edit roadmap step':'Add roadmap step');const sub:Subtask=original?{...original}:{id:`step-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,taskId:task.id,context:'-',minutes:10,title:'',definition:'',done:false,completed:'-'};
+    this.field('Step','A concrete next action.',sub.title,v=>sub.title=v.trim());this.field('Suggested minutes','0 runs an open stopwatch.',String(sub.minutes),v=>sub.minutes=Number(v),'number');this.field('Context','- for all days; or a schedule detail such as 2020 Tax or Letters.',sub.context,v=>sub.context=v.trim()||'-');this.text('Done means','What visible result finishes this step?',sub.definition,v=>sub.definition=v.trim());this.save(()=>plugin.change(text=>{const current=parseBoard(text).subtasks.find(item=>item.id===sub.id);if(original&&JSON.stringify(current)!==JSON.stringify(original))throw new Error('This step changed in Markdown. Reopen it.');if(!Number.isFinite(sub.minutes)||sub.minutes<0||sub.minutes>1440)throw new Error('Use 0–1440 minutes.');return saveSubtask(text,sub);},path));
   }
 }
 class SessionModal extends FormModal {

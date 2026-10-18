@@ -53,7 +53,7 @@ ${SESSION_HEADER}
 ## Timer
 
 ${TIMER_HEADER}
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 ## Workout Log
 

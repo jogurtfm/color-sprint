@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { starter } from '../src/starter';
 import { parseBoard, setEntry, saveTask, setGoal, scheduleGroup, startTimer, startGroupTimer, moveGroupTimer, parseGroupTimerId, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, timerSeconds, planned, splitCells, cell, addDays } from '../src/model';
+import { TIMER_HEADER, focusQueue, completeFocusStep, dailyWins, setSubtaskDone } from '../src/model';
+import { addRoadmap } from '../src/roadmaps';
 
 const seed=()=>starter('2026-10-18');
 test('all 22 exact task labels and all six source colors survive Markdown parsing',()=>{
@@ -50,3 +52,12 @@ test('schedule group adds every missing task as unchecked before group focus can
 });
 test('competing timers and stale controls cannot overwrite a running session',()=>{const now=Date.now();const md=startTimer(seed(),'make-bed','2026-10-18',now);assert.throws(()=>startTimer(md,'cook','2026-10-18',now+1),/already active/);assert.throws(()=>pauseTimer(md,'stale',now),/changed/);assert.throws(()=>finishTimer(md,'stale','',now),/changed/);});
 test('calendar date arithmetic works across month boundaries',()=>{assert.equal(addDays('2026-10-31',1),'2026-11-01');assert.equal(addDays('2026-11-01',-1),'2026-10-31');});
+test('legacy timer tables with blank lines and active six-column rows migrate through every action',()=>{
+  const now=Date.parse('2026-10-18T14:00:00Z');let md=seed().replace(TIMER_HEADER,'| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |');md=md.replace('## Workout Log','| legacy-timer | mindfulness | 2026-10-18 | 2026-10-18T14:00:00.000Z | 0 | 120 |\n\n## Workout Log');assert.equal(parseBoard(md).timer!.cursor,0);md=pauseTimer(md,'legacy-timer',now+30000);assert.equal(parseBoard(md).timer!.elapsed,30);assert.ok(md.includes(TIMER_HEADER));md=resumeTimer(md,'legacy-timer',now+60000);md=refreshTimer(md,'legacy-timer',now+90000);md=finishTimer(md,'legacy-timer','Actual meditation',now+100000);assert.equal(parseBoard(md).sessions[0].seconds,10);assert.equal(parseBoard(md).timer,null);
+});
+test('portfolio roadmap queue persists durations, preserves total focus, and counts dated wins without completing parent',()=>{
+  const now=Date.parse('2026-10-18T14:00:00Z');let md=addRoadmap(seed(),'audio-portfolio');assert.equal(addRoadmap(md,'audio-portfolio'),md);md=startTimer(md,'audio-portfolio','2026-10-18',now);const timer=parseBoard(md).timer!;assert.equal(focusQueue(parseBoard(md),timer)[0].minutes,10);md=completeFocusStep(md,timer.id,0,now+60000);let b=parseBoard(md);assert.equal(b.timer!.cursor,1);assert.equal(b.timer!.stepOffset,60);assert.equal(timerSeconds(b.timer!,now+65000),65);assert.deepEqual(dailyWins(b,'2026-10-18'),{tasks:0,subtasks:1});assert.deepEqual(dailyWins(b,'2026-10-19'),{tasks:0,subtasks:0});assert.equal(b.entries.length,0);md=setSubtaskDone(md,b.subtasks[0].id,false,'2026-10-18');assert.equal(dailyWins(parseBoard(md),'2026-10-18').subtasks,0);
+});
+test('tax and letters roadmaps remain scoped to their own schedule details',()=>{
+  let md=addRoadmap(addRoadmap(seed(),'hard-task','2020 Tax'),'hard-task','Letters');md=setEntry(md,'2026-10-19','hard-task',false,'2020 Tax');md=setEntry(md,'2026-10-21','hard-task',false,'Letters');md=startTimer(md,'hard-task','2026-10-19');let b=parseBoard(md);assert.ok(focusQueue(b,b.timer!).every(step=>step.subtask?.context==='2020 Tax'));md=finishTimer(md,b.timer!.id,'');md=startTimer(md,'hard-task','2026-10-21');b=parseBoard(md);assert.ok(focusQueue(b,b.timer!).every(step=>step.subtask?.context==='Letters'));
+});

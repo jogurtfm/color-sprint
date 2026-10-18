@@ -37,12 +37,13 @@ var COLORS = [
 ];
 var TASK_HEADER = "| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |";
 var SESSION_HEADER = "| Session ID | Date | Task ID | Seconds | Note |";
-var TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |";
+var TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |";
+var QUEUE_TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |";
 var LEGACY_TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |";
 var WORKOUT_LOG_HEADER = "| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |";
 var QUICK_COUNT_HEADER = "| ID | Date | Task ID | Amount | Unit |";
 var SECTIONS = ["Tasks", "Schedule", "Goals", "Sessions", "Timer"];
-var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts"];
+var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts", "Subtasks"];
 function localDay(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -125,7 +126,7 @@ function timerTable(lines, range) {
   const rows = dataLines(lines, range).filter((x) => x.trim().startsWith("|"));
   if (rows.length < 2) throw new Error(`Expected table header: ${TIMER_HEADER}`);
   const header = rows[0].replace(/\s/g, "");
-  const width = header === TIMER_HEADER.replace(/\s/g, "") ? 7 : header === LEGACY_TIMER_HEADER.replace(/\s/g, "") ? 6 : 0;
+  const width = header === TIMER_HEADER.replace(/\s/g, "") ? 8 : header === QUEUE_TIMER_HEADER.replace(/\s/g, "") ? 7 : header === LEGACY_TIMER_HEADER.replace(/\s/g, "") ? 6 : 0;
   if (!width) throw new Error(`Expected table header: ${TIMER_HEADER}`);
   if (!splitCells(rows[1]).every((x) => /^:?-{3,}:?$/.test(x))) throw new Error("Table requires a Markdown separator row.");
   return rows.slice(2).map((x) => {
@@ -180,7 +181,7 @@ function parseBoard(text) {
   const sessions = table(lines, rs.get("Sessions"), SESSION_HEADER).map((p) => ({ id: p[0], date: p[1], taskId: p[2], seconds: number(p[3]), note: p[4] }));
   unique(sessions.map((x) => x.id), "session");
   for (const session of sessions) if (!validDay(session.date)) throw new Error("Invalid session date.");
-  const timers = timerTable(lines, rs.get("Timer")).map((p) => ({ id: p[0], taskId: p[1], date: p[2], started: p[3], elapsed: number(p[4]), target: number(p[5]), cursor: p.length === 7 ? integer(p[6]) : 0 }));
+  const timers = timerTable(lines, rs.get("Timer")).map((p) => ({ id: p[0], taskId: p[1], date: p[2], started: p[3], elapsed: number(p[4]), target: number(p[5]), cursor: p.length >= 7 ? integer(p[6]) : 0, stepOffset: p.length === 8 ? number(p[7]) : 0 }));
   if (timers.length > 1) throw new Error("Only one active timer is supported per tracker.");
   const timer = timers[0] || null;
   if (timer) {
@@ -204,7 +205,30 @@ function parseBoard(text) {
   const start = match?.[1] || localDay();
   const end = match?.[2] || addDays(start, 13);
   if (!validDay(start) || !validDay(end) || end < start) throw new Error("Invalid Sprint date range.");
-  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, start, end };
+  const subRange = rs.get("Subtasks");
+  const subtasks = subRange ? checkboxRows(lines, subRange).map(({ done, parts: p }) => {
+    if (p.length !== 7) throw new Error("Subtask rows need ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or -.");
+    const sub = { id: p[0], taskId: p[1], context: p[2], minutes: number(p[3]), title: p[4], definition: p[5], completed: p[6], done };
+    if (!taskIds.has(sub.taskId) || !sub.title || !sub.context || sub.minutes > 1440 || sub.completed !== "-" && !validDay(sub.completed)) throw new Error("Invalid subtask parent, title, duration, or completed date.");
+    return sub;
+  }) : [];
+  unique(subtasks.map((sub) => sub.id), "subtask");
+  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, subtasks, start, end };
+}
+function taskSubtasks(board, taskId, date) {
+  const detail = entryFor(board, taskId, date)?.detail.toLowerCase() || "";
+  return board.subtasks.filter((sub) => sub.taskId === taskId && (sub.context === "-" || detail.includes(sub.context.toLowerCase())));
+}
+function focusQueue(board, timer) {
+  const group = parseGroupTimerId(timer.taskId);
+  const tasks = board.tasks.filter((task) => group ? group.kind === "page" ? task.page === group.value : task.color === group.value : task.id === timer.taskId);
+  return tasks.flatMap((task) => {
+    const subs = taskSubtasks(board, task.id, timer.date);
+    return subs.length ? subs.map((sub) => ({ id: sub.id, taskId: task.id, subtask: sub, title: sub.title, definition: sub.definition, minutes: sub.minutes, done: sub.done })) : [{ id: task.id, taskId: task.id, title: task.title, definition: task.definition, minutes: task.minutes, done: !!entryFor(board, task.id, timer.date)?.done }];
+  });
+}
+function dailyWins(board, date) {
+  return { tasks: board.entries.filter((entry) => entry.date === date && entry.done).length, subtasks: board.subtasks.filter((sub) => sub.done && sub.completed === date).length };
 }
 function validRepeat(value) {
   return value === "-" || value === "daily" || /^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);
@@ -279,6 +303,23 @@ function scheduleGroup(text, group, date) {
   }
   return next;
 }
+function saveSubtask(text, sub) {
+  let next = text;
+  const nl = text.includes("\r\n") ? "\r\n" : "\n";
+  if (!ranges(text.split(/\r?\n/)).has("Subtasks")) next += `${nl}## Subtasks${nl}${nl}<!-- - [ ] ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or - -->${nl}`;
+  const row = `- [${sub.done ? "x" : " "}] ${[sub.id, sub.taskId, sub.context, String(sub.minutes), sub.title, sub.definition, sub.completed].map(cell).join(" | ")}`;
+  next = lineEdit(next, "Subtasks", (line) => {
+    const m = line.match(/^\s*- \[[ xX]\]\s*(.*)$/);
+    return !!m && splitCells(m[1])[0] === sub.id;
+  }, () => row, row);
+  parseBoard(next);
+  return next;
+}
+function setSubtaskDone(text, id, done, date) {
+  const sub = parseBoard(text).subtasks.find((sub2) => sub2.id === id);
+  if (!sub || !validDay(date)) throw new Error("Subtask changed or date is invalid.");
+  return saveSubtask(text, { ...sub, done, completed: done ? date : "-" });
+}
 function addWorkoutLog(text, log) {
   const board = parseBoard(text);
   if (!validDay(log.date) || log.taskId !== "workout" && log.taskId !== "treadmill" || !Number.isFinite(log.minutes) || log.minutes < 0 || !Number.isFinite(log.distance) || log.distance < 0) throw new Error("Workout log needs a valid date, Workout or Treadmill, and nonnegative duration and distance.");
@@ -316,41 +357,60 @@ function timerSeconds(timer, now = Date.now()) {
   return Math.floor(timer.elapsed + (timer.started === "-" ? 0 : Math.max(0, now - Date.parse(timer.started)) / 1e3));
 }
 function writeTimer(text, timer) {
+  parseBoard(text);
   const lines = text.split(/\r?\n/);
   const timerRange = ranges(lines).get("Timer");
-  if (!timerRange) throw new Error("Missing ## Timer section. Open the Markdown format guide.");
-  if (lines[timerRange.start].replace(/\s/g, "") === LEGACY_TIMER_HEADER.replace(/\s/g, "")) lines[timerRange.start] = TIMER_HEADER;
-  const source = lines.join(text.includes("\r\n") ? "\r\n" : "\n");
-  const board = parseBoard(source);
-  const existing = board.timer;
-  const row = timer ? `| ${[timer.id, timer.taskId, timer.date, timer.started, String(timer.elapsed), String(timer.target), String(timer.cursor)].map(cell).join(" | ")} |` : "";
-  const next = lineEdit(source, "Timer", (line) => !!existing && line.trim().startsWith("|") && splitCells(line)[0] === existing.id, () => row, row);
+  const indices = [];
+  let fenced = false;
+  for (let i = timerRange.start; i < timerRange.end; i++) {
+    if (/^\s*(`{3,}|~{3,})/.test(lines[i])) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced && lines[i].trim().startsWith("|")) indices.push(i);
+  }
+  const row = timer ? `| ${[timer.id, timer.taskId, timer.date, timer.started, String(timer.elapsed), String(timer.target), String(timer.cursor), String(timer.stepOffset)].map(cell).join(" | ")} |` : "";
+  for (let i = indices.length - 1; i >= 0; i--) lines.splice(indices[i], 1);
+  const rows = [TIMER_HEADER, "| --- | --- | --- | --- | --- | --- | --- | --- |"];
+  if (row) rows.push(row);
+  lines.splice(indices[0], 0, ...rows);
+  const next = lines.join(text.includes("\r\n") ? "\r\n" : "\n");
   parseBoard(next);
   return next;
 }
 function startTimer(text, taskId, date, now = Date.now()) {
   const board = parseBoard(text);
-  if (board.timer) throw new Error("A timer is already active. Save it before starting another.");
+  if (board.timer) throw new Error("A timer is already active. Open its focus screen to resume or save it.");
   const task = board.tasks.find((t) => t.id === taskId);
-  if (!task) throw new Error("Task not found.");
-  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60, cursor: 0 });
+  if (!task || !validDay(date)) throw new Error("Task or date not found.");
+  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60, cursor: 0, stepOffset: 0 });
 }
 function startGroupTimer(text, group, date, now = Date.now()) {
   const board = parseBoard(text);
-  if (board.timer) throw new Error("A timer is already active. Save it before starting another.");
+  if (board.timer) throw new Error("A timer is already active. Open its focus screen to resume or save it.");
   if (!validDay(date) || !group.value.trim()) throw new Error("A group timer needs a valid date and group.");
   const tasks = board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
   if (!tasks.length) throw new Error("This focus group has no tasks.");
   if (tasks.some((task) => !entryFor(board, task.id, date))) throw new Error("Schedule every task in this group before starting routine focus.");
-  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId: groupTimerId(group), date, started: new Date(now).toISOString(), elapsed: 0, target: 0, cursor: 0 });
+  return writeTimer(text, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId: groupTimerId(group), date, started: new Date(now).toISOString(), elapsed: 0, target: 0, cursor: 0, stepOffset: 0 });
 }
-function moveGroupTimer(text, id, delta) {
+function moveGroupTimer(text, id, delta, now = Date.now()) {
   const board = parseBoard(text);
   const timer = board.timer;
-  const group = timer && parseGroupTimerId(timer.taskId);
-  if (!timer || timer.id !== id || !group) throw new Error("Routine timer changed. Refresh and try again.");
-  const length = board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value).length;
-  return writeTimer(text, { ...timer, cursor: Math.max(0, Math.min(length - 1, timer.cursor + delta)) });
+  if (!timer || timer.id !== id) throw new Error("Routine timer changed. Refresh and try again.");
+  const length = focusQueue(board, timer).length;
+  if (!length) throw new Error("This queue is empty. Save this session and choose another task.");
+  return writeTimer(text, { ...timer, cursor: Math.max(0, Math.min(length - 1, timer.cursor + delta)), stepOffset: timerSeconds(timer, now) });
+}
+function completeFocusStep(text, id, cursor, now = Date.now()) {
+  const board = parseBoard(text);
+  const timer = board.timer;
+  if (!timer || timer.id !== id || timer.cursor !== cursor) throw new Error("Focus step changed. Refresh and try again.");
+  const queue = focusQueue(board, timer);
+  const step = queue[cursor];
+  if (!step) throw new Error("Focus queue changed.");
+  const next = step.subtask ? setSubtaskDone(text, step.subtask.id, true, timer.date) : setEntry(text, timer.date, step.taskId, true);
+  return cursor < queue.length - 1 ? moveGroupTimer(next, id, 1, now) : next;
 }
 function pauseTimer(text, id, now = Date.now()) {
   const timer = parseBoard(text).timer;
@@ -365,7 +425,7 @@ function resumeTimer(text, id, now = Date.now()) {
 function refreshTimer(text, id, now = Date.now()) {
   const timer = parseBoard(text).timer;
   if (!timer || timer.id !== id) throw new Error("Timer changed. Refresh and try again.");
-  return writeTimer(text, { ...timer, elapsed: 0, started: new Date(now).toISOString() });
+  return writeTimer(text, { ...timer, elapsed: 0, stepOffset: 0, started: new Date(now).toISOString() });
 }
 function finishTimer(text, id, note, now = Date.now()) {
   const board = parseBoard(text);
@@ -435,7 +495,7 @@ ${SESSION_HEADER}
 ## Timer
 
 ${TIMER_HEADER}
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
 ## Workout Log
 
@@ -457,6 +517,74 @@ Your free-form planning, links, and reflections go here. These notes are preserv
 `;
 }
 
+// src/roadmaps.ts
+var plans = {
+  "audio-portfolio": [
+    ["Choose the portfolio audience and destination", 10, "Record the current URL/platform, audience, and the one update to ship."],
+    ["Inventory current examples", 15, "List available clips and mark which may be shared publicly."],
+    ["Choose a small set of examples", 15, "Select examples and write one sentence about your role in each."],
+    ["Prepare the selected media", 25, "Save shareable edits with clear filenames and role descriptions."],
+    ["Update the portfolio page", 25, "Place the selected examples, descriptions, and contact link on the chosen platform."],
+    ["Check playback and phone layout", 15, "Open every selected example and test the public-facing page on a phone."],
+    ["Publish and save the final link", 10, "Verify the published link and record what shipped."]
+  ],
+  "clean-room": [
+    ["Choose the first blocked zone", 5, "Name the bed, floor path, desk, or clothing area to reclaim; record the baseline."],
+    ["Clothes: first high-volume category", 20, "Sort Keep / Outgoing / Trash and bag outgoing items immediately."],
+    ["Clothes: remaining categories", 20, "Triage another category and record what remains; repeat this step if needed."],
+    ["Shoes: keep within actual storage capacity", 15, "Gather pairs, select keepers that fit, and bag outgoing usable pairs."],
+    ["Remove outgoing items", 15, "Arrange a real donation/removal route and get the outgoing items out of the home."],
+    ["Restore bed, floor paths, and work surface", 20, "Return retained items to practical homes and reclaim normal room functions."],
+    ["Test whether the keepers fit", 10, "Put clothes/shoes away; reduce again if storage overflows and record remaining work."]
+  ],
+  "lyrics": [
+    ["Choose the song and capture a listening bounce", 10, "Save a bounce and name the lyric section to work on."],
+    ["Write one concrete lyric pass", 20, "Save a verse/chorus revision with a clear throughline."],
+    ["Test the words against the melody", 15, "Sing a rough pass and note specific prosody fixes."],
+    ["Record and save a guide vocal", 20, "Save the take and a named decision for the next session."]
+  ],
+  "write-code": [
+    ["Choose one project and one change", 5, "Write a named bug, exercise, or feature with a small definition of done."],
+    ["Make the smallest useful change", 25, "Save a working implementation or exercise output."],
+    ["Verify and save the result", 10, "Run a relevant check and save the commit/file plus the next action."]
+  ],
+  "japanese": [
+    ["Choose a resource and lesson", 5, "Name the book/app/lesson and the exercise to finish."],
+    ["Complete the chosen exercise", 15, "Save answers or notes for one defined exercise."],
+    ["Recall a few examples", 5, "Record what you can recall and the next lesson."]
+  ],
+  "model": [["Clarify what Model means and select an output", 5, "Record the actual practice, resource, and smallest saved result before expanding the roadmap."]],
+  "hard-task-tax": [
+    ["Identify exactly what 2020 Tax requires", 10, "Record the obligation, known status, missing facts, and any deadline to verify."],
+    ["Gather relevant documents", 15, "Make a document checklist and collect what is available."],
+    ["Identify the next qualified contact or filing step", 10, "Record who to contact or the verified next action and any blocking question."],
+    ["Complete one administrative next action", 20, "Save evidence of the action or record the blocker; this alone does not mean taxes are resolved."]
+  ],
+  "hard-task-letters": [
+    ["Identify the letters and each recipient", 5, "Record the purpose and recipient separately for each letter."],
+    ["Draft the chosen letter", 20, "Save a recipient-specific draft in your own voice."],
+    ["Review facts and boundaries", 10, "Verify concrete claims, recipient, and intended request; note unresolved questions."],
+    ["Record the delivery decision", 5, "Choose whether/when to send; drafting does not imply sending."]
+  ]
+};
+function addRoadmap(text, taskId, context = "-") {
+  const board = parseBoard(text);
+  const task = board.tasks.find((task2) => task2.id === taskId);
+  if (!task) throw new Error("Task no longer exists.");
+  const lower = context.toLowerCase();
+  const key = taskId === "hard-task" ? lower.includes("tax") ? "hard-task-tax" : lower.includes("letter") ? "hard-task-letters" : "hard-task" : taskId;
+  const steps = plans[key] || [["Define the next visible result", 5, "Write the smallest observable result and any decision needed."], ["Do one bounded work block", 20, "Save a file, decision, cleared zone, or other visible result."], ["Record the next action", 5, "Write what changed and the next action or blocker."]];
+  const scope = key === "hard-task-tax" ? "2020 Tax" : key === "hard-task-letters" ? "Letters" : taskId === "hard-task" ? context : "-";
+  let next = text;
+  for (const [index, [title, minutes, definition]] of steps.entries()) {
+    const id = `roadmap-${key}-${index + 1}`;
+    if (board.subtasks.some((sub2) => sub2.id === id)) continue;
+    const sub = { id, taskId, context: scope, minutes, title, definition: `PROPOSED: ${definition} Suggested focus time; edit to fit.`, done: false, completed: "-" };
+    next = saveSubtask(next, sub);
+  }
+  return next;
+}
+
 // src/surface.ts
 var Surface = class {
   constructor(root, host, options = {}) {
@@ -472,6 +600,7 @@ var Surface = class {
     this.pending = false;
     this.focusMode = false;
     this.activitySurface = null;
+    this.roadmapSurface = null;
     this.cuedTimerId = "";
     this.audioContext = null;
     this.timerDisplay = null;
@@ -552,6 +681,10 @@ var Surface = class {
       this.tick();
       return;
     }
+    if (this.roadmapSurface) {
+      this.renderRoadmap(this.roadmapSurface);
+      return;
+    }
     if (this.activitySurface) {
       this.renderActivitySurface(this.activitySurface);
       return;
@@ -597,12 +730,7 @@ var Surface = class {
       this.render();
     }, "cs-link");
     const meditation = b.tasks.find((t) => t.id === "mindfulness");
-    if (meditation) this.button(controls, meditation.minutes ? `Meditate \xB7 ${meditation.minutes}m` : "Meditate", async () => {
-      this.prepareFocusCues();
-      await this.host.start(meditation, this.day);
-      this.focusMode = true;
-      this.render();
-    }, "cs-link cs-meditate", "Start meditation mode");
+    if (meditation) this.button(controls, meditation.minutes ? `Meditate \xB7 ${meditation.minutes}m` : "Meditate", () => this.beginFocus(() => this.host.start(meditation, this.day)), "cs-link cs-meditate", "Start meditation mode");
     this.el("p", this.root, "cs-muted cs-sprint", `Sprint ${b.start} \u2192 ${b.end}`);
     if (b.timer) this.renderTimer();
     if (this.tab === "Today") this.renderToday();
@@ -610,6 +738,10 @@ var Surface = class {
     else if (this.tab === "Pages") this.renderPages();
     else if (this.tab === "Goals") this.renderGoals();
     else this.renderHistory();
+    const mobileTools = this.el("footer", this.root, "cs-mobile-tools");
+    this.button(mobileTools, "Markdown \u2197", () => this.host.openNote(), "cs-link");
+    this.button(mobileTools, "Settings", () => this.host.settings(), "cs-link");
+    if (this.host.openDaily) this.button(mobileTools, "Daily note \u2197", () => this.host.openDaily(), "cs-link");
     this.tick();
   }
   pages() {
@@ -621,13 +753,19 @@ var Surface = class {
   groupIsScheduled(group) {
     return this.groupTasks(group).every((task) => !!entryFor(this.board, task.id, this.day));
   }
-  groupAction(parent, group, label) {
-    if (this.groupIsScheduled(group)) this.button(parent, `Focus ${label}`, async () => {
-      this.prepareFocusCues();
-      await this.host.startGroup(group, this.day);
+  async beginFocus(start) {
+    this.prepareFocusCues();
+    if (this.board?.timer) {
       this.focusMode = true;
-      this.render();
-    }, "cs-group-focus");
+      await this.refresh();
+      return;
+    }
+    await start();
+    this.focusMode = true;
+    await this.refresh();
+  }
+  groupAction(parent, group, label) {
+    if (this.groupIsScheduled(group)) this.button(parent, `Focus ${label}`, () => this.beginFocus(() => this.host.startGroup(group, this.day)), "cs-group-focus");
     else this.button(parent, `Schedule ${label}`, () => this.host.scheduleGroup(group, this.day), "cs-group-focus");
   }
   pageFilter(parent) {
@@ -655,6 +793,8 @@ var Surface = class {
     const hero = this.el("section", this.root, "cs-summary");
     this.el("p", hero, "cs-eyebrow", (/* @__PURE__ */ new Date(`${this.day}T12:00:00`)).toLocaleDateString(void 0, { weekday: "long", month: "short", day: "numeric" }));
     this.el("h2", hero, "", tasks.length ? `${done} of ${tasks.length} planned tasks complete` : "Start with one clear action.");
+    const wins = dailyWins(b, this.day);
+    this.el("p", hero, "cs-wins", `${wins.tasks} task${wins.tasks === 1 ? "" : "s"} done \xB7 ${wins.subtasks} subtask${wins.subtasks === 1 ? "" : "s"} done${wins.tasks + wins.subtasks ? " \xB7 Nice work." : ""}`).setAttribute("aria-live", "polite");
     const progress = this.el("progress", hero);
     progress.max = tasks.length || 1;
     progress.value = done;
@@ -666,7 +806,7 @@ var Surface = class {
       if (!groupTasks.length) continue;
       const group = this.el("section", this.root, "cs-group");
       this.el("h3", group, "cs-group-title", color.name);
-      this.groupAction(group, { kind: "color", value: color.id }, `${color.name} group`);
+      this.groupAction(group, { kind: "color", value: color.id }, "group");
       for (const task of groupTasks) this.taskCard(task, group, true);
     }
     if (available.length) {
@@ -678,7 +818,7 @@ var Surface = class {
         if (!groupTasks.length) continue;
         const group = this.el("section", availableSection, "cs-group");
         this.el("h3", group, "cs-group-title", color.name);
-        this.groupAction(group, { kind: "color", value: color.id }, `${color.name} group`);
+        if (!tasks.some((task) => task.color === color.id)) this.groupAction(group, { kind: "color", value: color.id }, "group");
         for (const task of groupTasks) this.taskCard(task, group, false);
       }
     }
@@ -722,15 +862,15 @@ var Surface = class {
     const increments = this.quickIncrements(task);
     if (increments.length) {
       const total = this.board.quickCounts.filter((count) => count.date === this.day && count.taskId === task.id && count.unit === increments[0].unit).reduce((sum, count) => sum + count.amount, 0);
-      if (total) this.el(actions, "span", "cs-quick-total", `Today: ${total} ${increments[0].unit}`);
+      if (total) this.el("span", actions, "cs-quick-total", `Today: ${total} ${increments[0].unit}`);
       for (const increment of increments) this.button(actions, `+${increment.amount} ${increment.unit}`, () => this.host.quickCount({ date: this.day, taskId: task.id, amount: increment.amount, unit: increment.unit }), "cs-small cs-quick", `Add ${increment.amount} ${increment.unit} for ${task.title}`);
     }
-    this.button(actions, task.minutes ? `Start focus \xB7 ${task.minutes}m` : "Start focus", async () => {
-      this.prepareFocusCues();
-      await this.host.start(task, this.day);
-      this.focusMode = true;
+    const subs = taskSubtasks(b, task.id, this.day);
+    if (subs.length || ["project", "obligation"].includes(task.kind)) this.button(actions, subs.length ? `Steps ${subs.filter((sub) => sub.done).length}/${subs.length}` : "Roadmap", () => {
+      this.roadmapSurface = task.id;
       this.render();
-    }, "cs-small cs-start-focus", `Start focus for ${task.title}`);
+    }, "cs-small");
+    this.button(actions, subs.length ? "Focus steps" : task.minutes ? `Start focus \xB7 ${task.minutes}m` : "Start focus", () => this.beginFocus(() => this.host.start(task, this.day)), "cs-small cs-start-focus", `Start focus for ${task.title}`);
     this.button(actions, "Edit", () => this.host.editTask(task), "cs-small");
   }
   renderPages() {
@@ -839,6 +979,10 @@ var Surface = class {
     }
   }
   renderTimer() {
+    this.button(this.root, "Open active focus", () => {
+      this.focusMode = true;
+      this.render();
+    }, "cs-primary cs-open-focus");
     const timer = this.board.timer;
     const task = this.board.tasks.find((t) => t.id === timer.taskId);
     const group = parseGroupTimerId(timer.taskId);
@@ -861,40 +1005,51 @@ var Surface = class {
     this.el("p", box, "cs-muted", "Refresh restarts at zero without saving a session. Save the actual result before starting another task.");
   }
   renderFocusMode() {
-    const timer = this.board.timer;
+    const board = this.board;
+    const timer = board.timer;
     const group = parseGroupTimerId(timer.taskId);
-    if (group) {
-      this.renderGroupFocusMode(timer, group);
-      return;
-    }
-    const task = this.board.tasks.find((t) => t.id === timer.taskId);
-    const entry = entryFor(this.board, task.id, timer.date);
-    const meditation = task.id === "mindfulness";
+    const queue = focusQueue(board, timer);
+    const cursor = Math.min(timer.cursor, Math.max(0, queue.length - 1));
+    const step = queue[cursor];
+    const task = board.tasks.find((task2) => task2.id === step?.taskId);
+    const meditation = task?.id === "mindfulness";
     const top = this.el("header", this.root, "cs-focus-header");
-    this.el("p", top, "cs-eyebrow", timer.started === "-" ? meditation ? "MEDITATION PAUSED" : "FOCUS PAUSED" : meditation ? "MEDITATION" : "FOCUS NOW");
+    this.el("p", top, "cs-eyebrow", timer.started === "-" ? "FOCUS PAUSED" : meditation ? "MEDITATION" : "FOCUS NOW");
     this.button(top, "Back to plan", () => {
       this.focusMode = false;
       this.render();
     }, "cs-link");
     const card = this.el("main", this.root, "cs-focus-card");
-    this.taskColor(task, card);
-    this.el("p", card, "cs-eyebrow", task.page);
-    this.el("h1", card, "", task.title);
-    if (entry?.detail) this.el("p", card, "cs-focus-detail", entry.detail);
-    this.el("p", card, "cs-definition", task.definition);
-    const quote = this.reflectionFor(timer.id);
-    if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
+    if (task) this.taskColor(task, card);
+    this.el("p", card, "cs-eyebrow", `${group ? this.groupTitle(group) : task?.title || "Focus"}${queue.length > 1 ? ` \xB7 ${cursor + 1}/${queue.length}` : ""}`);
+    this.el("h1", card, "", step?.title || "Queue is empty");
+    this.el("p", card, "cs-definition", step?.definition || "Save this session and choose an available task.");
     this.timerDisplay = this.el("div", card, "cs-time");
     this.timerDisplay.setAttribute("role", "timer");
-    this.timerDisplay.setAttribute("aria-label", "Elapsed focus time");
+    this.timerDisplay.setAttribute("aria-label", step?.minutes ? "Remaining step time" : "Elapsed step time");
+    if (step) {
+      this.button(card, step.done ? "Step complete \u2713" : "Done & next", async () => {
+        if (step.done && cursor < queue.length - 1) await this.host.moveGroup(timer.id, 1);
+        else if (!step.done) await this.host.change((text) => completeFocusStep(text, timer.id, timer.cursor));
+      }, step.done ? "cs-small" : "cs-primary");
+    }
     const actions = this.el("div", card, "cs-actions");
-    this.button(actions, timer.started === "-" ? meditation ? "Resume meditation" : "Resume focus" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
+    if (cursor > 0) this.button(actions, "Back", () => this.host.moveGroup(timer.id, -1), "cs-small");
+    if (cursor < queue.length - 1) this.button(actions, "Skip / next", () => this.host.moveGroup(timer.id, 1), "cs-small");
+    this.button(actions, timer.started === "-" ? "Resume" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
     this.button(actions, "Refresh timer", async () => {
       await this.host.refresh(timer.id);
       this.prepareFocusCues();
     }, "cs-small");
     this.button(actions, meditation ? "End & log" : "Stop & log", () => this.host.finish(timer.id), "cs-primary");
-    this.el("p", card, "cs-muted", meditation ? "Keep it simple: breathe, notice, return. Refresh restarts at zero without saving a session. At the target, Color Sprint tries a chime, vibration, and permitted notification while Obsidian stays open." : "Refresh restarts at zero without saving a session. At the target, Color Sprint tries a chime, vibration, and permitted notification while Obsidian stays open. Stopping asks what actually happened; it does not auto-complete the task.");
+    if (queue.length > 1) {
+      const next = this.el("details", card, "cs-routine-queue");
+      this.el("summary", next, "", `Up next \xB7 ${Math.max(0, queue.length - cursor - 1)} steps`);
+      for (const upcoming of queue.slice(cursor + 1)) this.el("p", next, "cs-muted", `${upcoming.done ? "\u2713 " : ""}${upcoming.title}${upcoming.minutes ? ` \xB7 ${upcoming.minutes}m` : ""}`);
+    }
+    const quote = this.reflectionFor(`${timer.id}-${cursor}`);
+    if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
+    this.el("p", card, "cs-muted", meditation ? "Breathe, notice, return." : "Tap Done for real work; Skip moves the cue. Parent tasks stay open until you mark them complete.");
   }
   groupTitle(group) {
     return group.kind === "page" ? `${group.value} routine` : `${COLORS.find((color) => color.id === group.value)?.name || group.value} group`;
@@ -903,47 +1058,43 @@ var Surface = class {
     const task = group.kind === "color" ? this.board.tasks.find((item) => item.color === group.value) : this.board.tasks.find((item) => item.page === group.value);
     if (task) this.taskColor(task, element);
   }
-  renderGroupFocusMode(timer, group) {
-    const tasks = this.board.tasks.filter((task) => group.kind === "page" ? task.page === group.value : task.color === group.value);
-    const cursor = Math.min(timer.cursor, tasks.length - 1);
-    const current = tasks[cursor];
+  renderRoadmap(id) {
+    const board = this.board;
+    const task = board.tasks.find((task2) => task2.id === id);
+    if (!task) {
+      this.roadmapSurface = null;
+      this.render();
+      return;
+    }
     const top = this.el("header", this.root, "cs-focus-header");
-    this.el("p", top, "cs-eyebrow", timer.started === "-" ? "ROUTINE PAUSED" : "ROUTINE FOCUS");
+    this.el("p", top, "cs-eyebrow", "ROADMAP");
     this.button(top, "Back to plan", () => {
-      this.focusMode = false;
+      this.roadmapSurface = null;
       this.render();
     }, "cs-link");
-    const card = this.el("main", this.root, "cs-focus-card");
-    this.groupColor(group, card);
-    this.el("p", card, "cs-eyebrow", `${this.groupTitle(group)} \xB7 Step ${cursor + 1} of ${tasks.length}`);
-    this.el("h1", card, "", current.title);
-    const entry = entryFor(this.board, current.id, timer.date);
-    if (entry?.detail) this.el("p", card, "cs-focus-detail", entry.detail);
-    this.el("p", card, "cs-definition", current.definition);
-    const quote = this.reflectionFor(`${timer.id}-${cursor}`);
-    if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
-    this.timerDisplay = this.el("div", card, "cs-time");
-    this.timerDisplay.setAttribute("role", "timer");
-    this.timerDisplay.setAttribute("aria-label", "Elapsed routine time");
-    const complete = this.button(card, entry?.done ? "Completed \u2014 reopen if needed" : "Mark this step done", async () => {
-      await this.host.check(current, timer.date, !entry?.done);
-      if (!entry?.done && cursor < tasks.length - 1) await this.host.moveGroup(timer.id, 1);
-    }, entry?.done ? "cs-small" : "cs-primary");
-    complete.setAttribute("aria-pressed", String(!!entry?.done));
-    const queue = this.el("div", card, "cs-routine-queue");
-    this.el("p", queue, "cs-eyebrow", "UP NEXT");
-    for (const [index, task] of tasks.entries()) if (index > cursor) this.el("p", queue, "cs-muted", `${index + 1}. ${task.title}`);
-    if (cursor === tasks.length - 1) this.el("p", queue, "cs-muted", "Final step. End and log when the routine is actually over.");
+    const card = this.el("section", this.root, "cs-activity-card");
+    this.taskColor(task, card);
+    this.el("h2", card, "", task.title);
+    const subs = taskSubtasks(board, id, this.day);
+    const detail = entryFor(board, id, this.day)?.detail || "-";
+    this.el("p", card, "cs-muted", "Suggested steps and minutes are editable. Completing steps does not automatically finish the parent task.");
+    if (!subs.length) this.button(card, "Generate proposed roadmap", () => this.host.change((text) => addRoadmap(text, id, detail)), "cs-primary");
+    for (const sub of subs) {
+      const row = this.el("article", card, "cs-subtask");
+      const label = this.el("label", row, "cs-group-step");
+      const check = this.el("input", label);
+      check.type = "checkbox";
+      check.checked = sub.done;
+      check.setAttribute("aria-label", `Complete subtask ${sub.title}`);
+      check.addEventListener("change", () => void this.run(() => this.host.change((text) => setSubtaskDone(text, sub.id, check.checked, this.day))));
+      this.el("span", label, "", sub.title);
+      this.el("small", label, "", sub.minutes ? `${sub.minutes}m` : "Open");
+      this.el("p", row, "cs-definition", sub.definition);
+      this.button(row, "Edit step", () => this.host.editSubtask(task, sub), "cs-small");
+    }
     const actions = this.el("div", card, "cs-actions");
-    if (cursor > 0) this.button(actions, "Back", () => this.host.moveGroup(timer.id, -1), "cs-small");
-    if (cursor < tasks.length - 1) this.button(actions, "Next step", () => this.host.moveGroup(timer.id, 1), "cs-small");
-    this.button(actions, timer.started === "-" ? "Resume routine" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
-    this.button(actions, "Refresh timer", async () => {
-      await this.host.refresh(timer.id);
-      this.prepareFocusCues();
-    }, "cs-small");
-    this.button(actions, "End routine & log", () => this.host.finish(timer.id), "cs-primary");
-    this.el("p", card, "cs-muted", "Next changes the cue, not your completion record. Checking this step advances the queue only after your tap.");
+    this.button(actions, "+ Add step", () => this.host.editSubtask(task), "cs-small");
+    if (subs.length) this.button(actions, "Focus steps", () => this.beginFocus(() => this.host.start(task, this.day)), "cs-primary");
   }
   activityField(parent, label, type, placeholder) {
     const wrap = this.el("label", parent, "cs-activity-field");
@@ -1007,13 +1158,17 @@ var Surface = class {
     try {
       if (Audio) {
         const context = this.audioContext || (this.audioContext = new Audio());
-        void context.resume();
+        void Promise.resolve(context.resume()).catch(() => {
+        });
       }
     } catch {
     }
     const NotificationApi = win?.Notification;
-    if (NotificationApi?.permission === "default") void NotificationApi.requestPermission().catch(() => {
-    });
+    try {
+      if (NotificationApi?.permission === "default" && typeof NotificationApi.requestPermission === "function") void Promise.resolve(NotificationApi.requestPermission()).catch(() => {
+      });
+    } catch {
+    }
   }
   cue(timerId, title) {
     if (this.cuedTimerId === timerId) return;
@@ -1054,18 +1209,17 @@ var Surface = class {
     const timer = this.board?.timer;
     if (!timer || !this.timerDisplay) return;
     const elapsed = timerSeconds(timer);
-    const target = timer.target;
-    if (target > 0 && elapsed >= target) {
-      const task = this.board.tasks.find((t) => t.id === timer.taskId);
-      const group = parseGroupTimerId(timer.taskId);
-      this.cue(timer.id, task?.title || (group ? this.groupTitle(group) : "Focus session"));
-    }
-    this.timerDisplay.textContent = duration(elapsed);
-    this.timerDisplay.setAttribute("data-target-reached", String(target > 0 && elapsed >= target));
+    const queue = focusQueue(this.board, timer);
+    const step = queue[Math.min(timer.cursor, Math.max(0, queue.length - 1))];
+    const target = step ? step.minutes * 60 : timer.target;
+    const stepElapsed = Math.max(0, elapsed - timer.stepOffset);
+    if (target > 0 && stepElapsed >= target) this.cue(`${timer.id}:${timer.cursor}:${timer.stepOffset}`, step?.title || "Focus session");
+    this.timerDisplay.textContent = this.focusMode && target > 0 ? duration(Math.max(0, target - stepElapsed)) : duration(elapsed);
+    this.timerDisplay.setAttribute("data-target-reached", String(target > 0 && stepElapsed >= target));
     const parent = this.timerDisplay.parentElement;
     let label = parent.querySelector(".cs-timer-target");
     if (!label) label = this.el("p", parent, "cs-timer-target");
-    label.textContent = target ? elapsed >= target ? "Target reached \u2014 stop and log when ready." : `${duration(Math.max(0, target - elapsed))} to your focus target` : "Open stopwatch";
+    label.textContent = target ? stepElapsed >= target ? `Time reached \xB7 ${duration(elapsed)} total focus` : `${duration(Math.max(0, target - stepElapsed))} remaining \xB7 ${duration(elapsed)} total focus` : `${duration(elapsed)} total focus \xB7 open stopwatch`;
   }
 };
 
@@ -1265,6 +1419,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       read: () => this.read(path),
       change,
       editTask: (task) => new TaskModal(this.app, this, task, path).open(),
+      editSubtask: (task, sub) => new SubtaskModal(this.app, this, task, sub, path).open(),
       editGoal: (goal) => new GoalModal(this.app, this, goal, path).open(),
       editEntry: (task, day) => {
         void this.read(path).then((text) => new EntryModal(this.app, this, task, day, text, path).open()).catch((e) => this.error(e));
@@ -1560,6 +1715,22 @@ var GoalModal = class extends FormModal {
       if (!goal.title || !goal.page) throw new Error("Goal and page are required.");
       if (goal.done && !goal.evidence) throw new Error("Record the evidence before marking this goal done.");
       return setGoal(text, goal);
+    }, path));
+  }
+};
+var SubtaskModal = class extends FormModal {
+  constructor(app, plugin, task, original, path = plugin.settings.path) {
+    super(app, original ? "Edit roadmap step" : "Add roadmap step");
+    const sub = original ? { ...original } : { id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, taskId: task.id, context: "-", minutes: 10, title: "", definition: "", done: false, completed: "-" };
+    this.field("Step", "A concrete next action.", sub.title, (v) => sub.title = v.trim());
+    this.field("Suggested minutes", "0 runs an open stopwatch.", String(sub.minutes), (v) => sub.minutes = Number(v), "number");
+    this.field("Context", "- for all days; or a schedule detail such as 2020 Tax or Letters.", sub.context, (v) => sub.context = v.trim() || "-");
+    this.text("Done means", "What visible result finishes this step?", sub.definition, (v) => sub.definition = v.trim());
+    this.save(() => plugin.change((text) => {
+      const current = parseBoard(text).subtasks.find((item) => item.id === sub.id);
+      if (original && JSON.stringify(current) !== JSON.stringify(original)) throw new Error("This step changed in Markdown. Reopen it.");
+      if (!Number.isFinite(sub.minutes) || sub.minutes < 0 || sub.minutes > 1440) throw new Error("Use 0\u20131440 minutes.");
+      return saveSubtask(text, sub);
     }, path));
   }
 };

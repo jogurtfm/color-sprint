@@ -1,0 +1,23 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+process.env.COLOR_SPRINT_PREVIEW_PORT='8777';
+const {server}=await import('./preview.mjs');
+let browser;
+try {
+  console.log('Launching phone preview');
+  browser=await chromium.launch({headless:true,channel:'msedge',timeout:15000});
+  const context=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true});
+  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(()=>{Object.defineProperty(window,'Notification',{value:undefined,configurable:true});Object.defineProperty(window,'AudioContext',{value:undefined,configurable:true});});
+  await page.goto('http://127.0.0.1:8777/');await page.locator('.cs-card').first().waitFor();
+  const first=await page.locator('.cs-card').first().boundingBox();assert.ok(first.y<290,`First card too low: ${first.y}`);
+  await mkdir('docs',{recursive:true});await page.screenshot({path:'docs/mobile-preview.png'});
+  await page.evaluate(()=>{for(const [key,value] of Object.entries({'--background-primary':'#09090b','--background-secondary':'#1b1b1f','--background-modifier-border':'#34343a','--text-normal':'#eeedf3','--text-muted':'#aaa9b6','--interactive-accent':'#8a59ed','--text-on-accent':'#ffffff'}))document.documentElement.style.setProperty(key,value);});await page.screenshot({path:'docs/mobile-dark-preview.png'});
+  await page.getByLabel('Start meditation mode',{exact:true}).click();await page.locator('.cs-focus-card').waitFor();assert.equal(await page.locator('.cs-focus-card h1').innerText(),'Mindfulness');
+  await page.getByRole('button',{name:'Pause',exact:true}).click();await page.getByRole('button',{name:'Resume',exact:true}).click();await page.getByRole('button',{name:'Refresh timer',exact:true}).click();await page.screenshot({path:'docs/meditation-preview.png'});
+  await page.getByRole('button',{name:'End & log',exact:true}).click();await page.getByRole('button',{name:'Save',exact:true}).click();await page.locator('.cs-card').first().waitFor();
+  const portfolio=page.locator('.cs-card').filter({has:page.getByRole('heading',{name:'Revamped Audio Portfolio',exact:true})});await portfolio.getByRole('button',{name:'Roadmap',exact:true}).click();await page.getByRole('button',{name:'Generate proposed roadmap',exact:true}).click();await page.getByRole('button',{name:'Focus steps',exact:true}).click();await page.getByRole('button',{name:'Done & next',exact:true}).click();await page.getByRole('heading',{name:'Inventory current examples',exact:true}).waitFor();await page.screenshot({path:'docs/roadmap-focus-preview.png'});await page.getByRole('button',{name:'Back to plan',exact:true}).click();await page.getByRole('button',{name:'Back to plan',exact:true}).click();assert.match(await page.locator('.cs-wins').innerText(),/1 subtask done/);
+  await page.setViewportSize({width:320,height:740});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
+  console.log(`PASS: first card y=${Math.round(first.y)}px, meditation controls, roadmap queue, wins and 320px overflow`);
+} finally {if(browser)await browser.close();server.close();}

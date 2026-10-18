@@ -1,6 +1,6 @@
 import { Surface,Host } from '../src/surface';
 import { starter } from '../src/starter';
-import { parseBoard,setEntry,saveTask,setGoal,scheduleGroup,startTimer,startGroupTimer,moveGroupTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal } from '../src/model';
+import { parseBoard,setEntry,saveTask,saveSubtask,setGoal,scheduleGroup,startTimer,startGroupTimer,moveGroupTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal } from '../src/model';
 
 let md=localStorage.getItem('color-sprint-demo')||starter();
 if(!parseBoard(md).entries.length){const day=localDay();md=setEntry(md,day,'make-bed',false,'Clear the bed and straighten the bedding.');md=setEntry(md,day,'cook',false,'Chicken · prepare dinner and put away leftovers.');md=setEntry(md,day,'clean-room',false,'Baseline: note clothes, shoes, bed, and floor paths.');md=setGoal(md,{id:'room-fit',due:addDays(day,13),page:'Room',title:'Clothing and shoes fit their storage',evidence:'',done:false});}
@@ -9,6 +9,7 @@ function dialog(title:string,fields:Record<string,string>,save:(values:Record<st
 }
 async function change(fn:(s:string)=>string):Promise<void>{const next=fn(md);parseBoard(next);md=next;localStorage.setItem('color-sprint-demo',md);await surface.refresh();}
 const host:Host={read:async()=>md,change,
+  editSubtask:(task,sub)=>dialog('Roadmap step',{Step:sub?.title||'',Minutes:String(sub?.minutes??10),Context:sub?.context||'-','Done means':sub?.definition||''},v=>change(s=>saveSubtask(s,{id:sub?.id||`step-${Date.now()}`,taskId:task.id,title:v.Step,minutes:Number(v.Minutes),context:v.Context||'-',definition:v['Done means'],done:sub?.done||false,completed:sub?.completed||'-'}))),
   editTask:(t?:Task)=>dialog(t?'Edit task':'Add task',{Task:t?.title||'',Page:t?.page||'Morning',Color:t?.color||'pink',Repeat:t?.repeat||'-','Timer minutes':String(t?.minutes??10),'Done means':t?.definition||''},async v=>{await change(s=>saveTask(s,{id:t?.id||`task-${Date.now()}`,title:v.Task,page:v.Page,color:v.Color as Task['color'],repeat:v.Repeat,minutes:Number(v['Timer minutes']),definition:v['Done means'],kind:t?.kind||'habit'}));}),
   editGoal:(g?:Goal)=>dialog('Goal progress',{Goal:g?.title||'',Page:g?.page||'Room',Due:g?.due||'-',Evidence:g?.evidence||'',Status:g?.done?'done':'open'},v=>change(s=>setGoal(s,{id:g?.id||`goal-${Date.now()}`,title:v.Goal,page:v.Page,due:v.Due,evidence:v.Evidence,done:v.Status==='done'}))),
   editEntry:(t,day)=>dialog('Day details',{Detail:entryFor(parseBoard(md),t.id,day)?.detail||''},v=>change(s=>setEntry(s,day,t.id,entryFor(parseBoard(s),t.id,day)?.done||false,v.Detail))),

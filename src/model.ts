@@ -11,18 +11,21 @@ export interface Task {id:string; title:string; color:ColorId; page:string; kind
 export interface Entry {date:string; taskId:string; detail:string; done:boolean}
 export interface Goal {id:string; due:string; page:string; title:string; evidence:string; done:boolean}
 export interface Session {id:string; date:string; taskId:string; seconds:number; note:string}
-export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number; cursor:number}
+export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number; cursor:number; stepOffset:number}
+export interface Subtask {id:string; taskId:string; context:string; minutes:number; title:string; definition:string; done:boolean; completed:string}
+export interface FocusStep {id:string; taskId:string; subtask?:Subtask; title:string; definition:string; minutes:number; done:boolean}
 export interface WorkoutLog {id:string; date:string; taskId:'workout'|'treadmill'; minutes:number; distance:number; details:string; note:string}
 export interface QuickCount {id:string; date:string; taskId:string; amount:number; unit:string}
 export interface GroupRef {kind:'page'|'color'; value:string}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; start:string; end:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
-export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |';
+export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
+const QUEUE_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |';
 const LEGACY_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |';
 export const WORKOUT_LOG_HEADER='| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |';
 export const QUICK_COUNT_HEADER='| ID | Date | Task ID | Amount | Unit |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts'];
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -49,7 +52,7 @@ function table(lines:string[],range:Range,header:string):string[][]{
   const width=splitCells(header).length;return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
 }
 function timerTable(lines:string[],range:Range):string[][]{
-  const rows=dataLines(lines,range).filter(x=>x.trim().startsWith('|'));if(rows.length<2)throw new Error(`Expected table header: ${TIMER_HEADER}`);const header=rows[0].replace(/\s/g,'');const width=header===TIMER_HEADER.replace(/\s/g,'')?7:header===LEGACY_TIMER_HEADER.replace(/\s/g,'')?6:0;if(!width)throw new Error(`Expected table header: ${TIMER_HEADER}`);if(!splitCells(rows[1]).every(x=>/^:?-{3,}:?$/.test(x)))throw new Error('Table requires a Markdown separator row.');return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
+  const rows=dataLines(lines,range).filter(x=>x.trim().startsWith('|'));if(rows.length<2)throw new Error(`Expected table header: ${TIMER_HEADER}`);const header=rows[0].replace(/\s/g,'');const width=header===TIMER_HEADER.replace(/\s/g,'')?8:header===QUEUE_TIMER_HEADER.replace(/\s/g,'')?7:header===LEGACY_TIMER_HEADER.replace(/\s/g,'')?6:0;if(!width)throw new Error(`Expected table header: ${TIMER_HEADER}`);if(!splitCells(rows[1]).every(x=>/^:?-{3,}:?$/.test(x)))throw new Error('Table requires a Markdown separator row.');return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
 }
 function unique(ids:string[],kind:string):void {if(ids.some(x=>!/^[-a-z0-9]+$/.test(x)))throw new Error(`${kind} IDs must use lowercase letters, numbers, and hyphens.`);if(new Set(ids).size!==ids.length)throw new Error(`Duplicate ${kind} ID. Give every item its own stable ID.`);}
 function number(value:string):number {if(!/^\d+(\.\d+)?$/.test(value)||!Number.isFinite(Number(value)))throw new Error(`Invalid nonnegative number: ${value}`);return Number(value);}
@@ -63,15 +66,19 @@ export function parseBoard(text:string):Board {
   if(new Set(entries.map(x=>`${x.date}/${x.taskId}`)).size!==entries.length)throw new Error('Duplicate task/date in Schedule. Combine details or give separate tasks unique IDs.');
   const goals=checkboxRows(lines,rs.get('Goals')!).map(({done,parts:p})=>{if(p.length!==5)throw new Error('Goals rows need ID | Due date or - | Page | Goal | Evidence.');if(p[1]!=='-'&&!validDay(p[1]))throw new Error(`Invalid goal due date: ${p[1]}`);if(!p[2]||p[2]==='All'||!p[3])throw new Error('Goals need a title and page. All is a reserved page name.');return {id:p[0],due:p[1],page:p[2],title:p[3],evidence:p[4],done};});unique(goals.map(x=>x.id),'goal');
   const sessions=table(lines,rs.get('Sessions')!,SESSION_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],seconds:number(p[3]),note:p[4]}));unique(sessions.map(x=>x.id),'session');for(const session of sessions)if(!validDay(session.date))throw new Error('Invalid session date.');
-  const timers=timerTable(lines,rs.get('Timer')!).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5]),cursor:p.length===7?integer(p[6]):0}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
+  const timers=timerTable(lines,rs.get('Timer')!).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5]),cursor:p.length>=7?integer(p[6]):0,stepOffset:p.length===8?number(p[7]):0}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
   if(timer){unique([timer.id],'timer');if(!validDay(timer.date)|| (timer.started!=='-'&&!Number.isFinite(Date.parse(timer.started))))throw new Error('Invalid timer date or start timestamp.');}
   const workoutRange=rs.get('Workout Log');const workoutLogs=workoutRange?table(lines,workoutRange,WORKOUT_LOG_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2] as WorkoutLog['taskId'],minutes:number(p[3]),distance:number(p[4]),details:p[5],note:p[6]})):[];unique(workoutLogs.map(x=>x.id),'workout log');for(const log of workoutLogs)if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill'))throw new Error('Workout Log rows must use a valid date and Workout or Treadmill task ID.');
   const quickRange=rs.get('Quick Counts');const quickCounts=quickRange?table(lines,quickRange,QUICK_COUNT_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],amount:number(p[3]),unit:p[4]})):[];unique(quickCounts.map(x=>x.id),'quick count');for(const count of quickCounts)if(!validDay(count.date)||count.amount<=0||!count.unit)throw new Error('Quick Counts need a valid date, positive amount, and unit.');
   const taskIds=new Set(tasks.map(x=>x.id));const knownReference=(id:string)=>taskIds.has(id)||!!parseGroupTimerId(id);for(const item of [...entries,...sessions,...timers,...quickCounts])if(!knownReference(item.taskId))throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
   const reflectionRange=rs.get('Reflections');const reflections=reflectionRange?dataLines(lines,reflectionRange).map(line=>line.trim().replace(/^[-*]\s+|^>\s?/,'')).filter(line=>line&&!line.startsWith('<!--')):[];
   const match=text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);const start=match?.[1]||localDay();const end=match?.[2]||addDays(start,13);if(!validDay(start)||!validDay(end)||end<start)throw new Error('Invalid Sprint date range.');
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,start,end};
+  const subRange=rs.get('Subtasks');const subtasks=subRange?checkboxRows(lines,subRange).map(({done,parts:p})=>{if(p.length!==7)throw new Error('Subtask rows need ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or -.');const sub:Subtask={id:p[0],taskId:p[1],context:p[2],minutes:number(p[3]),title:p[4],definition:p[5],completed:p[6],done};if(!taskIds.has(sub.taskId)||!sub.title||!sub.context||sub.minutes>1440||(sub.completed!=='-'&&!validDay(sub.completed)))throw new Error('Invalid subtask parent, title, duration, or completed date.');return sub;}):[];unique(subtasks.map(sub=>sub.id),'subtask');
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,start,end};
 }
+export function taskSubtasks(board:Board,taskId:string,date:string):Subtask[]{const detail=entryFor(board,taskId,date)?.detail.toLowerCase()||'';return board.subtasks.filter(sub=>sub.taskId===taskId&&(sub.context==='-'||detail.includes(sub.context.toLowerCase())));}
+export function focusQueue(board:Board,timer:Timer):FocusStep[]{const group=parseGroupTimerId(timer.taskId);const tasks=board.tasks.filter(task=>group?(group.kind==='page'?task.page===group.value:task.color===group.value):task.id===timer.taskId);return tasks.flatMap(task=>{const subs=taskSubtasks(board,task.id,timer.date);return subs.length?subs.map(sub=>({id:sub.id,taskId:task.id,subtask:sub,title:sub.title,definition:sub.definition,minutes:sub.minutes,done:sub.done})):[{id:task.id,taskId:task.id,title:task.title,definition:task.definition,minutes:task.minutes,done:!!entryFor(board,task.id,timer.date)?.done}];});}
+export function dailyWins(board:Board,date:string):{tasks:number;subtasks:number}{return {tasks:board.entries.filter(entry=>entry.date===date&&entry.done).length,subtasks:board.subtasks.filter(sub=>sub.done&&sub.completed===date).length};}
 export function validRepeat(value:string):boolean {return value==='-'||value==='daily'||/^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);}
 export function scheduled(task:Task,day:string):boolean {return task.repeat==='daily'||task.repeat.split(',').includes(['sun','mon','tue','wed','thu','fri','sat'][new Date(`${day}T12:00:00`).getDay()]);}
 export function entryFor(board:Board,id:string,day:string):Entry|undefined{return board.entries.find(e=>e.taskId===id&&e.date===day);}
@@ -90,6 +97,12 @@ export function setEntry(text:string,date:string,id:string,done:boolean,detail?:
 export function scheduleGroup(text:string,group:GroupRef,date:string):string{
   let board=parseBoard(text);if(!validDay(date)||!group.value.trim())throw new Error('A schedule group needs a valid date and group.');const tasks=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value);if(!tasks.length)throw new Error('This schedule group has no tasks.');let next=text;for(const task of tasks){if(!entryFor(board,task.id,date)){next=setEntry(next,date,task.id,false);board=parseBoard(next);}}return next;
 }
+export function saveSubtask(text:string,sub:Subtask):string{
+  let next=text;const nl=text.includes('\r\n')?'\r\n':'\n';if(!ranges(text.split(/\r?\n/)).has('Subtasks'))next+=`${nl}## Subtasks${nl}${nl}<!-- - [ ] ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or - -->${nl}`;
+  const row=`- [${sub.done?'x':' '}] ${[sub.id,sub.taskId,sub.context,String(sub.minutes),sub.title,sub.definition,sub.completed].map(cell).join(' | ')}`;
+  next=lineEdit(next,'Subtasks',line=>{const m=line.match(/^\s*- \[[ xX]\]\s*(.*)$/);return !!m&&splitCells(m[1])[0]===sub.id;},()=>row,row);parseBoard(next);return next;
+}
+export function setSubtaskDone(text:string,id:string,done:boolean,date:string):string{const sub=parseBoard(text).subtasks.find(sub=>sub.id===id);if(!sub||!validDay(date))throw new Error('Subtask changed or date is invalid.');return saveSubtask(text,{...sub,done,completed:done?date:'-'});}
 export function addWorkoutLog(text:string,log:Omit<WorkoutLog,'id'> & {id?:string}):string{
   const board=parseBoard(text);if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill')||!Number.isFinite(log.minutes)||log.minutes<0||!Number.isFinite(log.distance)||log.distance<0)throw new Error('Workout log needs a valid date, Workout or Treadmill, and nonnegative duration and distance.');const id=log.id||`w-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;if(board.workoutLogs.some(item=>item.id===id))throw new Error('Workout log ID already exists.');const row=`| ${[id,log.date,log.taskId,String(log.minutes),String(log.distance),log.details,log.note].map(cell).join(' | ')} |`;return lineEdit(text,'Workout Log',()=>false,()=>row,row);
 }
@@ -106,19 +119,21 @@ export function setGoal(text:string,goal:Goal):string{
 }
 export function timerSeconds(timer:Timer,now=Date.now()):number{return Math.floor(timer.elapsed+(timer.started==='-'?0:Math.max(0,now-Date.parse(timer.started))/1000));}
 export function writeTimer(text:string,timer:Timer|null):string{
-  const lines=text.split(/\r?\n/);const timerRange=ranges(lines).get('Timer');if(!timerRange)throw new Error('Missing ## Timer section. Open the Markdown format guide.');if(lines[timerRange.start].replace(/\s/g,'')===LEGACY_TIMER_HEADER.replace(/\s/g,''))lines[timerRange.start]=TIMER_HEADER;const source=lines.join(text.includes('\r\n')?'\r\n':'\n');const board=parseBoard(source);const existing=board.timer;
-  const row=timer?`| ${[timer.id,timer.taskId,timer.date,timer.started,String(timer.elapsed),String(timer.target),String(timer.cursor)].map(cell).join(' | ')} |`:'';
-  const next=lineEdit(source,'Timer',line=>!!existing&&line.trim().startsWith('|')&&splitCells(line)[0]===existing.id,()=>row,row);parseBoard(next);return next;
+  parseBoard(text);const lines=text.split(/\r?\n/);const timerRange=ranges(lines).get('Timer')!;const indices:number[]=[];let fenced=false;for(let i=timerRange.start;i<timerRange.end;i++){if(/^\s*(`{3,}|~{3,})/.test(lines[i])){fenced=!fenced;continue;}if(!fenced&&lines[i].trim().startsWith('|'))indices.push(i);}
+  const row=timer?`| ${[timer.id,timer.taskId,timer.date,timer.started,String(timer.elapsed),String(timer.target),String(timer.cursor),String(timer.stepOffset)].map(cell).join(' | ')} |`:'';
+  // Replace the header, separator, and row together; leading blanks and old active rows are safe.
+  for(let i=indices.length-1;i>=0;i--)lines.splice(indices[i],1);const rows=[TIMER_HEADER,'| --- | --- | --- | --- | --- | --- | --- | --- |'];if(row)rows.push(row);lines.splice(indices[0],0,...rows);const next=lines.join(text.includes('\r\n')?'\r\n':'\n');parseBoard(next);return next;
 }
 export function startTimer(text:string,taskId:string,date:string,now=Date.now()):string{
-  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');const task=board.tasks.find(t=>t.id===taskId);if(!task)throw new Error('Task not found.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:task.minutes*60,cursor:0});
+  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Open its focus screen to resume or save it.');const task=board.tasks.find(t=>t.id===taskId);if(!task||!validDay(date))throw new Error('Task or date not found.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:task.minutes*60,cursor:0,stepOffset:0});
 }
 export function startGroupTimer(text:string,group:GroupRef,date:string,now=Date.now()):string{
-  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Save it before starting another.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const tasks=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value);if(!tasks.length)throw new Error('This focus group has no tasks.');if(tasks.some(task=>!entryFor(board,task.id,date)))throw new Error('Schedule every task in this group before starting routine focus.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0,cursor:0});
+  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Open its focus screen to resume or save it.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const tasks=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value);if(!tasks.length)throw new Error('This focus group has no tasks.');if(tasks.some(task=>!entryFor(board,task.id,date)))throw new Error('Schedule every task in this group before starting routine focus.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0,cursor:0,stepOffset:0});
 }
-export function moveGroupTimer(text:string,id:string,delta:number):string{
-  const board=parseBoard(text);const timer=board.timer;const group=timer&&parseGroupTimerId(timer.taskId);if(!timer||timer.id!==id||!group)throw new Error('Routine timer changed. Refresh and try again.');const length=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value).length;return writeTimer(text,{...timer,cursor:Math.max(0,Math.min(length-1,timer.cursor+delta))});
+export function moveGroupTimer(text:string,id:string,delta:number,now=Date.now()):string{
+  const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Routine timer changed. Refresh and try again.');const length=focusQueue(board,timer).length;if(!length)throw new Error('This queue is empty. Save this session and choose another task.');return writeTimer(text,{...timer,cursor:Math.max(0,Math.min(length-1,timer.cursor+delta)),stepOffset:timerSeconds(timer,now)});
 }
+export function completeFocusStep(text:string,id:string,cursor:number,now=Date.now()):string{const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id||timer.cursor!==cursor)throw new Error('Focus step changed. Refresh and try again.');const queue=focusQueue(board,timer);const step=queue[cursor];if(!step)throw new Error('Focus queue changed.');const next=step.subtask?setSubtaskDone(text,step.subtask.id,true,timer.date):setEntry(text,timer.date,step.taskId,true);return cursor<queue.length-1?moveGroupTimer(next,id,1,now):next;}
 export function pauseTimer(text:string,id:string,now=Date.now()):string{
   const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:timerSeconds(timer,now),started:'-'});
 }
@@ -126,7 +141,7 @@ export function resumeTimer(text:string,id:string,now=Date.now()):string{
   const timer=parseBoard(text).timer;if(!timer||timer.id!==id||timer.started!=='-')throw new Error('Timer changed or is already running.');return writeTimer(text,{...timer,started:new Date(now).toISOString()});
 }
 export function refreshTimer(text:string,id:string,now=Date.now()):string{
-  const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:0,started:new Date(now).toISOString()});
+  const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:0,stepOffset:0,started:new Date(now).toISOString()});
 }
 export function finishTimer(text:string,id:string,note:string,now=Date.now()):string{
   const board=parseBoard(text);if(board.sessions.some(s=>s.id===id))return text;const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. No session saved.');

@@ -37,6 +37,10 @@ The starter retains 22 task labels with every task initially **unscheduled**. Se
 
 ## Markdown is the source of truth
 
+Version 0.4.0 adds editable roadmaps, subtasks with suggested minutes, queued step countdowns with a cumulative focus total, and a daily tasks/subtasks completed display. Open **Roadmap** or **Steps** on a task, generate proposed steps, and edit them before use. Portfolio, room recovery, lyrics, code, Japanese, and context-specific admin tasks have starter roadmaps; an unknown task receives a small generic starting point. No roadmap auto-completes its parent or automatically fills the daily schedule.
+
+This release also fixes old Timer table upgrades and makes focus/meditation open reliably after a save. If a timer is already active, tap **Open active focus** to return to it. The phone layout has a smaller header, compact cards, and group actions alongside their color labels; Markdown and settings shortcuts remain at the foot of the list.
+
 See [FORMAT.md](FORMAT.md) for the complete schema and [examples/Color Sprint.md](examples/Color%20Sprint.md) for a generic example. The format uses standard headings, tables, and `- [ ]` checkboxes. Personal vault contents and daily notes are not published in this repository.
 
 The existing planning document stays useful context. A prose plan is not automatically imported: explicit task IDs, dates, and checkboxes in the tracker determine what appears. This avoids guessing completion, frequency, or workout programming from ordinary prose. A planning assistant can edit the tracker using the same documented format.
