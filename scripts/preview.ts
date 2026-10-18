@@ -16,6 +16,7 @@ const host:Host={read:async()=>md,change,
   start:(t,day)=>change(s=>startTimer(s,t.id,day)),pause:id=>change(s=>pauseTimer(s,id)),resume:id=>change(s=>resumeTimer(s,id)),finish:id=>dialog('Save session',{Result:''},v=>change(s=>finishTimer(s,id,v.Result))),
   openNote:()=>dialog('Tracker Markdown',{Markdown:md},v=>change(()=>v.Markdown)),createNote:()=>change(()=>starter()),settings:()=>dialog('Preview settings',{Info:'In Obsidian, this chooses your vault Markdown path.'},()=>{}),error:e=>dialog('Could not save',{Error:String(e)},()=>{})
 };
-const surface=new Surface(document.getElementById('app')!,host);void surface.refresh();
+const params=new URLSearchParams(location.search);
+const surface=new Surface(document.getElementById('app')!,host,{embedded:params.has('embed'),day:params.get('date')||undefined,page:params.get('page')||undefined});void surface.refresh();
 // Test hook for validating external Markdown edits; never included in the plugin bundle.
 Object.assign(window,{colorSprintPreview:{getMarkdown:()=>md,setMarkdown:(value:string)=>change(()=>value)}});

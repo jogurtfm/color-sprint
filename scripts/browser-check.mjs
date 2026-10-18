@@ -32,5 +32,6 @@ try {
   await page.getByRole('button',{name:'Pages',exact:true}).click();await page.getByRole('button',{name:'Workouts',exact:true}).click();await page.screenshot({path:'docs/workouts-preview.png',fullPage:true});
   await page.setViewportSize({width:1100,height:900});await page.getByRole('button',{name:'Week',exact:true}).click();await page.getByRole('button',{name:'All',exact:true}).click();await page.screenshot({path:'docs/week-preview.png',fullPage:true});
   await page.setViewportSize({width:320,height:740});await page.getByRole('button',{name:'Today',exact:true}).first().click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
-  assert.deepEqual(errors,[]);console.log('PASS: phone-width task edits, Markdown round-trip, persistence, Workout colors, timer recovery/save, weekly grid, goals, and 320px layout.');
+  await page.goto('http://127.0.0.1:8776/?embed=1');await page.waitForSelector('.cs-card');assert.equal(await page.locator('.cs-embedded').count(),1);assert.equal(await page.locator('.cs-embedded').evaluate(el=>getComputedStyle(el).overflow),'visible');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);await page.screenshot({path:'docs/daily-embed-preview.png',fullPage:true});
+  assert.deepEqual(errors,[]);console.log('PASS: phone-width task edits, Markdown round-trip, persistence, Workout colors, timer recovery/save, weekly grid, goals, 320px layout, and inline embed sizing.');
 } finally {await context.close();await browser.close();}

@@ -5,26 +5,32 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { starter } from '../src/starter';
 import { parseBoard, setEntry, startTimer, localDay } from '../src/model';
+import { dailyScaffold } from '../src/daily';
 const require=createRequire(import.meta.url);
 const {JSDOM}=require('jsdom');
 const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
 
-async function harness(initial=starter()) {
+async function harness(initial=starter(),initialFiles:Record<string,string>={}) {
   const dom=new JSDOM('<!doctype html><body></body>',{url:'https://preview.invalid'});const document=dom.window.document;const proto=dom.window.HTMLElement.prototype;
   Object.assign(proto,{addClass:function(this:any,name:string){this.classList.add(name);},empty:function(this:any){this.replaceChildren();},createEl:function(this:any,tag:string,options:any={}){const e=document.createElement(tag);e.className=options.cls||'';e.textContent=options.text||'';for(const [key,value] of Object.entries(options.attr||{}))e.setAttribute(key,String(value));this.append(e);return e;}});
-  const notices:string[]=[];const modals:any[]=[];const events=new Map<string,Set<(...args:any[])=>void>>();const commands=new Map<string,any>();let md=initial;let writes=0;
+  const notices:string[]=[];const modals:any[]=[];const events=new Map<string,Set<(...args:any[])=>void>>();const commands=new Map<string,any>();const blocks=new Map<string,any>();const children:any[]=[];const opened:any[]=[];let md=initial;let writes=0;
   class TFile {constructor(public path:string) {}}
   const file=new TFile('Sync/Color Sprint.md');
+  const files=new Map(Object.entries(initialFiles).map(([path,text])=>[path,{file:new TFile(path),text}]));const folders=new Map<string,any>();
+  const listen=(event:string,fn:any)=>{if(!events.has(event))events.set(event,new Set());const set=events.get(event)!;set.add(fn);return {set,fn};};
   class Plugin {
     cleanups:(()=>void)[]=[];app:any;
     constructor(app:any){this.app=app;}
     async loadData(){return null;}async saveData(_data:any){}
     registerView(type:string,factory:any){this.app.workspace.factory=factory;}
+    addSettingTab(){}registerMarkdownCodeBlockProcessor(language:string,handler:any){blocks.set(language,handler);}
     addRibbonIcon(){}addCommand(command:any){commands.set(command.id,command);}
     registerEvent(ref:any){this.cleanups.push(()=>ref.set.delete(ref.fn));}
     registerDomEvent(target:any,event:string,fn:any){target.addEventListener(event,fn);this.cleanups.push(()=>target.removeEventListener(event,fn));}
   }
-  class ItemView {contentEl:any;constructor(public leaf:any){this.contentEl=document.createElement('main');document.body.append(this.contentEl);}}
+  class ItemView {contentEl:any;constructor(public leaf:any){this.contentEl=document.createElement('main');document.body.append(this.contentEl);}async setState() {}}
+  class MarkdownRenderChild {cleanups:(()=>void)[]=[];constructor(public containerEl:any){}registerEvent(ref:any){this.cleanups.push(()=>ref.set.delete(ref.fn));}unload(){if('onunload' in this)(this as any).onunload();for(const cleanup of this.cleanups)cleanup();}}
+  class PluginSettingTab {containerEl=document.createElement('section');constructor(public app:any,public plugin:any){}}
   class Modal {
     contentEl:any;modalEl:any;
     constructor(public app:any){this.modalEl=document.createElement('section');this.contentEl=document.createElement('div');this.modalEl.append(this.contentEl);}
@@ -36,14 +42,20 @@ async function harness(initial=starter()) {
     row:any;name='';constructor(parent:any){this.row=document.createElement('div');parent.append(this.row);}setName(name:string){this.name=name;return this;}setDesc(){return this;}
     control(tag:string){const el=document.createElement(tag);this.row.append(el);const api:any={inputEl:el,setValue:(value:string)=>{el.value=value;return api;},onChange:(fn:any)=>{el.addEventListener(tag==='select'?'change':'input',()=>fn(el.value));return api;},addOptions:(options:any)=>{for(const [value,text] of Object.entries(options)){const option=document.createElement('option');option.value=value;option.textContent=String(text);el.append(option);}return api;}};return api;}
     addText(fn:any){fn(this.control('input'));return this;}addTextArea(fn:any){fn(this.control('textarea'));return this;}addDropdown(fn:any){fn(this.control('select'));return this;}
+    addToggle(fn:any){const api=this.control('input');api.inputEl.type='checkbox';api.setValue=(value:boolean)=>{api.inputEl.checked=value;return api;};api.onChange=(handler:any)=>{api.inputEl.addEventListener('change',()=>handler(api.inputEl.checked));return api;};fn(api);return this;}
     addButton(fn:any){const el=document.createElement('button');this.row.append(el);const api:any={setButtonText:(value:string)=>{el.textContent=value;return api;},setCta:()=>api,setDisabled:(value:boolean)=>{el.disabled=value;return api;},onClick:(handler:any)=>{el.addEventListener('click',handler);return api;}};fn(api);return this;}
   }
-  const vault={getAbstractFileByPath:(path:string)=>path===file.path?file:null,read:async()=>md,process:async(_file:any,fn:any)=>{const next=fn(md);md=next;writes++;for(const cb of events.get('modify')||[])cb(file);return md;},on:(event:string,fn:any)=>{if(!events.has(event))events.set(event,new Set());const set=events.get(event)!;set.add(fn);return {set,fn};},create:async()=>{},createFolder:async()=>{}};
-  const leaf:any={setViewState:async()=>{},openFile:async()=>{}};const app:any={vault,workspace:{getLeavesOfType:()=>[],getLeaf:()=>leaf,revealLeaf:async()=>{}}};
-  const exports:any={};const module={exports};const obsidian={Plugin,ItemView,Modal,Setting,TFile,Notice:class {constructor(message:string){notices.push(message);}},normalizePath:(path:string)=>path.replace(/\\/g,'/'),debounce:(fn:any)=>fn};
+  const getText=(target:any)=>target.path===file.path?md:files.get(target.path)?.text;
+  const vault={getAbstractFileByPath:(path:string)=>path===file.path?file:files.get(path)?.file||folders.get(path)||null,read:async(target:any)=>getText(target),process:async(target:any,fn:any)=>{const next=fn(getText(target));if(target.path===file.path)md=next;else files.get(target.path)!.text=next;writes++;for(const cb of events.get('modify')||[])cb(target);return next;},on:listen,create:async(path:string,text:string)=>{if(files.has(path))throw new Error('File exists');const f=new TFile(path);files.set(path,{file:f,text});return f;},createFolder:async(path:string)=>{folders.set(path,{path});}};
+  let activeFile:any=null;
+  const leaf:any={view:null,setViewState:async(state:any)=>{opened.push(state);activeFile=null;for(const cb of events.get('workspace:file-open')||[])cb(null);if(leaf.view)await leaf.view.setState(state.state||{},{history:false});},openFile:async(f:any)=>{activeFile=f;for(const cb of events.get('workspace:file-open')||[])cb(f);}};
+  const app:any={vault,workspace:{getLeavesOfType:()=>leaf.view?[leaf]:[],getLeaf:()=>leaf,revealLeaf:async()=>{},getActiveFile:()=>activeFile,on:(event:string,fn:any)=>listen(`workspace:${event}`,fn),onLayoutReady:(fn:any)=>fn()}};
+  const exports:any={};const module={exports};
+  const parseYaml=(text:string)=>{const out:Record<string,unknown>={};for(const line of text.split(/\r?\n/)){if(!line.trim()||line.trim().startsWith('#'))continue;const match=line.match(/^([-\w]+):\s*(.*?)\s*$/);if(!match)throw new Error('Invalid YAML');out[match[1]]=match[2].startsWith('"')?JSON.parse(match[2]):match[2]==='true'?true:match[2]==='false'?false:match[2];}return out;};
+  const obsidian={Plugin,ItemView,MarkdownRenderChild,PluginSettingTab,Modal,Setting,TFile,parseYaml,getFrontMatterInfo:(text:string)=>{const m=text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);return {exists:!!m,frontmatter:m?.[1]||''};},Notice:class {constructor(message:string){notices.push(message);}},debounce:(fn:any)=>fn};
   runInNewContext(readFileSync('main.js','utf8'),{module,exports,require:(id:string)=>{assert.equal(id,'obsidian');return obsidian;},document,window:dom.window,console,setTimeout,clearTimeout,setInterval,clearInterval});
-  const plugin:any=new module.exports.default(app,{});await plugin.onload();const view:any=app.workspace.factory(leaf);await view.onOpen();
-  return {dom,document,plugin,view,commands,notices,modals,get text(){return md;},get writes(){return writes;},async external(fn:(s:string)=>string){md=fn(md);for(const cb of events.get('modify')||[])cb(file);await settle();},async close(){await view.onClose();plugin.onunload();for(const cleanup of plugin.cleanups)cleanup();dom.window.close();},button(label:string,within:any=view.contentEl){const b=[...within.querySelectorAll('button')].find((e:any)=>e.textContent===label);assert.ok(b,`Button not found: ${label}`);return b as HTMLButtonElement;}};
+  const plugin:any=new module.exports.default(app,{});await plugin.onload();const view:any=app.workspace.factory(leaf);leaf.view=view;await view.onOpen();
+  return {dom,document,plugin,view,commands,notices,modals,opened,files,get text(){return md;},get writes(){return writes;},async external(fn:(s:string)=>string){md=fn(md);for(const cb of events.get('modify')||[])cb(file);await settle();},async openFile(path:string){const target=files.get(path)?.file;assert.ok(target);await leaf.openFile(target);await settle();},async embed(source:string,sourcePath:string){const el=document.createElement('article');document.body.append(el);let child:any;blocks.get('color-sprint')(source,el,{sourcePath,addChild:(c:any)=>{child=c;children.push(c);c.onload();}});await settle();return {el,child};},async close(){for(const child of children)child.unload();await view.onClose();plugin.onunload();for(const cleanup of plugin.cleanups)cleanup();dom.window.close();},button(label:string,within:any=view.contentEl){const b=[...within.querySelectorAll('button')].find((e:any)=>e.textContent===label);assert.ok(b,`Button not found: ${label}`);return b as HTMLButtonElement;}};
 }
 test('actual bundled plugin registers views/commands and writes real checkbox edits through Vault.process',async()=>{
   const day=localDay();const h=await harness(setEntry(starter(),day,'make-bed',false,'Clear the bed first'));
@@ -64,4 +76,28 @@ test('timer rendered by bundled plugin recovers from an old start and saves with
 });
 test('broken Markdown produces a recoverable error and no writes; view cleanup clears DOM',async()=>{
   const h=await harness(starter().replace('## Schedule','## Broken'));try{assert.match(h.document.body.textContent,/Missing ## Schedule/);assert.equal(h.writes,0);await h.view.onClose();assert.equal(h.view.contentEl.children.length,0);}finally{await h.close();}
+});
+test('opening a linked daily note navigates the full view to that note date without altering either note',async()=>{
+  const path='Sync/Daily/10-19-2026.md';const daily=dailyScaffold('2026-10-19','Sync/Color Sprint.md');const tracker=setEntry(starter('2026-10-18'),'2026-10-19','hard-task',false,'2020 Tax');
+  const h=await harness(tracker,{[path]:daily});try{await h.openFile(path);assert.equal(h.opened.length,1);assert.equal(h.view.contentEl.querySelector('input[type=date]').value,'2026-10-19');assert.match(h.view.contentEl.textContent,/2020 Tax/);assert.equal(h.view.getState().date,'2026-10-19');assert.equal(h.files.get(path)!.text,daily);assert.equal(h.text,tracker);h.button('Daily note ↗').click();await settle();assert.equal(h.opened.length,1,'raw Markdown action must bypass redirect');await h.openFile(path);assert.equal(h.opened.length,2,'later deliberate reopening restores automatic navigation');assert.equal(h.notices.length,0);}finally{await h.close();}
+});
+test('unmarked notes, note-level opt-out and global opt-out stay in the Markdown view',async()=>{
+  const h=await harness(starter(),{'Daily/unmarked.md':'# ordinary note','Daily/embed-only.md':dailyScaffold('2026-10-19','Sync/Color Sprint.md',false),'Daily/auto.md':dailyScaffold('2026-10-19','Sync/Color Sprint.md')});
+  try{await h.openFile('Daily/unmarked.md');await h.openFile('Daily/embed-only.md');h.plugin.settings.autoOpenDaily=false;await h.openFile('Daily/auto.md');assert.equal(h.opened.length,0);assert.equal(h.notices.length,0);}finally{await h.close();}
+});
+test('inline dashboard uses its own tracker/date, writes to that tracker, and disposes cleanly',async()=>{
+  const path='Daily/10-19.md';const other=setEntry(starter('2026-10-18'),'2026-10-19','make-bed',false,'Other tracker entry');const source=dailyScaffold('2026-10-19','Other.md',false);
+  const h=await harness(starter(),{[path]:source,'Other.md':other});try{const {el,child}=await h.embed('',path);assert.equal(el.querySelector('input[type=date]').value,'2026-10-19');assert.match(el.textContent,/Other tracker entry/);(el.querySelector('.cs-check') as HTMLInputElement).click();await settle();assert.equal(parseBoard(h.files.get('Other.md')!.text).entries[0].done,true);assert.equal(parseBoard(h.text).entries.length,0);assert.equal(h.files.get(path)!.text,source);
+    h.button('Edit',el).click();await settle();const modal=h.modals[0];const input=modal.contentEl.querySelector('[aria-label="Task name"]');input.value='Edited in embedded tracker';input.dispatchEvent(new h.dom.window.Event('input'));h.button('Save',modal.contentEl).click();await settle();assert.equal(parseBoard(h.files.get('Other.md')!.text).tasks[0].title,'Edited in embedded tracker');assert.equal(parseBoard(h.text).tasks[0].title,'Make Bed');child.unload();assert.equal(el.querySelector('.cs-root').children.length,0);
+  }finally{await h.close();}
+});
+test('embed config can select a Workouts page and malformed config stays read-only',async()=>{
+  const h=await harness(starter(),{'Daily/note.md':dailyScaffold('2026-10-19','Sync/Color Sprint.md',false)});try{const good=await h.embed('page: Workouts\nview: pages','Daily/note.md');assert.equal(good.el.querySelectorAll('.cs-card').length,10);const bad=await h.embed('date: wrong','Daily/note.md');assert.match(bad.el.textContent,/real YYYY-MM-DD/);assert.equal(bad.el.querySelectorAll('.cs-check').length,0);assert.equal(h.writes,0);}finally{await h.close();}
+});
+test('daily generator preserves existing daily contents and scaffolds only missing dates',async()=>{
+  const existing='Personal content that must remain exactly intact.';const h=await harness(starter(),{'Sync/Daily/10-19-2026.md':existing});try{await h.plugin.createDaily('2026-10-19');assert.equal(h.files.get('Sync/Daily/10-19-2026.md')!.text,existing);await h.plugin.createDaily('2026-10-20');await settle();assert.match(h.files.get('Sync/Daily/10-20-2026.md')!.text,/sprint-date: "2026-10-20"/);assert.equal(h.view.contentEl.querySelector('input[type=date]').value,'2026-10-20');assert.equal(parseBoard(h.text).entries.length,0);assert.ok(h.commands.has('daily-today'));assert.ok(h.commands.has('daily-date'));}finally{await h.close();}
+});
+test('embed and full view stay synchronized against the same tracker without copying daily progress',async()=>{
+  const path='Daily/shared.md';const initial=setEntry(starter('2026-10-18'),'2026-10-19','cook',false,'Shared planned meal');const source=dailyScaffold('2026-10-19','Sync/Color Sprint.md',false);
+  const h=await harness(initial,{[path]:source});try{await h.plugin.open({day:'2026-10-19'});const {el}=await h.embed('',path);(el.querySelector('.cs-check') as HTMLInputElement).click();await settle();assert.equal(h.view.contentEl.querySelector('.cs-check').checked,true);await h.external(s=>setEntry(s,'2026-10-19','cook',false));assert.equal(el.querySelector('.cs-check').checked,false);assert.equal(h.files.get(path)!.text,source);}finally{await h.close();}
 });

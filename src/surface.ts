@@ -13,17 +13,20 @@ export interface Host {
   resume(id:string):Promise<void>;
   finish(id:string):void;
   openNote():void;
+  openDaily?():void;
   createNote():Promise<void>;
   settings():void;
   error(error:unknown):void;
 }
 type Tab='Today'|'Week'|'Pages'|'Goals'|'History';
+export interface SurfaceOptions {day?:string;page?:string;tab?:Tab;embedded?:boolean}
 export class Surface {
   private board:Board|null=null;
   private day=localDay();private tab:Tab='Today';private page='All';private filter='';
   private request=0;private destroyed=false;private pending=false;
   private ticker:ReturnType<typeof setInterval>;private timerDisplay:HTMLElement|null=null;
-  constructor(private root:HTMLElement,private host:Host){root.classList.add('cs-root');this.ticker=setInterval(()=>this.tick(),1000);}
+  constructor(private root:HTMLElement,private host:Host,options:SurfaceOptions={}){this.day=options.day||this.day;this.page=options.page||'All';this.tab=options.tab||'Today';root.classList.add('cs-root');if(options.embedded)root.classList.add('cs-embedded');this.ticker=setInterval(()=>this.tick(),1000);}
+  get context():{day:string;page:string;tab:Tab}{return {day:this.day,page:this.page,tab:this.tab};}
   destroy():void {this.destroyed=true;clearInterval(this.ticker);this.root.replaceChildren();}
   async refresh():Promise<void>{const seq=++this.request;try{const board=parseBoard(await this.host.read());if(this.destroyed||seq!==this.request)return;this.board=board;this.render();}catch(error){if(!this.destroyed&&seq===this.request)this.renderError(error);}}
   private el<K extends keyof HTMLElementTagNameMap>(tag:K,parent:HTMLElement,className='',text=''):HTMLElementTagNameMap[K]{const e=parent.ownerDocument.createElement(tag);e.className=className;e.textContent=text;parent.append(e);return e;}
@@ -36,7 +39,7 @@ export class Surface {
   private render():void {
     if(!this.board)return;const b=this.board;this.root.replaceChildren();this.timerDisplay=null;
     const head=this.el('header',this.root,'cs-header');const title=this.el('div',head);this.el('p',title,'cs-eyebrow','COLOR SPRINT · MARKDOWN FIRST');this.el('h1',title,'','A little more intentional.');
-    const tools=this.el('div',head,'cs-toolbar');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
+    const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
     const nav=this.el('nav',this.root,'cs-tabs');nav.setAttribute('aria-label','Tracker views');
     for(const tab of ['Today','Week','Pages','Goals','History'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}
     const controls=this.el('div',this.root,'cs-controls');this.button(controls,'‹',()=>{this.day=addDays(this.day,-1);this.render();},'cs-icon','Previous day');

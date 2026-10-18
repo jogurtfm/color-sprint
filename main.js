@@ -344,7 +344,7 @@ Your free-form planning, links, and reflections go here. These notes are preserv
 
 // src/surface.ts
 var Surface = class {
-  constructor(root, host) {
+  constructor(root, host, options = {}) {
     this.root = root;
     this.host = host;
     this.board = null;
@@ -356,8 +356,15 @@ var Surface = class {
     this.destroyed = false;
     this.pending = false;
     this.timerDisplay = null;
+    this.day = options.day || this.day;
+    this.page = options.page || "All";
+    this.tab = options.tab || "Today";
     root.classList.add("cs-root");
+    if (options.embedded) root.classList.add("cs-embedded");
     this.ticker = setInterval(() => this.tick(), 1e3);
+  }
+  get context() {
+    return { day: this.day, page: this.page, tab: this.tab };
   }
   destroy() {
     this.destroyed = true;
@@ -423,6 +430,7 @@ var Surface = class {
     this.el("p", title, "cs-eyebrow", "COLOR SPRINT \xB7 MARKDOWN FIRST");
     this.el("h1", title, "", "A little more intentional.");
     const tools = this.el("div", head, "cs-toolbar");
+    if (this.host.openDaily) this.button(tools, "Daily note \u2197", () => this.host.openDaily(), "cs-link");
     this.button(tools, "Markdown \u2197", () => this.host.openNote(), "cs-link");
     this.button(tools, "\u2699", () => this.host.settings(), "cs-icon", "Tracker settings");
     const nav = this.el("nav", this.root, "cs-tabs");
@@ -659,24 +667,109 @@ var Surface = class {
   }
 };
 
+// src/daily.ts
+function record(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value;
+}
+function vaultPath(value, folder = false) {
+  const path = value.trim();
+  if (!path || path.startsWith("/") || /[\\:\r\n]/.test(path) || path.split("/").some((p) => !p || p === ".." || p === "." || p.startsWith(".")) || !folder && !path.endsWith(".md")) throw new Error(`Use a visible vault-relative ${folder ? "folder" : ".md path"}: ${path}`);
+  return path;
+}
+function dateValue(value) {
+  const date = value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? "");
+  if (!validDay(date)) throw new Error("Set sprint-date to a real YYYY-MM-DD date in the daily note.");
+  return date;
+}
+function dailyLink(frontmatter, fallbackTracker) {
+  const fm = record(frontmatter);
+  if (fm["color-sprint"] !== true) return null;
+  return { date: dateValue(fm["sprint-date"]), tracker: vaultPath(typeof fm["sprint-tracker"] === "string" ? fm["sprint-tracker"] : fallbackTracker), page: typeof fm["sprint-page"] === "string" && fm["sprint-page"].trim() ? fm["sprint-page"].trim() : "All", autoOpen: fm["sprint-open"] === true };
+}
+function embedLink(config, frontmatter, fallbackTracker) {
+  const cfg = record(config);
+  const fm = record(frontmatter);
+  const rawDate = cfg.date === "today" ? localDay() : cfg.date ?? fm["sprint-date"];
+  const tracker = typeof cfg.tracker === "string" ? cfg.tracker : typeof fm["sprint-tracker"] === "string" ? fm["sprint-tracker"] : fallbackTracker;
+  const page = typeof cfg.page === "string" ? cfg.page : typeof fm["sprint-page"] === "string" ? fm["sprint-page"] : "All";
+  const views = { today: "Today", week: "Week", pages: "Pages", goals: "Goals", history: "History" };
+  const view = views[String(cfg.view ?? "today").toLowerCase()];
+  if (!view) throw new Error("Embed view must be today, week, pages, goals, or history.");
+  return { date: dateValue(rawDate), tracker: vaultPath(tracker), page: page.trim() || "All", autoOpen: false, view };
+}
+function dailyFilename(day, format = "MM-DD-YYYY") {
+  if (!validDay(day)) throw new Error("Choose a real YYYY-MM-DD date.");
+  if (format !== "MM-DD-YYYY" && format !== "YYYY-MM-DD") throw new Error("Daily filename format must be MM-DD-YYYY or YYYY-MM-DD.");
+  return (format === "MM-DD-YYYY" ? `${day.slice(5, 7)}-${day.slice(8, 10)}-${day.slice(0, 4)}` : day) + ".md";
+}
+function scaffold(date, title, tracker, autoOpen) {
+  return `---
+color-sprint: true
+sprint-date: ${JSON.stringify(date)}
+sprint-tracker: ${JSON.stringify(vaultPath(tracker))}
+sprint-page: All
+sprint-open: ${autoOpen}
+---
+
+# ${title}
+
+## Today\u2019s sprint
+
+The dashboard below uses this note\u2019s date. Checkboxes, day details, goals, and timers save into the linked tracker.
+
+\`\`\`color-sprint
+\`\`\`
+
+## Notes / next action
+
+- First action:
+- What changed:
+- Blocker or adjustment:
+
+## Evening check-in
+
+- Completed (actual evidence):
+- Workout (actual sets / duration / distance, if any):
+- Room (category sorted / items removed / space reclaimed):
+- Creative / learning / admin result:
+- One thing to start with tomorrow:
+`;
+}
+function dailyScaffold(date, tracker, autoOpen = true) {
+  if (!validDay(date)) throw new Error("Choose a real YYYY-MM-DD date.");
+  const title = (/* @__PURE__ */ new Date(`${date}T12:00:00`)).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  return scaffold(date, title, tracker, autoOpen);
+}
+
 // src/main.ts
 var VIEW = "color-sprint-view";
 var ColorSprint = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
-    this.settings = { path: "Sync/Color Sprint.md" };
+    this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY" };
     this.queue = Promise.resolve();
-    this.surfaces = /* @__PURE__ */ new Set();
+    this.surfaces = /* @__PURE__ */ new Map();
+    this.dailyRequest = 0;
+    this.stopped = false;
+    this.bypassDaily = /* @__PURE__ */ new Set();
   }
   async onload() {
     const saved = await this.loadData();
     if (saved && typeof saved.path === "string") this.settings.path = saved.path;
+    if (typeof saved?.autoOpenDaily === "boolean") this.settings.autoOpenDaily = saved.autoOpenDaily;
+    if (typeof saved?.dailyFolder === "string") this.settings.dailyFolder = saved.dailyFolder;
+    if (saved?.dailyFormat === "YYYY-MM-DD" || saved?.dailyFormat === "MM-DD-YYYY") this.settings.dailyFormat = saved.dailyFormat;
     this.registerView(VIEW, (leaf) => new SprintView(leaf, this));
+    this.addSettingTab(new SprintSettings(this.app, this));
+    this.registerMarkdownCodeBlockProcessor("color-sprint", (source, el, ctx) => {
+      ctx.addChild(new SprintEmbed(el, this, source, ctx.sourcePath));
+    });
     this.addRibbonIcon("calendar-check", "Open Color Sprint", () => {
-      void this.open();
+      void this.open().catch((e) => this.error(e));
     });
     this.addCommand({ id: "open", name: "Open tracker", callback: () => {
-      void this.open();
+      void this.open().catch((e) => this.error(e));
     } });
     this.addCommand({ id: "choose-note", name: "Choose tracker Markdown note", callback: () => this.chooseNote() });
     this.addCommand({ id: "create-starter", name: "Create starter Markdown note", callback: () => {
@@ -685,52 +778,68 @@ var ColorSprint = class extends import_obsidian.Plugin {
     this.addCommand({ id: "open-source", name: "Open tracker Markdown", callback: () => {
       void this.openNote().catch((e) => this.error(e));
     } });
+    this.addCommand({ id: "daily-today", name: "Open or create today\u2019s daily dashboard", callback: () => {
+      void this.createDaily(localDay()).catch((e) => this.error(e));
+    } });
+    this.addCommand({ id: "daily-date", name: "Create daily dashboard for a date", callback: () => {
+      const modal = new FormModal(this.app, "Daily dashboard");
+      let date = localDay();
+      modal.field("Date", "Create or open this day without replacing existing note content.", date, (v) => date = v, "date");
+      modal.save(() => this.createDaily(date), "Open day");
+      modal.open();
+    } });
     const refresh = (0, import_obsidian.debounce)(() => this.refresh(), 120, true);
+    const watched = (path) => path === this.settings.path || [...this.surfaces.values()].includes(path);
     this.registerEvent(this.app.vault.on("modify", (file) => {
-      if (file.path === this.settings.path) refresh();
+      if (watched(file.path)) refresh();
     }));
     this.registerEvent(this.app.vault.on("create", (file) => {
-      if (file.path === this.settings.path) refresh();
+      if (watched(file.path)) refresh();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
-      if (file.path === this.settings.path) refresh();
+      if (watched(file.path)) refresh();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, old) => {
       if (old === this.settings.path && file instanceof import_obsidian.TFile) {
         this.settings.path = file.path;
         void this.saveData(this.settings);
+        new import_obsidian.Notice("Tracker renamed. Update sprint-tracker properties in linked daily notes.");
         refresh();
       }
     }));
+    this.registerEvent(this.app.workspace.on("file-open", (file) => {
+      void this.openDailyFile(file).catch((e) => this.error(e));
+    }));
+    this.app.workspace.onLayoutReady(() => {
+      if (!this.stopped) void this.openDailyFile(this.app.workspace.getActiveFile()).catch((e) => this.error(e));
+    });
     this.registerDomEvent(document, "visibilitychange", () => {
       if (!document.hidden) this.refresh();
     });
   }
   onunload() {
-    for (const surface of this.surfaces) surface.destroy();
+    this.stopped = true;
+    this.dailyRequest++;
+    for (const surface of this.surfaces.keys()) surface.destroy();
     this.surfaces.clear();
   }
-  async open() {
+  async open(context = {}) {
     let leaf = this.app.workspace.getLeavesOfType(VIEW)[0];
-    if (!leaf) {
-      leaf = this.app.workspace.getLeaf("tab");
-      await leaf.setViewState({ type: VIEW, active: true });
-    }
+    if (!leaf) leaf = this.app.workspace.getLeaf("tab");
+    await leaf.setViewState({ type: VIEW, active: true, state: { tracker: context.tracker || this.settings.path, date: context.day || localDay(), page: context.page || "All", tab: context.tab || "Today", dailyNote: context.dailyNote } });
     await this.app.workspace.revealLeaf(leaf);
   }
-  file() {
-    const file = this.app.vault.getAbstractFileByPath(this.settings.path);
-    if (!(file instanceof import_obsidian.TFile)) throw new Error(`Tracker note not found: ${this.settings.path}. Create it or choose an existing tracker note.`);
+  file(path = this.settings.path) {
+    const file = this.app.vault.getAbstractFileByPath(vaultPath(path));
+    if (!(file instanceof import_obsidian.TFile)) throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);
     return file;
   }
-  async read() {
-    return this.app.vault.read(this.file());
+  async read(path = this.settings.path) {
+    return this.app.vault.read(this.file(path));
   }
-  change(transform) {
-    const path = this.settings.path;
+  change(transform, path = this.settings.path) {
     const operation = this.queue.then(async () => {
-      if (this.settings.path !== path) throw new Error("Tracker note changed. Reopen the current note before saving.");
-      await this.app.vault.process(this.file(), (text) => {
+      await this.app.vault.process(this.file(path), (text) => {
         const next = transform(text);
         parseBoard(next);
         return next;
@@ -742,75 +851,117 @@ var ColorSprint = class extends import_obsidian.Plugin {
     return operation;
   }
   refresh() {
-    for (const surface of this.surfaces) void surface.refresh();
+    for (const surface of this.surfaces.keys()) void surface.refresh();
   }
   error(error) {
     new import_obsidian.Notice(error instanceof Error ? error.message : String(error), 8e3);
   }
-  attach(root) {
+  attach(root, context = {}) {
+    const path = vaultPath(context.tracker || this.settings.path);
+    const change = (fn) => this.change(fn, path);
     const host = {
-      read: () => this.read(),
-      change: (fn) => this.change(fn),
-      editTask: (task) => new TaskModal(this.app, this, task).open(),
-      editGoal: (goal) => new GoalModal(this.app, this, goal).open(),
+      read: () => this.read(path),
+      change,
+      editTask: (task) => new TaskModal(this.app, this, task, path).open(),
+      editGoal: (goal) => new GoalModal(this.app, this, goal, path).open(),
       editEntry: (task, day) => {
-        void this.read().then((text) => new EntryModal(this.app, this, task, day, text).open()).catch((e) => this.error(e));
+        void this.read(path).then((text) => new EntryModal(this.app, this, task, day, text, path).open()).catch((e) => this.error(e));
       },
-      schedule: (task, day, detail) => this.change((text) => {
+      schedule: (task, day, detail) => change((text) => {
         const board = parseBoard(text);
         if (board.entries.some((e) => e.taskId === task.id && e.date === day)) throw new Error("Task already has an entry on this day.");
         return setEntry(text, day, task.id, false, detail);
       }),
-      check: (task, day, done) => this.change((text) => setEntry(text, day, task.id, done)),
-      start: (task, day) => this.change((text) => startTimer(text, task.id, day)),
-      pause: (id) => this.change((text) => pauseTimer(text, id)),
-      resume: (id) => this.change((text) => resumeTimer(text, id)),
-      finish: (id) => new SessionModal(this.app, this, id).open(),
+      check: (task, day, done) => change((text) => setEntry(text, day, task.id, done)),
+      start: (task, day) => change((text) => startTimer(text, task.id, day)),
+      pause: (id) => change((text) => pauseTimer(text, id)),
+      resume: (id) => change((text) => resumeTimer(text, id)),
+      finish: (id) => new SessionModal(this.app, this, id, path).open(),
       openNote: () => {
-        void this.openNote().catch((e) => this.error(e));
+        void this.openNote(path).catch((e) => this.error(e));
       },
-      createNote: () => this.createNote(),
+      openDaily: context.dailyNote && !context.embedded ? () => {
+        void this.openDailyMarkdown(context.dailyNote).catch((e) => this.error(e));
+      } : void 0,
+      createNote: () => this.createNote(path),
       settings: () => this.chooseNote(),
       error: (e) => this.error(e)
     };
-    const surface = new Surface(root, host);
-    this.surfaces.add(surface);
+    const surface = new Surface(root, host, context);
+    this.surfaces.set(surface, path);
     return surface;
   }
   detach(surface) {
     surface.destroy();
     this.surfaces.delete(surface);
   }
-  async openNote() {
-    await this.app.workspace.getLeaf("tab").openFile(this.file());
+  async openNote(path = this.settings.path) {
+    await this.app.workspace.getLeaf("tab").openFile(this.file(path));
   }
-  async createNote() {
-    if (this.app.vault.getAbstractFileByPath(this.settings.path)) {
+  async openDailyMarkdown(path) {
+    const file = this.file(path);
+    this.bypassDaily.add(path);
+    try {
+      await this.app.workspace.getLeaf("tab").openFile(file);
+    } finally {
+      this.bypassDaily.delete(path);
+    }
+  }
+  async ensureFolder(path) {
+    const pieces = path.split("/");
+    pieces.pop();
+    let parent = "";
+    for (const piece of pieces) {
+      parent = parent ? `${parent}/${piece}` : piece;
+      if (!this.app.vault.getAbstractFileByPath(parent)) await this.app.vault.createFolder(parent);
+    }
+  }
+  async createNote(path = this.settings.path) {
+    vaultPath(path);
+    if (this.app.vault.getAbstractFileByPath(path)) {
       new import_obsidian.Notice("Note already exists. No content was replaced.");
       this.refresh();
       return;
     }
-    const pieces = this.settings.path.split("/");
-    pieces.pop();
-    let path = "";
-    for (const piece of pieces) {
-      path = path ? `${path}/${piece}` : piece;
-      if (!this.app.vault.getAbstractFileByPath(path)) await this.app.vault.createFolder(path);
-    }
-    await this.app.vault.create(this.settings.path, starter());
+    await this.ensureFolder(path);
+    await this.app.vault.create(path, starter());
     this.refresh();
     new import_obsidian.Notice("Markdown starter created. Choose tasks in Pages to plan your first day.");
+  }
+  async frontmatter(path) {
+    const source = this.app.vault.getAbstractFileByPath(path);
+    if (!(source instanceof import_obsidian.TFile)) return {};
+    const text = await this.app.vault.read(source);
+    const info = (0, import_obsidian.getFrontMatterInfo)(text);
+    return info.exists ? (0, import_obsidian.parseYaml)(info.frontmatter) : {};
+  }
+  async openDailyFile(file) {
+    const request = ++this.dailyRequest;
+    if (this.stopped || !this.settings.autoOpenDaily || !file || !file.path.endsWith(".md")) return;
+    if (this.bypassDaily.delete(file.path)) return;
+    const link = dailyLink(await this.frontmatter(file.path), this.settings.path);
+    if (!link?.autoOpen || this.stopped || request !== this.dailyRequest || this.app.workspace.getActiveFile()?.path !== file.path) return;
+    await this.open({ tracker: link.tracker, day: link.date, page: link.page, dailyNote: file.path });
+  }
+  async createDaily(date) {
+    const path = `${vaultPath(this.settings.dailyFolder, true)}/${dailyFilename(date, this.settings.dailyFormat)}`;
+    let file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) {
+      await this.ensureFolder(path);
+      file = await this.app.vault.create(path, dailyScaffold(date, this.settings.path, true));
+    }
+    if (!(file instanceof import_obsidian.TFile)) throw new Error("Daily destination is a folder, not a note.");
+    await this.app.workspace.getLeaf("tab").openFile(file);
+    new import_obsidian.Notice("Daily dashboard opened. Existing notes are preserved.");
   }
   chooseNote() {
     const modal = new FormModal(this.app, "Choose your tracker note");
     let path = this.settings.path;
     modal.field("Markdown path", "Relative to this vault, such as Sync/Color Sprint.md", path, (v) => path = v);
     modal.save(async () => {
-      const clean = (0, import_obsidian.normalizePath)(path.trim());
-      if (!clean.endsWith(".md") || clean.startsWith("/") || clean.split("/").some((p) => p === ".." || p.startsWith(".")) || /[:\\]/.test(clean)) throw new Error("Choose a visible, vault-relative .md path.");
-      this.settings.path = clean;
+      this.settings.path = vaultPath(path);
       await this.saveData(this.settings);
-      this.refresh();
+      await this.open();
     });
     modal.open();
   }
@@ -819,6 +970,7 @@ var SprintView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
+    this.context = {};
   }
   getViewType() {
     return VIEW;
@@ -829,12 +981,99 @@ var SprintView = class extends import_obsidian.ItemView {
   getIcon() {
     return "calendar-check";
   }
+  getState() {
+    const selected = this.surface?.context;
+    return { tracker: this.context.tracker || this.plugin.settings.path, date: selected?.day || this.context.day || localDay(), page: selected?.page || this.context.page || "All", tab: selected?.tab || this.context.tab || "Today", dailyNote: this.context.dailyNote };
+  }
+  async setState(state, result) {
+    const data = state && typeof state === "object" ? state : {};
+    this.context = { tracker: typeof data.tracker === "string" ? vaultPath(data.tracker) : this.plugin.settings.path, day: typeof data.date === "string" && validDay(data.date) ? data.date : localDay(), page: typeof data.page === "string" ? data.page : "All", tab: ["Today", "Week", "Pages", "Goals", "History"].includes(String(data.tab)) ? data.tab : "Today", dailyNote: typeof data.dailyNote === "string" ? vaultPath(data.dailyNote) : void 0 };
+    if (this.surface) this.plugin.detach(this.surface);
+    this.surface = this.plugin.attach(this.contentEl, this.context);
+    await this.surface.refresh();
+    await super.setState(state, result);
+  }
   async onOpen() {
-    this.surface = this.plugin.attach(this.contentEl);
+    this.surface = this.plugin.attach(this.contentEl, this.context);
     await this.surface.refresh();
   }
   async onClose() {
     if (this.surface) this.plugin.detach(this.surface);
+  }
+};
+var SprintEmbed = class extends import_obsidian.MarkdownRenderChild {
+  constructor(el, plugin, source, sourcePath) {
+    super(el);
+    this.plugin = plugin;
+    this.source = source;
+    this.sourcePath = sourcePath;
+    this.disposed = false;
+    this.request = 0;
+  }
+  onload() {
+    this.registerEvent(this.plugin.app.vault.on("modify", (file) => {
+      if (file.path === this.sourcePath) void this.render();
+    }));
+    void this.render();
+  }
+  async render() {
+    const request = ++this.request;
+    try {
+      const fm = await this.plugin.frontmatter(this.sourcePath);
+      const config = this.source.trim() ? (0, import_obsidian.parseYaml)(this.source) : {};
+      const link = embedLink(config, fm, this.plugin.settings.path);
+      if (this.disposed || request !== this.request) return;
+      if (this.surface) this.plugin.detach(this.surface);
+      this.containerEl.replaceChildren();
+      this.containerEl.classList.add("cs-embed-frame");
+      const expand = this.containerEl.createEl("button", { cls: "cs-expand", text: "Open full tracker \u2197" });
+      expand.addEventListener("click", () => {
+        void this.plugin.open({ tracker: link.tracker, day: link.date, page: link.page, tab: link.view }).catch((e) => this.plugin.error(e));
+      });
+      const root = this.containerEl.createEl("div");
+      this.surface = this.plugin.attach(root, { tracker: link.tracker, day: link.date, page: link.page, tab: link.view, embedded: true });
+      await this.surface.refresh();
+    } catch (e) {
+      if (this.disposed || request !== this.request) return;
+      if (this.surface) {
+        this.plugin.detach(this.surface);
+        this.surface = void 0;
+      }
+      this.containerEl.replaceChildren();
+      this.containerEl.createEl("p", { cls: "cs-form-error", text: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  onunload() {
+    this.disposed = true;
+    this.request++;
+    if (this.surface) this.plugin.detach(this.surface);
+  }
+};
+var SprintSettings = class extends import_obsidian.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "Daily dashboards" });
+    new import_obsidian.Setting(containerEl).setName("Open linked daily notes as a sprint").setDesc("Only notes with color-sprint: true and sprint-open: true auto-open. Set sprint-open: false to stay with the inline embed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenDaily).onChange(async (value) => {
+      this.plugin.settings.autoOpenDaily = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian.Setting(containerEl).setName("Daily note folder").setDesc("Used by the daily dashboard creation commands.").addText((input) => input.setValue(this.plugin.settings.dailyFolder).onChange(async (value) => {
+      try {
+        this.plugin.settings.dailyFolder = vaultPath(value, true);
+        await this.plugin.saveData(this.plugin.settings);
+      } catch {
+      }
+    }));
+    new import_obsidian.Setting(containerEl).setName("Daily filename format").addDropdown((input) => input.addOptions({ "MM-DD-YYYY": "MM-DD-YYYY", "YYYY-MM-DD": "YYYY-MM-DD" }).setValue(this.plugin.settings.dailyFormat).onChange(async (value) => {
+      this.plugin.settings.dailyFormat = value;
+      await this.plugin.saveData(this.plugin.settings);
+    }));
+    new import_obsidian.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
   }
 };
 var FormModal = class extends import_obsidian.Modal {
@@ -880,7 +1119,7 @@ var FormModal = class extends import_obsidian.Modal {
   }
 };
 var TaskModal = class extends FormModal {
-  constructor(app, plugin, original) {
+  constructor(app, plugin, original, path = plugin.settings.path) {
     super(app, original ? "Edit task" : "Add a task");
     const task = original ? { ...original } : { id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title: "", color: "blue", page: "General", kind: "habit", repeat: "-", minutes: 10, definition: "" };
     this.field("Task name", "Keep the label meaningful.", task.title, (v) => task.title = v.trim());
@@ -895,11 +1134,11 @@ var TaskModal = class extends FormModal {
       if (original && JSON.stringify(current) !== JSON.stringify(original)) throw new Error("This task changed in Markdown. Reopen it to edit the latest version.");
       if (!task.title || !task.page || !task.kind || !Number.isFinite(task.minutes) || task.minutes < 0 || task.minutes > 1440) throw new Error("Name, page, kind, and 0\u20131440 timer minutes are required.");
       return saveTask(text, task);
-    }));
+    }, path));
   }
 };
 var GoalModal = class extends FormModal {
-  constructor(app, plugin, original) {
+  constructor(app, plugin, original, path = plugin.settings.path) {
     super(app, original ? "Goal progress" : "Add a goal");
     const goal = original ? { ...original } : { id: `goal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, due: "-", page: "General", title: "", evidence: "", done: false };
     this.field("Goal", "One observable milestone.", goal.title, (v) => goal.title = v.trim());
@@ -913,19 +1152,19 @@ var GoalModal = class extends FormModal {
       if (!goal.title || !goal.page) throw new Error("Goal and page are required.");
       if (goal.done && !goal.evidence) throw new Error("Record the evidence before marking this goal done.");
       return setGoal(text, goal);
-    }));
+    }, path));
   }
 };
 var SessionModal = class extends FormModal {
-  constructor(app, plugin, id) {
+  constructor(app, plugin, id, path = plugin.settings.path) {
     super(app, "Save your focus session");
     let note = "";
     this.text("Actual result", "Record what happened. For training, include actual sets/reps/distance. A saved timer does not mark the task complete.", note, (v) => note = v);
-    this.save(() => plugin.change((text) => finishTimer(text, id, note)), "Save session");
+    this.save(() => plugin.change((text) => finishTimer(text, id, note), path), "Save session");
   }
 };
 var EntryModal = class extends FormModal {
-  constructor(app, plugin, task, day, text) {
+  constructor(app, plugin, task, day, text, path = plugin.settings.path) {
     super(app, `${task.title} \xB7 ${day}`);
     const original = entryFor(parseBoard(text), task.id, day);
     let detail = original?.detail || "";
@@ -934,6 +1173,6 @@ var EntryModal = class extends FormModal {
       const entry = entryFor(parseBoard(current), task.id, day);
       if (JSON.stringify(entry) !== JSON.stringify(original)) throw new Error("This entry changed in Markdown. Reopen the latest version.");
       return setEntry(current, day, task.id, entry?.done || false, detail);
-    }));
+    }, path));
   }
 };

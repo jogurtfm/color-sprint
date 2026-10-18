@@ -39,3 +39,14 @@ Preserve six distinct source groups. Color meaning and importance are unconfirme
 - Plugin lifecycle harness covers view registration, Markdown checkbox writes, modal task edits, active timer recovery, and cleanup.
 - Phone-width browser checks cover Today, Pages/Workouts, Week, direct Markdown edits, timer pause/resume/save, and persistence.
 - Release tag matches manifest version; release contains main.js, manifest.json, and styles.css.
+
+## Daily integration amendment · 0.2.0
+
+- Detect explicitly marked daily notes through flat YAML properties: color-sprint, sprint-date, sprint-tracker, sprint-page, sprint-open.
+- Route note open to the correct note date, tracker and page. Support per-note and global opt-outs. Preserve access to the raw daily Markdown.
+- Register a color-sprint Markdown code block that renders the same interactive surface inline, inheriting note context or taking explicit overrides.
+- Support independent tracker bindings for concurrent embeds, views, and edit/session modals. Never redirect writes into the global default by mistake.
+- Provide commands to create/open a daily dashboard today or for a selected date. Preserve existing notes byte-for-byte.
+- Provide a scaffold for Obsidian's native Daily Notes/Templates, with standard date tokens. No new recurring automation.
+- Keep all progress in the existing tracker; daily bodies hold context and reflections. No duplicate task completion state.
+- Cover auto-open, opt-out, historical-date routing, embed writes/cleanup, and safe daily creation with tests. Actual iPhone validation remains separate from the harness/browser checks.

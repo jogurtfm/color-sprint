@@ -66,5 +66,9 @@
 .cs-form textarea { min-height:90px; }
 .cs-form-error { color:var(--text-error); }
 .cs-busy { cursor:progress; }
+.cs-embed-frame { border:1px solid var(--background-modifier-border,#d7d7d2); border-radius:18px; overflow:hidden; margin:16px 0; }
+.cs-embed-frame .cs-expand { display:block; margin:10px 12px 0 auto; min-height:44px; padding:8px 14px; cursor:pointer; }
+.cs-root.cs-embedded { height:auto; max-height:none; overflow:visible; padding:18px; }
+.cs-embedded h1 { font-size:26px; }
 @media(max-width:500px) { .cs-root { padding:18px 14px max(24px,env(safe-area-inset-bottom)); } .cs-header { gap:4px; } .cs-toolbar { width:100%; justify-content:flex-end; } .cs-tabs { margin-top:8px; } .cs-tabs button { font-size:12px; padding:8px; } .cs-summary { padding:20px; } .cs-summary h2 { font-size:24px; } .cs-card { padding:14px 12px; } .cs-root input.cs-check { width:32px; height:32px; flex-basis:32px; } }
 @media(prefers-reduced-motion:reduce) { .cs-root * { scroll-behavior:auto!important; transition:none!important; } }

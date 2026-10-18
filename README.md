@@ -36,6 +36,16 @@ See [FORMAT.md](FORMAT.md) for the complete schema and [examples/Color Sprint.md
 
 The existing planning document stays useful context. A prose plan is not automatically imported: explicit task IDs, dates, and checkboxes in the tracker determine what appears. This avoids guessing completion, frequency, or workout programming from ordinary prose. A planning assistant can edit the tracker using the same documented format.
 
+## Daily notes and embedded dashboards · new in 0.2.0
+
+Run **Color Sprint: Open or create today’s daily dashboard**. The plugin creates a daily note with date metadata and a working dashboard embed, or opens the existing note without replacing its content. To create another day, use **Color Sprint: Create daily dashboard for a date**.
+
+Linked daily notes can automatically open the full sprint interface for **their own date**. Use **Daily note ↗** in the interface to return to the daily Markdown without being redirected again. To stay with the inline dashboard, set `sprint-open: false` in that note. A global switch is available under **Settings → Color Sprint → Open linked daily notes as a sprint**.
+
+To use your existing daily notes, add the properties and embed documented in [DAILY.md](DAILY.md). To scaffold new days with Obsidian's Daily Notes core plugin, choose [examples/Daily Template.md](examples/Daily%20Template.md) as its template. Properties use standard YAML and templates use Obsidian's built-in date tokens. No scheduler or extra template plugin is required; notes are generated when you create/open a day.
+
+Embedded and full-screen dashboards share the same tracker note. They do not duplicate checkboxes into the daily note. The daily body stays available for notes and reflection; the tracker keeps dated progress and sessions. Embeds work in Reading view and rendered code blocks in Live Preview; Source mode shows the editable code block.
+
 ## Mobile behavior and limits
 
 No Node.js, filesystem, Electron, or network APIs are used by the plugin. Obsidian's Vault API performs reads and atomic edits. No account, analytics, or external service is required.
@@ -54,6 +64,6 @@ npm run build
 npm run preview
 ```
 
-Preview serves the same surface at `http://127.0.0.1:8776` with generic browser-local demo data. It is a developer preview, not a hosted replacement for Obsidian. Release files are checked into the repo and attached to the `0.1.0` GitHub release for BRAT.
+Preview serves the same surface at `http://127.0.0.1:8776` with generic browser-local demo data. It is a developer preview, not a hosted replacement for Obsidian. Release files are checked into the repo and attached to versioned GitHub releases for BRAT.
 
 License: [MIT](LICENSE).
