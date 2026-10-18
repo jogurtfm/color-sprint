@@ -38,7 +38,9 @@ var COLORS = [
 var TASK_HEADER = "| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |";
 var SESSION_HEADER = "| Session ID | Date | Task ID | Seconds | Note |";
 var TIMER_HEADER = "| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |";
+var WORKOUT_LOG_HEADER = "| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |";
 var SECTIONS = ["Tasks", "Schedule", "Goals", "Sessions", "Timer"];
+var OPTIONAL_SECTIONS = ["Reflections", "Workout Log"];
 function localDay(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -88,7 +90,7 @@ function ranges(lines) {
     const match = lines[i].match(/^##\s+(.+?)\s*$/);
     if (!match) continue;
     if (current) map.get(current).end = i;
-    current = SECTIONS.includes(match[1]) ? match[1] : null;
+    current = [...SECTIONS, ...OPTIONAL_SECTIONS].includes(match[1]) ? match[1] : null;
     if (current) {
       if (map.has(current)) throw new Error(`Duplicate section: ${current}`);
       map.set(current, { start: i + 1, end: lines.length });
@@ -166,13 +168,19 @@ function parseBoard(text) {
     unique([timer.id], "timer");
     if (!validDay(timer.date) || timer.started !== "-" && !Number.isFinite(Date.parse(timer.started))) throw new Error("Invalid timer date or start timestamp.");
   }
+  const workoutRange = rs.get("Workout Log");
+  const workoutLogs = workoutRange ? table(lines, workoutRange, WORKOUT_LOG_HEADER).map((p) => ({ id: p[0], date: p[1], taskId: p[2], minutes: number(p[3]), distance: number(p[4]), details: p[5], note: p[6] })) : [];
+  unique(workoutLogs.map((x) => x.id), "workout log");
+  for (const log of workoutLogs) if (!validDay(log.date) || log.taskId !== "workout" && log.taskId !== "treadmill") throw new Error("Workout Log rows must use a valid date and Workout or Treadmill task ID.");
   const taskIds = new Set(tasks.map((x) => x.id));
   for (const item of [...entries, ...sessions, ...timers]) if (!taskIds.has(item.taskId)) throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
+  const reflectionRange = rs.get("Reflections");
+  const reflections = reflectionRange ? dataLines(lines, reflectionRange).map((line) => line.trim().replace(/^[-*]\s+|^>\s?/, "")).filter((line) => line && !line.startsWith("<!--")) : [];
   const match = text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);
   const start = match?.[1] || localDay();
   const end = match?.[2] || addDays(start, 13);
   if (!validDay(start) || !validDay(end) || end < start) throw new Error("Invalid Sprint date range.");
-  return { tasks, entries, goals, sessions, timer, start, end };
+  return { tasks, entries, goals, sessions, timer, workoutLogs, reflections, start, end };
 }
 function validRepeat(value) {
   return value === "-" || value === "daily" || /^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);
@@ -221,6 +229,14 @@ function setEntry(text, date, id, done, detail) {
     return p[0] === date && p[1] === id;
   }, () => row, row);
 }
+function addWorkoutLog(text, log) {
+  const board = parseBoard(text);
+  if (!validDay(log.date) || log.taskId !== "workout" && log.taskId !== "treadmill" || !Number.isFinite(log.minutes) || log.minutes < 0 || !Number.isFinite(log.distance) || log.distance < 0) throw new Error("Workout log needs a valid date, Workout or Treadmill, and nonnegative duration and distance.");
+  const id = log.id || `w-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  if (board.workoutLogs.some((item) => item.id === id)) throw new Error("Workout log ID already exists.");
+  const row = `| ${[id, log.date, log.taskId, String(log.minutes), String(log.distance), log.details, log.note].map(cell).join(" | ")} |`;
+  return lineEdit(text, "Workout Log", () => false, () => row, row);
+}
 function saveTask(text, task) {
   parseBoard(text);
   const row = `| ${[task.id, task.title, task.color, task.page, task.kind, task.repeat, String(task.minutes), task.definition].map(cell).join(" | ")} |`;
@@ -265,6 +281,11 @@ function resumeTimer(text, id, now = Date.now()) {
   const timer = parseBoard(text).timer;
   if (!timer || timer.id !== id || timer.started !== "-") throw new Error("Timer changed or is already running.");
   return writeTimer(text, { ...timer, started: new Date(now).toISOString() });
+}
+function refreshTimer(text, id, now = Date.now()) {
+  const timer = parseBoard(text).timer;
+  if (!timer || timer.id !== id) throw new Error("Timer changed. Refresh and try again.");
+  return writeTimer(text, { ...timer, elapsed: 0, started: new Date(now).toISOString() });
 }
 function finishTimer(text, id, note, now = Date.now()) {
   const board = parseBoard(text);
@@ -336,6 +357,15 @@ ${SESSION_HEADER}
 ${TIMER_HEADER}
 | --- | --- | --- | --- | --- | --- |
 
+## Workout Log
+
+${WORKOUT_LOG_HEADER}
+| --- | --- | --- | --- | --- | --- |
+
+## Reflections
+
+<!-- Optional: one plain reflection quote per line. Focus and meditation mode show one at a time. -->
+
 ## Notes
 
 Your free-form planning, links, and reflections go here. These notes are preserved.
@@ -355,6 +385,10 @@ var Surface = class {
     this.request = 0;
     this.destroyed = false;
     this.pending = false;
+    this.focusMode = false;
+    this.activitySurface = null;
+    this.cuedTimerId = "";
+    this.audioContext = null;
     this.timerDisplay = null;
     this.day = options.day || this.day;
     this.page = options.page || "All";
@@ -369,6 +403,7 @@ var Surface = class {
   destroy() {
     this.destroyed = true;
     clearInterval(this.ticker);
+    void this.audioContext?.close();
     this.root.replaceChildren();
   }
   async refresh() {
@@ -425,6 +460,17 @@ var Surface = class {
     const b = this.board;
     this.root.replaceChildren();
     this.timerDisplay = null;
+    if (!b.timer) this.focusMode = false;
+    this.root.classList.toggle("cs-focus-mode", !!b.timer && this.focusMode);
+    if (b.timer && this.focusMode) {
+      this.renderFocusMode();
+      this.tick();
+      return;
+    }
+    if (this.activitySurface) {
+      this.renderActivitySurface(this.activitySurface);
+      return;
+    }
     const head = this.el("header", this.root, "cs-header");
     const title = this.el("div", head);
     this.el("p", title, "cs-eyebrow", "COLOR SPRINT \xB7 MARKDOWN FIRST");
@@ -465,6 +511,13 @@ var Surface = class {
       this.day = localDay();
       this.render();
     }, "cs-link");
+    const meditation = b.tasks.find((t) => t.id === "mindfulness");
+    if (meditation) this.button(controls, meditation.minutes ? `Meditate \xB7 ${meditation.minutes}m` : "Meditate", async () => {
+      this.prepareFocusCues();
+      await this.host.start(meditation, this.day);
+      this.focusMode = true;
+      this.render();
+    }, "cs-link cs-meditate", "Start meditation mode");
     this.el("p", this.root, "cs-muted cs-sprint", `Sprint ${b.start} \u2192 ${b.end}`);
     if (b.timer) this.renderTimer();
     if (this.tab === "Today") this.renderToday();
@@ -559,7 +612,16 @@ var Surface = class {
     const actions = this.el("div", card, "cs-actions");
     if (!scheduledToday) this.button(actions, "+ Plan this day", () => this.host.schedule(task, this.day, ""), "cs-small");
     if (scheduledToday) this.button(actions, "Day details", () => this.host.editEntry(task, this.day), "cs-small");
-    this.button(actions, task.minutes ? `\u25F7 ${task.minutes} min` : "\u25F7 Stopwatch", () => this.host.start(task, this.day), "cs-small", `Start timer for ${task.title}`);
+    if (task.id === "workout" || task.id === "treadmill") this.button(actions, task.id === "workout" ? "Manage workout" : "Manage treadmill", () => {
+      this.activitySurface = task.id;
+      this.render();
+    }, "cs-small");
+    this.button(actions, task.minutes ? `Start focus \xB7 ${task.minutes}m` : "Start focus", async () => {
+      this.prepareFocusCues();
+      await this.host.start(task, this.day);
+      this.focusMode = true;
+      this.render();
+    }, "cs-small cs-start-focus", `Start focus for ${task.title}`);
     this.button(actions, "Edit", () => this.host.editTask(task), "cs-small");
   }
   renderPages() {
@@ -664,20 +726,164 @@ var Surface = class {
     this.timerDisplay.setAttribute("aria-label", "Elapsed focus time");
     const actions = this.el("div", box, "cs-actions");
     this.button(actions, timer.started === "-" ? "Resume" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
+    this.button(actions, "Refresh timer", async () => {
+      await this.host.refresh(timer.id);
+      this.prepareFocusCues();
+    }, "cs-small");
     this.button(actions, "Save session", () => this.host.finish(timer.id), "cs-primary");
-    this.el("p", box, "cs-muted", "Elapsed time recovers after sleep. Save the actual result before starting another task.");
+    this.el("p", box, "cs-muted", "Refresh restarts at zero without saving a session. Save the actual result before starting another task.");
+  }
+  renderFocusMode() {
+    const timer = this.board.timer;
+    const task = this.board.tasks.find((t) => t.id === timer.taskId);
+    const entry = entryFor(this.board, task.id, timer.date);
+    const meditation = task.id === "mindfulness";
+    const top = this.el("header", this.root, "cs-focus-header");
+    this.el("p", top, "cs-eyebrow", timer.started === "-" ? meditation ? "MEDITATION PAUSED" : "FOCUS PAUSED" : meditation ? "MEDITATION" : "FOCUS NOW");
+    this.button(top, "Back to plan", () => {
+      this.focusMode = false;
+      this.render();
+    }, "cs-link");
+    const card = this.el("main", this.root, "cs-focus-card");
+    this.taskColor(task, card);
+    this.el("p", card, "cs-eyebrow", task.page);
+    this.el("h1", card, "", task.title);
+    if (entry?.detail) this.el("p", card, "cs-focus-detail", entry.detail);
+    this.el("p", card, "cs-definition", task.definition);
+    const quote = this.reflectionFor(timer.id);
+    if (quote) this.el("blockquote", card, "cs-reflection", `\u201C${quote}\u201D`);
+    this.timerDisplay = this.el("div", card, "cs-time");
+    this.timerDisplay.setAttribute("role", "timer");
+    this.timerDisplay.setAttribute("aria-label", "Elapsed focus time");
+    const actions = this.el("div", card, "cs-actions");
+    this.button(actions, timer.started === "-" ? meditation ? "Resume meditation" : "Resume focus" : "Pause", () => timer.started === "-" ? this.host.resume(timer.id) : this.host.pause(timer.id), "cs-small");
+    this.button(actions, "Refresh timer", async () => {
+      await this.host.refresh(timer.id);
+      this.prepareFocusCues();
+    }, "cs-small");
+    this.button(actions, meditation ? "End & log" : "Stop & log", () => this.host.finish(timer.id), "cs-primary");
+    this.el("p", card, "cs-muted", meditation ? "Keep it simple: breathe, notice, return. Refresh restarts at zero without saving a session. At the target, Color Sprint tries a chime, vibration, and permitted notification while Obsidian stays open." : "Refresh restarts at zero without saving a session. At the target, Color Sprint tries a chime, vibration, and permitted notification while Obsidian stays open. Stopping asks what actually happened; it does not auto-complete the task.");
+  }
+  activityField(parent, label, type, placeholder) {
+    const wrap = this.el("label", parent, "cs-activity-field");
+    this.el("span", wrap, "", label);
+    const input = this.el("input", wrap, "cs-search");
+    input.type = type;
+    input.placeholder = placeholder;
+    input.setAttribute("aria-label", label);
+    return input;
+  }
+  renderActivitySurface(kind) {
+    const task = this.board.tasks.find((item) => item.id === kind);
+    const name = kind === "workout" ? "Workout" : "Treadmill";
+    const top = this.el("header", this.root, "cs-focus-header");
+    this.el("p", top, "cs-eyebrow", "TRAINING LOG");
+    this.button(top, "Back to dashboard", () => {
+      this.activitySurface = null;
+      this.render();
+    }, "cs-link");
+    const card = this.el("main", this.root, "cs-activity-card");
+    this.taskColor(task, card);
+    this.el("h1", card, "", name);
+    this.el("p", card, "cs-muted", "Save what actually happened. This does not complete a planned task or create an extra workout count.");
+    const form = this.el("div", card, "cs-activity-form");
+    const date = this.activityField(form, "Date", "date", "");
+    date.value = this.day;
+    const minutes = this.activityField(form, "Duration minutes", "number", "0");
+    minutes.min = "0";
+    minutes.step = "1";
+    const distance = this.activityField(form, "Distance miles", "number", "0");
+    distance.min = "0";
+    distance.step = "0.01";
+    const details = this.activityField(form, kind === "workout" ? "Sets / reps / load" : "Pace, incline, or route", "text", kind === "workout" ? "Example: Bench 4x10 at 45 lb" : "Example: 2.8 mph, incline 2");
+    const note = this.activityField(form, "How it felt / note", "text", "Optional");
+    this.button(form, kind === "workout" ? "Save workout data" : "Save treadmill data", async () => {
+      const duration2 = Number(minutes.value || 0), miles = Number(distance.value || 0);
+      if (!date.value || !Number.isFinite(duration2) || duration2 < 0 || !Number.isFinite(miles) || miles < 0) throw new Error("Enter a valid date and nonnegative duration and distance.");
+      await this.host.logWorkout({ date: date.value, taskId: kind, minutes: duration2, distance: miles, details: details.value, note: note.value });
+    }, "cs-primary");
+    const logs = [...this.board.workoutLogs].filter((log) => log.taskId === kind).reverse();
+    this.el("h2", card, "cs-activity-history", "Recent actual logs");
+    if (!logs.length) this.el("p", card, "cs-muted", "No entries yet. Your first honest log goes here.");
+    for (const log of logs.slice(0, 8)) {
+      const row = this.el("article", card, "cs-activity-log");
+      this.el("strong", row, "", log.date);
+      this.el("p", row, "", `${log.minutes} min${log.distance ? ` \xB7 ${log.distance} mi` : ""}${log.details ? ` \xB7 ${log.details}` : ""}`);
+      if (log.note) this.el("p", row, "cs-muted", log.note);
+    }
+  }
+  reflectionFor(seed) {
+    const reflections = this.board.reflections;
+    if (!reflections.length) return void 0;
+    let value = 0;
+    for (const char of seed) value = value * 31 + char.charCodeAt(0) >>> 0;
+    return reflections[value % reflections.length];
+  }
+  prepareFocusCues() {
+    this.cuedTimerId = "";
+    const win = this.root.ownerDocument.defaultView;
+    const Audio = win?.AudioContext || win?.webkitAudioContext;
+    try {
+      if (Audio) {
+        const context = this.audioContext || (this.audioContext = new Audio());
+        void context.resume();
+      }
+    } catch {
+    }
+    const NotificationApi = win?.Notification;
+    if (NotificationApi?.permission === "default") void NotificationApi.requestPermission().catch(() => {
+    });
+  }
+  cue(timerId, task) {
+    if (this.cuedTimerId === timerId) return;
+    this.cuedTimerId = timerId;
+    const win = this.root.ownerDocument.defaultView;
+    try {
+      win?.navigator?.vibrate?.([120, 80, 180, 80, 240]);
+    } catch {
+    }
+    const NotificationApi = win?.Notification;
+    try {
+      if (NotificationApi?.permission === "granted") new NotificationApi("Color Sprint focus complete", { body: `${task.title}: target reached. Stop and log what happened.` });
+    } catch {
+    }
+    const play = () => {
+      try {
+        const context = this.audioContext;
+        if (!context) return;
+        for (const [offset, hz] of [[0, 660], [0.18, 880]]) {
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.frequency.value = hz;
+          gain.gain.setValueAtTime(1e-4, context.currentTime + offset);
+          gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + offset + 0.015);
+          gain.gain.exponentialRampToValueAtTime(1e-4, context.currentTime + offset + 0.16);
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start(context.currentTime + offset);
+          oscillator.stop(context.currentTime + offset + 0.18);
+        }
+      } catch {
+      }
+    };
+    if (this.audioContext?.state === "suspended") void this.audioContext.resume().then(play).catch(() => {
+    });
+    else play();
   }
   tick() {
     const timer = this.board?.timer;
     if (!timer || !this.timerDisplay) return;
     const elapsed = timerSeconds(timer);
     const target = timer.target;
+    if (target > 0 && elapsed >= target) {
+      const task = this.board.tasks.find((t) => t.id === timer.taskId);
+      if (task) this.cue(timer.id, task);
+    }
     this.timerDisplay.textContent = duration(elapsed);
     this.timerDisplay.setAttribute("data-target-reached", String(target > 0 && elapsed >= target));
     const parent = this.timerDisplay.parentElement;
     let label = parent.querySelector(".cs-timer-target");
     if (!label) label = this.el("p", parent, "cs-timer-target");
-    label.textContent = target ? elapsed >= target ? "Target reached \u2014 save when ready." : `${duration(Math.max(0, target - elapsed))} to your focus target` : "Open stopwatch";
+    label.textContent = target ? elapsed >= target ? "Target reached \u2014 stop and log when ready." : `${duration(Math.max(0, target - elapsed))} to your focus target` : "Open stopwatch";
   }
 };
 
@@ -890,6 +1096,8 @@ var ColorSprint = class extends import_obsidian.Plugin {
       start: (task, day) => change((text) => startTimer(text, task.id, day)),
       pause: (id) => change((text) => pauseTimer(text, id)),
       resume: (id) => change((text) => resumeTimer(text, id)),
+      refresh: (id) => change((text) => refreshTimer(text, id)),
+      logWorkout: (log) => change((text) => addWorkoutLog(text, log)),
       finish: (id) => new SessionModal(this.app, this, id, path).open(),
       openNote: () => {
         void this.openNote(path).catch((e) => this.error(e));

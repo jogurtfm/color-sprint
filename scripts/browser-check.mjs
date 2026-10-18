@@ -2,8 +2,8 @@ import { chromium, webkit } from 'playwright';
 import { mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({channel:'chrome',headless:true});
-const context=await browser.newContext({viewport:{width:393,height:852},deviceScaleFactor:2,isMobile:true,hasTouch:true});
-const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const context=await browser.newContext({viewport:{width:393,height:852},deviceScaleFactor:2,isMobile:true,hasTouch:true,permissions:['notifications']});
+const page=await context.newPage();await page.addInitScript(()=>{Object.defineProperty(window,'Notification',{value:{permission:'denied',requestPermission:async()=> 'denied'},configurable:true});Object.defineProperty(window,'AudioContext',{value:undefined,configurable:true});});const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try {
   await page.goto('http://127.0.0.1:8776');await page.waitForSelector('.cs-card');assert.ok((await page.locator('.cs-card').first().boundingBox()).y<430,'The first action card should be available without a long phone scroll.');
   assert.equal(await page.locator('.cs-card').count(),22);
@@ -11,6 +11,7 @@ try {
   await page.waitForFunction(()=>window.colorSprintPreview.getMarkdown().includes('- [x]'));
   const saved=await page.evaluate(()=>window.colorSprintPreview.getMarkdown());assert.ok(saved.includes('- [x]'));
   await page.reload();await page.waitForSelector('.cs-card');assert.equal(await page.getByRole('checkbox',{name:'Complete Make Bed',exact:true}).isChecked(),true);
+  await page.getByRole('button',{name:'Pages',exact:true}).click();await page.getByRole('button',{name:'Workouts',exact:true}).click();await page.getByRole('button',{name:'Manage treadmill',exact:true}).click();await page.getByLabel('Duration minutes',{exact:true}).fill('20');await page.getByLabel('Distance miles',{exact:true}).fill('0.8');await page.getByLabel('Pace, incline, or route',{exact:true}).fill('2.8 mph');await page.getByRole('button',{name:'Save treadmill data',exact:true}).click();await page.waitForFunction(()=>window.colorSprintPreview.getMarkdown().includes('| treadmill | 20 | 0.8 | 2.8 mph |'));await page.getByRole('button',{name:'Back to dashboard',exact:true}).click();
   await page.getByRole('button',{name:'Pages',exact:true}).click();await page.getByRole('button',{name:'Workouts',exact:true}).click();
   assert.equal(await page.locator('.cs-card').count(),10);
   assert.deepEqual([...new Set(await page.locator('.cs-card').evaluateAll(cards=>cards.map(c=>c.dataset.color)))],['blue','yellow','orange','salmon']);
@@ -18,7 +19,7 @@ try {
   await page.waitForFunction(()=>window.colorSprintPreview.getMarkdown().includes('edited in the interface'));
   await page.evaluate(async()=>{const s=window.colorSprintPreview.getMarkdown();await window.colorSprintPreview.setMarkdown(s.replace('Make Bed · edited in the interface','Make Bed · edited in Markdown'));});
   await page.getByRole('button',{name:'Today',exact:true}).first().click();await page.getByRole('button',{name:'All',exact:true}).click();await page.waitForSelector('h3:text("Make Bed · edited in Markdown")');
-  await page.getByRole('button',{name:'Start timer for Make Bed · edited in Markdown',exact:true}).click();await page.waitForSelector('.cs-time');
+  await page.getByRole('button',{name:'Start focus for Make Bed · edited in Markdown',exact:true}).click();await page.waitForSelector('.cs-focus-mode');await page.waitForSelector('.cs-time');
   await page.getByRole('button',{name:'Pause',exact:true}).click();await page.getByRole('button',{name:'Resume',exact:true}).click();await page.reload();await page.waitForSelector('.cs-time');
   await page.getByRole('button',{name:'Save session',exact:true}).click();await page.getByRole('textbox',{name:'Result',exact:true}).fill('Actual: bedding straightened');await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.cs-time'));
   await page.getByRole('button',{name:'History',exact:true}).click();await page.waitForSelector('.cs-card');assert.match(await page.locator('#app').innerText(),/Actual: bedding straightened/);

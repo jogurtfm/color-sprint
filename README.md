@@ -24,7 +24,10 @@ For a manual installation, download `manifest.json`, `main.js`, and `styles.css`
 - **Pages:** your Markdown page labels become navigation filters. Morning, Workouts, Kitchen, Room, Learning, Creative, Admin, and Portfolio are starter interpretations you can change.
 - **Goals:** milestones with due dates and evidence. The interface asks for evidence before marking a goal done.
 - **History:** focus sessions with elapsed time and the actual result you record. Training details can go in the result or Day details.
-- **Focus timer / stopwatch:** start, pause, resume, and save. The active timer and saved sessions live in Markdown. Elapsed time recovers when you return after sleep or app restart.
+- **Focus mode / timer:** tapping **Start focus** automatically replaces the task list with one task, its countdown or stopwatch, and a single **Stop & log** action. The active timer and saved sessions live in Markdown. Stopping asks for evidence and never auto-completes a task or workout.
+- **Focus cues:** starting a timed focus session asks for notification permission when the device supports it. At the target, Color Sprint attempts a chime, vibration, and permitted notification. These cues are best-effort while Obsidian remains open; iOS may suspend plugins in the background, so this is not a substitute for a native alarm or Calendar reminder.
+- **Meditation mode and reflections:** tap **Meditate** to start the existing Mindfulness task as a clean, timed practice. Add a `## Reflections` heading with one plain quote per line in the tracker Markdown; focus and meditation mode rotate through those quotes without publishing or rewriting them.
+- **Training surfaces:** `Workout` and `Treadmill` each open their own minimal data-entry screen. They append real duration, distance, sets/load, and notes to `## Workout Log`; this stays separate from plan checkboxes and focus sessions.
 - **Direct Markdown editing:** checkboxes, task definitions, colors, pages, schedules, recurring weekdays, goals, and timer records remain readable text. File changes refresh the interface.
 
 The six colors match the source palette exactly: pink `#ea9999`, blue `#cfe2f3`, yellow `#fff2cc`, purple `#d9d2e9`, orange `#fce5cd`, and salmon `#e6b8af`. Pages do not merge or reinterpret these color groups.

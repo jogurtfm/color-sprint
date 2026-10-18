@@ -12,11 +12,13 @@ export interface Entry {date:string; taskId:string; detail:string; done:boolean}
 export interface Goal {id:string; due:string; page:string; title:string; evidence:string; done:boolean}
 export interface Session {id:string; date:string; taskId:string; seconds:number; note:string}
 export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; start:string; end:string}
+export interface WorkoutLog {id:string; date:string; taskId:'workout'|'treadmill'; minutes:number; distance:number; details:string; note:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; reflections:string[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];
+export const WORKOUT_LOG_HEADER='| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |';
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -32,7 +34,7 @@ function ranges(lines:string[]):Map<string,Range>{
     const fence=lines[i].match(/^\s*(`{3,}|~{3,})/);if(fence){if(!fenced){fenced=true;fenceChar=fence[1][0];}else if(fence[1][0]===fenceChar)fenced=false;continue;}if(fenced)continue;
     const match=lines[i].match(/^##\s+(.+?)\s*$/);if(!match)continue;
     if(current)map.get(current)!.end=i;
-    current=SECTIONS.includes(match[1])?match[1]:null;
+    current=[...SECTIONS,...OPTIONAL_SECTIONS].includes(match[1])?match[1]:null;
     if(current){if(map.has(current))throw new Error(`Duplicate section: ${current}`);map.set(current,{start:i+1,end:lines.length});}
   }return map;
 }
@@ -55,9 +57,11 @@ export function parseBoard(text:string):Board {
   const sessions=table(lines,rs.get('Sessions')!,SESSION_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],seconds:number(p[3]),note:p[4]}));unique(sessions.map(x=>x.id),'session');for(const session of sessions)if(!validDay(session.date))throw new Error('Invalid session date.');
   const timers=table(lines,rs.get('Timer')!,TIMER_HEADER).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5])}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
   if(timer){unique([timer.id],'timer');if(!validDay(timer.date)|| (timer.started!=='-'&&!Number.isFinite(Date.parse(timer.started))))throw new Error('Invalid timer date or start timestamp.');}
+  const workoutRange=rs.get('Workout Log');const workoutLogs=workoutRange?table(lines,workoutRange,WORKOUT_LOG_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2] as WorkoutLog['taskId'],minutes:number(p[3]),distance:number(p[4]),details:p[5],note:p[6]})):[];unique(workoutLogs.map(x=>x.id),'workout log');for(const log of workoutLogs)if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill'))throw new Error('Workout Log rows must use a valid date and Workout or Treadmill task ID.');
   const taskIds=new Set(tasks.map(x=>x.id));for(const item of [...entries,...sessions,...timers])if(!taskIds.has(item.taskId))throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
+  const reflectionRange=rs.get('Reflections');const reflections=reflectionRange?dataLines(lines,reflectionRange).map(line=>line.trim().replace(/^[-*]\s+|^>\s?/,'')).filter(line=>line&&!line.startsWith('<!--')):[];
   const match=text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);const start=match?.[1]||localDay();const end=match?.[2]||addDays(start,13);if(!validDay(start)||!validDay(end)||end<start)throw new Error('Invalid Sprint date range.');
-  return {tasks,entries,goals,sessions,timer,start,end};
+  return {tasks,entries,goals,sessions,timer,workoutLogs,reflections,start,end};
 }
 export function validRepeat(value:string):boolean {return value==='-'||value==='daily'||/^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);}
 export function scheduled(task:Task,day:string):boolean {return task.repeat==='daily'||task.repeat.split(',').includes(['sun','mon','tue','wed','thu','fri','sat'][new Date(`${day}T12:00:00`).getDay()]);}
@@ -71,6 +75,9 @@ function lineEdit(text:string,section:string,find:(line:string)=>boolean,transfo
 export function setEntry(text:string,date:string,id:string,done:boolean,detail?:string):string{
   const board=parseBoard(text);if(!validDay(date)||!board.tasks.some(x=>x.id===id))throw new Error('Invalid task/date.');const old=entryFor(board,id,date);const row=`- [${done?'x':' '}] ${date} | ${id} | ${cell(detail??old?.detail??'')}`;
   return lineEdit(text,'Schedule',line=>{const m=line.match(/^\s*- \[[ xX]\]\s*(.*)$/);if(!m)return false;const p=splitCells(m[1]);return p[0]===date&&p[1]===id;},()=>row,row);
+}
+export function addWorkoutLog(text:string,log:Omit<WorkoutLog,'id'> & {id?:string}):string{
+  const board=parseBoard(text);if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill')||!Number.isFinite(log.minutes)||log.minutes<0||!Number.isFinite(log.distance)||log.distance<0)throw new Error('Workout log needs a valid date, Workout or Treadmill, and nonnegative duration and distance.');const id=log.id||`w-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;if(board.workoutLogs.some(item=>item.id===id))throw new Error('Workout log ID already exists.');const row=`| ${[id,log.date,log.taskId,String(log.minutes),String(log.distance),log.details,log.note].map(cell).join(' | ')} |`;return lineEdit(text,'Workout Log',()=>false,()=>row,row);
 }
 export function saveTask(text:string,task:Task):string{
   parseBoard(text);const row=`| ${[task.id,task.title,task.color,task.page,task.kind,task.repeat,String(task.minutes),task.definition].map(cell).join(' | ')} |`;
@@ -94,6 +101,9 @@ export function pauseTimer(text:string,id:string,now=Date.now()):string{
 }
 export function resumeTimer(text:string,id:string,now=Date.now()):string{
   const timer=parseBoard(text).timer;if(!timer||timer.id!==id||timer.started!=='-')throw new Error('Timer changed or is already running.');return writeTimer(text,{...timer,started:new Date(now).toISOString()});
+}
+export function refreshTimer(text:string,id:string,now=Date.now()):string{
+  const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:0,started:new Date(now).toISOString()});
 }
 export function finishTimer(text:string,id:string,note:string,now=Date.now()):string{
   const board=parseBoard(text);if(board.sessions.some(s=>s.id===id))return text;const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. No session saved.');

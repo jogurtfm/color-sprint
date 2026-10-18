@@ -1,4 +1,4 @@
-import { addDays, localDay, TASK_HEADER, SESSION_HEADER, TIMER_HEADER } from './model';
+import { addDays, localDay, TASK_HEADER, SESSION_HEADER, TIMER_HEADER, WORKOUT_LOG_HEADER } from './model';
 
 export function starter(start=localDay()):string{return `# Color Sprint
 
@@ -54,6 +54,15 @@ ${SESSION_HEADER}
 
 ${TIMER_HEADER}
 | --- | --- | --- | --- | --- | --- |
+
+## Workout Log
+
+${WORKOUT_LOG_HEADER}
+| --- | --- | --- | --- | --- | --- |
+
+## Reflections
+
+<!-- Optional: one plain reflection quote per line. Focus and meditation mode show one at a time. -->
 
 ## Notes
 

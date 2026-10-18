@@ -78,4 +78,26 @@ Sessions record elapsed focus and actual notes. They are not automatic workouts 
 
 Zero or one data row. Started ISO is an ISO timestamp when running; `-` means paused. Elapsed seconds is the accumulated time before the current run; Target seconds is optional focus intent (zero for stopwatch). Do not edit the timer row on two devices at once. Saving a timer appends its session and clears this row in one atomic Vault operation.
 
+## Workout Log (optional)
+
+```md
+## Workout Log
+
+| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| w-example | 2026-10-18 | treadmill | 20 | 0.8 | 2.8 mph, incline 2 | Easy start |
+```
+
+Use task ID `workout` or `treadmill`. Duration and distance are nonnegative numbers; use `0` where a field does not apply. The two dedicated training screens append real entries to this table. A workout-log row is evidence, not a new planned task, completion checkbox, or automatic exercise count.
+
+## Reflections (optional)
+
+```md
+## Reflections
+
+What a privilege it is to have another day to try again.
+```
+
+Use one plain quote per line. Focus and Meditation mode select one deterministically for the active session. Edit or remove these lines directly; the plugin does not write them.
+
 Malformed tables, duplicate IDs/dates, missing sections, unknown references/colors, and invalid numeric/date values show a readable error and stop writes. Fix the Markdown to resume. Existing prose and unrelated sections are not regenerated.
