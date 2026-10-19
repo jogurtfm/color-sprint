@@ -10,6 +10,8 @@ import { addRoadmap } from '../src/roadmaps';
 import { timeBlockFor, saveTimeBlock } from '../src/model';
 import { saveTask } from '../src/model';
 import { syncNote, parseCheckpoint, PlanProposal } from '../src/sync';
+import {generateKeyPairSync,randomUUID,sign} from 'node:crypto';
+import {HudRequest,hudNote,hudFolder,signedHudBody,hudPayload} from '../src/hud-protocol';
 const require=createRequire(import.meta.url);
 const {JSDOM}=require('jsdom');
 const settle=(ms=20)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -18,7 +20,7 @@ async function harness(initial=starter(),initialFiles:Record<string,string>={},v
   const dom=new JSDOM('<!doctype html><body></body>',{url:'https://preview.invalid'});const document=dom.window.document;const proto=dom.window.HTMLElement.prototype;
   Object.assign(proto,{addClass:function(this:any,name:string){this.classList.add(name);},empty:function(this:any){this.replaceChildren();},createEl:function(this:any,tag:string,options:any={}){const e=document.createElement(tag);e.className=options.cls||'';e.textContent=options.text||'';for(const [key,value] of Object.entries(options.attr||{}))e.setAttribute(key,String(value));this.append(e);return e;}});
   const notices:string[]=[];const modals:any[]=[];const events=new Map<string,Set<(...args:any[])=>void>>();const commands=new Map<string,any>();const blocks=new Map<string,any>();const children:any[]=[];const opened:any[]=[];let md=initial;let writes=0;
-  class TFile {constructor(public path:string) {}}
+  class TFile {stat={size:0};constructor(public path:string) {}}
   const file=new TFile('Sync/Color Sprint.md');
   const files=new Map(Object.entries(initialFiles).map(([path,text])=>[path,{file:new TFile(path),text}]));const folders=new Map<string,any>();
   const listen=(event:string,fn:any)=>{if(!events.has(event))events.set(event,new Set());const set=events.get(event)!;set.add(fn);return {set,fn};};
@@ -27,6 +29,7 @@ async function harness(initial=starter(),initialFiles:Record<string,string>={},v
     constructor(app:any){this.app=app;}
     async loadData(){return null;}async saveData(_data:any){}
     registerView(type:string,factory:any){this.app.workspace.factory=factory;}
+    registerObsidianProtocolHandler(action:string,handler:any){commands.set('protocol:'+action,handler);}
     addSettingTab(){}registerMarkdownCodeBlockProcessor(language:string,handler:any){blocks.set(language,handler);}
     addRibbonIcon(){}addCommand(command:any){commands.set(command.id,command);}
     registerEvent(ref:any){this.cleanups.push(()=>ref.set.delete(ref.fn));}
@@ -60,7 +63,7 @@ async function harness(initial=starter(),initialFiles:Record<string,string>={},v
   const exports:any={};const module={exports};
   const parseYaml=(text:string)=>{const out:Record<string,unknown>={};for(const line of text.split(/\r?\n/)){if(!line.trim()||line.trim().startsWith('#'))continue;const match=line.match(/^([-\w]+):\s*(.*?)\s*$/);if(!match)throw new Error('Invalid YAML');out[match[1]]=match[2].startsWith('"')?JSON.parse(match[2]):match[2]==='true'?true:match[2]==='false'?false:match[2];}return out;};
   const obsidian={Platform:{isMobile:!!voiceOptions.mobile},Plugin,Component,MarkdownRenderer,ItemView,MarkdownRenderChild,PluginSettingTab,Modal,Setting,TFile,parseYaml,getFrontMatterInfo:(text:string)=>{const m=text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);return {exists:!!m,frontmatter:m?.[1]||''};},Notice:class {constructor(message:string){notices.push(message);}},debounce:(fn:any)=>fn};
-  runInNewContext(readFileSync('main.js','utf8'),{module,exports,require:(id:string)=>{assert.equal(id,'obsidian');return obsidian;},document,window:dom.window,console,setTimeout,clearTimeout,setInterval,clearInterval});
+  runInNewContext(readFileSync('main.js','utf8'),{module,exports,require:(id:string)=>{assert.equal(id,'obsidian');return obsidian;},document,window:dom.window,console,setTimeout,clearTimeout,setInterval,clearInterval,crypto,TextEncoder,atob});
   const plugin:any=new module.exports.default(app,{});await plugin.onload();const view:any=app.workspace.factory(leaf);leaf.view=view;await view.onOpen();
   return {dom,document,plugin,view,commands,notices,modals,opened,files,renderedMarkdown,get componentsUnloaded(){return componentsUnloaded;},get text(){return md;},get writes(){return writes;},async external(fn:(s:string)=>string){md=fn(md);for(const cb of events.get('modify')||[])cb(file);await settle();},async openFile(path:string){const target=files.get(path)?.file;assert.ok(target);await leaf.openFile(target);await settle();},async embed(source:string,sourcePath:string){const el=document.createElement('article');document.body.append(el);let child:any;blocks.get('color-sprint')(source,el,{sourcePath,addChild:(c:any)=>{child=c;children.push(c);c.onload();}});await settle();return {el,child};},async close(){for(const modal of [...modals])modal.close();for(const child of children)child.unload();await view.onClose();plugin.onunload();for(const cleanup of plugin.cleanups)cleanup();dom.window.close();},button(label:string,within:any=view.contentEl){const b=[...within.querySelectorAll('button')].find((e:any)=>e.textContent===label);assert.ok(b,`Button not found: ${label}`);return b as HTMLButtonElement;}};
 }
@@ -68,6 +71,21 @@ test('mobile actions checkpoint checks and unchecks; reviewed recovery keeps pla
   const day=localDay(),base=setEntry(starter(),day,'japanese',false),h=await harness(base,{}, {mobile:true});try{assert.equal(h.plugin.primaryPhone,true);await h.plugin.change((s:string)=>setEntry(s,day,'japanese',true));await h.plugin.change((s:string)=>setEntry(s,day,'japanese',false));const records=[...h.files.entries()].filter(([path])=>path.includes('/Phone/')).map(([,item])=>parseCheckpoint(item.text));assert.equal(records.length,2);assert.deepEqual(records.map(record=>record.checks[0].done),[true,false]);assert.ok(records[1].sequence>records[0].sequence);
     await h.external(md=>saveTask(setEntry(md,day,'japanese',true),{...parseBoard(md).tasks.find(t=>t.id==='japanese')!,definition:'Keep this new planning definition'}));const review=await h.plugin.syncStore.review('Sync/Color Sprint.md');assert.equal(review.recovery.changes.length,1);await h.plugin.syncStore.restore('Sync/Color Sprint.md',review.current,review.recovery);assert.equal(parseBoard(h.text).entries[0].done,false);assert.equal(parseBoard(h.text).tasks.find(t=>t.id==='japanese')!.definition,'Keep this new planning definition');assert.ok([...h.files.keys()].some(path=>path.includes('/Recovery/')));
   }finally{await h.close();}
+});
+
+function hudRequest(base:string):HudRequest {const pair=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),now=Date.now();const r:HudRequest={version:1,id:'hud-'+randomUUID(),tracker:'Sync/Color Sprint.md',created:now,expires:now+120000,client:'hud-'+randomUUID(),publicKey:pair.publicKey.export({type:'spki',format:'der'}).toString('base64'),base,action:{kind:'complete',taskId:'japanese',date:localDay(),done:true},signature:''};r.signature=sign('sha256',Buffer.from(signedHudBody(r)),{key:pair.privateKey,dsaEncoding:'ieee-p1363'}).toString('base64');return r;}
+test('paired HUD actions use the plugin queue once, retain phone checkoffs and keep planning separate',async()=>{
+  const base=setEntry(starter(),localDay(),'brush-teeth',true),r=hudRequest(base),local=new Map([['color-sprint.hud-trust',{[r.client+'/'+r.tracker]:r.publicKey}]]),h=await harness(base,{[`${hudFolder(r.tracker)}/Requests/${r.id}.md`]:hudNote(r)},{store:local});
+  try{h.plugin.app.vault.getName=()=> 'Fixture';assert.ok(h.commands.has('protocol:color-sprint-hud'));await h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='brush-teeth')!.done);assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='japanese')!.done);assert.equal((hudPayload(h.files.get(`${hudFolder(r.tracker)}/Results/${r.id}.md`)!.text) as any).status,'done');const writes=h.writes;await h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});assert.equal(h.writes,writes);h.commands.get('revoke-hud-pairings').callback();assert.deepEqual(Object.keys(local.get('color-sprint.hud-trust')!),[]);assert.ok(![...h.files.keys()].some(p=>p.includes('/Phone/')||p.includes('/Proposals/')));
+  }finally{await h.close();}
+});
+test('unpaired HUD key requires explicit pairing and rejects cancel without task changes',async()=>{
+  const base=starter(),r=hudRequest(base),h=await harness(base,{[`${hudFolder(r.tracker)}/Requests/${r.id}.md`]:hudNote(r)});
+  try{h.plugin.app.vault.getName=()=> 'Fixture';const work=h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});await settle();assert.equal(h.modals.length,1);const modal=h.modals[0];modal.onOpen();assert.match(modal.contentEl.textContent,/Pair this Color Sprint HUD/);assert.match(modal.contentEl.textContent,/fingerprint/);h.button('Cancel',modal.contentEl).click();await work;assert.equal(h.text,base);assert.equal((hudPayload(h.files.get(`${hudFolder(r.tracker)}/Results/${r.id}.md`)!.text) as any).status,'rejected');
+  }finally{await h.close();}
+});
+test('mobile Obsidian never consumes desktop HUD requests',async()=>{
+  const h=await harness(starter(),{},{mobile:true});try{await assert.rejects(h.plugin.hudBridge.handle({vault:'Fixture',tracker:'Sync/Color Sprint.md',id:'hud-'+randomUUID()}),/same Windows/);assert.equal(h.writes,0);}finally{await h.close();}
 });
 test('phone baseline protects existing checkbox states without changing progress or counting wins',async()=>{
   const day=localDay(),initial=setEntry(setEntry(starter(),day,'japanese',true,'My actual lesson'),day,'make-bed',false),h=await harness(initial,{}, {mobile:true});try{await h.plugin.syncStore.baseline('Sync/Color Sprint.md',h.text);assert.equal(h.text,initial);assert.equal(h.writes,0);const records=[...h.files.entries()].filter(([path])=>path.includes('/Phone/')).map(([,item])=>parseCheckpoint(item.text));assert.equal(records.length,1);assert.equal(records[0].checks.length,2);assert.deepEqual(records[0].checks.map(c=>c.done),[true,false]);assert.equal((await h.plugin.syncStore.review('Sync/Color Sprint.md')).recovery.changes.length,0);

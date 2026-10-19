@@ -24,7 +24,7 @@ __export(main_exports, {
   default: () => ColorSprint
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // src/model.ts
 var COLORS = [
@@ -2571,9 +2571,230 @@ function mountSyncPanel(root, options) {
   };
 }
 
+// src/hud-store.ts
+var import_obsidian2 = require("obsidian");
+
+// src/hud-protocol.ts
+function applyHudAction(text, action, now = Date.now()) {
+  const b = parseBoard(text);
+  if (!action || typeof action.kind !== "string") throw new Error("Invalid task action.");
+  if (Object.keys(action).some((key) => !["kind", "taskId", "date", "done", "timerId", "stepId", "cursor"].includes(key))) throw new Error("Unsupported action field.");
+  if (!["complete", "start", "schedule", "pause", "resume", "reset", "cancel", "finish", "next"].includes(action.kind)) throw new Error("Unsupported action.");
+  if (["complete", "start", "schedule"].includes(action.kind)) {
+    if (typeof action.taskId !== "string" || !b.tasks.some((t) => t.id === action.taskId) || typeof action.date !== "string" || !validDay(action.date)) throw new Error("Unknown task or invalid date.");
+    if (action.kind === "start") return startTimer(text, action.taskId, action.date, now);
+    if (action.kind === "complete" && typeof action.done !== "boolean") throw new Error("Completion must be explicit.");
+    if (action.kind === "schedule" && b.entries.some((e) => e.taskId === action.taskId && e.date === action.date)) return text;
+    return setEntry(text, action.date, action.taskId, action.kind === "complete" ? action.done : false);
+  }
+  const timer = b.timer;
+  if (!timer || timer.id !== action.timerId) throw new Error("The timer changed in Obsidian. Refresh before acting.");
+  switch (action.kind) {
+    case "pause":
+      return pauseTimer(text, timer.id, now);
+    case "resume":
+      return resumeTimer(text, timer.id, now);
+    case "reset":
+      return refreshTimer(text, timer.id, now);
+    case "cancel":
+      return cancelTimer(text, timer.id);
+    case "finish":
+      return finishFocus(text, timer.id, action.stepId || "", "", now);
+    case "next":
+      if (action.cursor !== timer.cursor) throw new Error("The queue advanced elsewhere.");
+      return completeFocusStep(text, timer.id, timer.cursor, now);
+    default:
+      throw new Error("Unsupported action.");
+  }
+}
+var bridgeId = (value) => typeof value === "string" && /^hud-[a-f0-9-]{36}$/.test(value);
+var hudFolder = (tracker) => `${syncFolder(tracker)}/HUD`;
+function hudNote(value) {
+  return `# Color Sprint HUD bridge
+
+Private sync record. Not a planning proposal or phone checkpoint.
+
+\`\`\`json
+${JSON.stringify(value, null, 2)}
+\`\`\`
+`;
+}
+function hudPayload(text) {
+  if (text.length > 4 * 1024 * 1024) throw new Error("HUD record exceeds 4 MB.");
+  const blocks = [...text.matchAll(/^```json\r?\n([\s\S]*?)\r?\n```\s*$/gm)];
+  if (blocks.length !== 1) throw new Error("Expected one HUD JSON payload.");
+  return JSON.parse(blocks[0][1]);
+}
+function signedHudBody(r) {
+  return JSON.stringify([r.version, r.id, r.tracker, r.created, r.expires, r.client, r.publicKey, r.base, ...["kind", "taskId", "date", "done", "timerId", "stepId", "cursor"].map((k) => r.action[k] ?? null)]);
+}
+function parseHudRequest(text, now = Date.now()) {
+  const r = hudPayload(text);
+  if (!r || r.version !== 1 || !bridgeId(r.id) || !bridgeId(r.client) || typeof r.tracker !== "string" || typeof r.base !== "string" || typeof r.publicKey !== "string" || !/^[A-Za-z0-9+/]{100,200}={0,2}$/.test(r.publicKey) || typeof r.signature !== "string" || !/^[A-Za-z0-9+/]{80,100}={0,2}$/.test(r.signature) || !Number.isSafeInteger(r.created) || !Number.isSafeInteger(r.expires) || r.expires - r.created > 12e4 || r.expires <= r.created || r.created > now + 5e3 || r.expires <= now) throw new Error("Invalid or expired HUD request. Refresh and try again.");
+  vaultPath(r.tracker);
+  applyHudAction(r.base, r.action, now);
+  return r;
+}
+var bytes = (base64) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+async function verifyHudRequest(r) {
+  const key = await crypto.subtle.importKey("spki", bytes(r.publicKey), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+  return crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, bytes(r.signature), new TextEncoder().encode(signedHudBody(r)));
+}
+async function processHudRequest(host, tracker, id, now = () => Date.now()) {
+  vaultPath(tracker);
+  if (!bridgeId(id)) throw new Error("Invalid HUD request ID.");
+  const folder = hudFolder(tracker), requestPath = `${folder}/Requests/${id}.md`, resultPath = `${folder}/Results/${id}.md`;
+  const raw = await host.read(requestPath);
+  if (!raw) throw new Error("HUD request not found.");
+  const r = parseHudRequest(raw, now());
+  if (r.tracker !== tracker || r.id !== id) throw new Error("HUD request identity mismatch.");
+  if (!await verifyHudRequest(r)) throw new Error("HUD signature rejected.");
+  const prior = await host.read(resultPath);
+  if (prior) {
+    const result2 = hudPayload(prior);
+    if (result2.id !== id || result2.version !== 1 || result2.requestSignature !== r.signature || !["processing", "done", "rejected", "unconfirmed"].includes(result2.status) || typeof result2.message !== "string") throw new Error("HUD receipt differs; inspect it before continuing.");
+    return result2;
+  }
+  const pending = { version: 1, id, requestSignature: r.signature, status: "processing", message: "Outcome pending. Never replay this request." }, pendingText = hudNote(pending);
+  await host.create(resultPath, pendingText);
+  let wrote = false, result;
+  try {
+    if (!await host.approve(r.client, r.publicKey, tracker)) throw new Error("HUD pairing declined. Nothing changed.");
+    parseHudRequest(raw, now());
+    if (await host.read(requestPath) !== raw) throw new Error("HUD request changed after review.");
+    let next = "";
+    await host.change(tracker, (current) => {
+      parseHudRequest(raw, now());
+      if (current !== r.base) throw new Error("Tracker changed in Obsidian. Nothing overwritten. Refresh and try again.");
+      next = applyHudAction(current, r.action, now());
+      return next;
+    });
+    wrote = true;
+    if (await host.read(tracker) !== next) throw new Error("Tracker changed during verification. Inspect Obsidian before retrying.");
+    result = { version: 1, id, requestSignature: r.signature, status: "done", message: "Applied and read back through Obsidian." };
+  } catch (error) {
+    let unchanged = false;
+    try {
+      unchanged = await host.read(tracker) === r.base;
+    } catch {
+    }
+    result = { version: 1, id, requestSignature: r.signature, status: wrote || !unchanged ? "unconfirmed" : "rejected", message: error instanceof Error ? error.message : String(error) };
+  }
+  await host.replace(resultPath, pendingText, hudNote(result));
+  return result;
+}
+
+// src/hud-store.ts
+var TRUST = "color-sprint.hud-trust";
+var HudBridge = class {
+  constructor(app, change) {
+    this.app = app;
+    this.change = change;
+    this.tail = Promise.resolve();
+    this.stopped = false;
+    this.pairing = null;
+  }
+  stop() {
+    this.stopped = true;
+    this.pairing?.close();
+  }
+  revoke() {
+    if (!this.app.saveLocalStorage) throw new Error("Local pairing storage unavailable.");
+    this.app.saveLocalStorage(TRUST, {});
+  }
+  handle(params) {
+    const work = this.tail.catch(() => {
+    }).then(async () => {
+      if (this.stopped) return;
+      if (import_obsidian2.Platform.isMobile) throw new Error("HUD controls must be handled by Obsidian on the same Windows computer.");
+      if (params.vault !== this.app.vault.getName()) throw new Error("HUD request belongs to another vault.");
+      const result = await processHudRequest({
+        read: async (path) => {
+          const file = this.app.vault.getAbstractFileByPath(path);
+          if (!file) return null;
+          if (!(file instanceof import_obsidian2.TFile) || file.stat.size > 4 * 1024 * 1024) throw new Error("HUD note is invalid or too large.");
+          return this.app.vault.read(file);
+        },
+        create: async (path, text) => {
+          if (this.stopped) throw new Error("Plugin stopped.");
+          const parts = path.split("/");
+          parts.pop();
+          let parent = "";
+          for (const part of parts) {
+            parent = parent ? parent + "/" + part : part;
+            if (!this.app.vault.getAbstractFileByPath(parent)) try {
+              await this.app.vault.createFolder(parent);
+            } catch (error) {
+              if (!this.app.vault.getAbstractFileByPath(parent)) throw error;
+            }
+          }
+          await this.app.vault.create(path, text);
+        },
+        replace: async (path, before, after) => {
+          const file = this.app.vault.getAbstractFileByPath(path);
+          if (!(file instanceof import_obsidian2.TFile)) throw new Error("HUD receipt missing.");
+          await this.app.vault.process(file, (current) => {
+            if (current !== before) throw new Error("HUD receipt changed; inspect it.");
+            return after;
+          });
+        },
+        change: async (tracker, fn) => {
+          if (this.stopped) throw new Error("Plugin stopped.");
+          await this.change(fn, tracker);
+        },
+        approve: async (client, key, tracker) => {
+          const read = () => {
+            const raw = this.app.loadLocalStorage?.(TRUST);
+            return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+          };
+          const slot = client + "/" + tracker;
+          if (read()[slot] === key) return true;
+          if (!this.app.saveLocalStorage) throw new Error("Update Obsidian for device-local HUD pairing.");
+          const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+          const fingerprint = [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 24);
+          const approved = await new Promise((resolve) => {
+            this.pairing = new PairHudModal(this.app, tracker, fingerprint, resolve);
+            this.pairing.open();
+          });
+          this.pairing = null;
+          if (!approved || this.stopped) return false;
+          this.app.saveLocalStorage(TRUST, { ...read(), [slot]: key });
+          return true;
+        }
+      }, params.tracker, params.id);
+      if (result.status !== "done") new import_obsidian2.Notice(`Color Sprint HUD: ${result.message}`, 1e4);
+    });
+    this.tail = work;
+    return work;
+  }
+};
+var PairHudModal = class extends import_obsidian2.Modal {
+  constructor(app, tracker, fingerprint, resolve) {
+    super(app);
+    this.tracker = tracker;
+    this.fingerprint = fingerprint;
+    this.resolve = resolve;
+    this.accepted = false;
+  }
+  onOpen() {
+    this.contentEl.createEl("h2", { text: "Pair this Color Sprint HUD?" });
+    this.contentEl.createEl("p", { text: "Approve only if you just clicked a control in your Windows HUD. This pairs its signing key on this computer for this tracker. It may start/stop focus and change task checkboxes through Obsidian, but cannot apply planning proposals or restore phone checkpoints." });
+    this.contentEl.createEl("p", { text: this.tracker });
+    this.contentEl.createEl("p", { text: `Compare with HUD Settings fingerprint: ${this.fingerprint}` });
+    new import_obsidian2.Setting(this.contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close())).addButton((b) => b.setButtonText("Pair HUD").setCta().onClick(() => {
+      this.accepted = true;
+      this.close();
+    }));
+  }
+  onClose() {
+    this.contentEl.empty();
+    this.resolve(this.accepted);
+  }
+};
+
 // src/main.ts
 var VIEW = "color-sprint-view";
-var ColorSprint = class extends import_obsidian2.Plugin {
+var ColorSprint = class extends import_obsidian3.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY", feedback: { ...DEFAULT_FEEDBACK }, voiceFolder: DEFAULT_VOICE_FOLDER };
@@ -2593,9 +2814,31 @@ var ColorSprint = class extends import_obsidian2.Plugin {
     this.voicePoll = null;
   }
   async onload() {
+    this.hudBridge = new HudBridge(this.app, (fn, path) => this.change(fn, path));
+    this.registerObsidianProtocolHandler("color-sprint-hud", (params) => {
+      if (params.review === "1") {
+        try {
+          if (params.vault !== this.app.vault.getName()) throw new Error("Wrong vault.");
+          this.file(params.tracker);
+          this.openSyncReview(params.tracker);
+        } catch (e) {
+          this.error(e);
+        }
+        return;
+      }
+      void this.hudBridge.handle(params).catch((e) => this.error(e));
+    });
+    this.addCommand({ id: "revoke-hud-pairings", name: "Revoke desktop HUD pairings on this device", callback: () => {
+      try {
+        this.hudBridge.revoke();
+        new import_obsidian3.Notice("HUD pairings revoked on this device.");
+      } catch (e) {
+        this.error(e);
+      }
+    } });
     const primary = this.app.loadLocalStorage?.("color-sprint.primary-phone");
-    this.primaryPhone = typeof primary === "boolean" ? primary : !!import_obsidian2.Platform?.isMobile;
-    this.syncStore = new SyncStore(this.app, (message) => new import_obsidian2.Notice(message, 1e4));
+    this.primaryPhone = typeof primary === "boolean" ? primary : !!import_obsidian3.Platform?.isMobile;
+    this.syncStore = new SyncStore(this.app, (message) => new import_obsidian3.Notice(message, 1e4));
     try {
       const owner = this.app.loadLocalStorage?.("color-sprint.voice-capture");
       if (owner && typeof owner.path === "string" && typeof owner.seen === "boolean" && Number.isFinite(owner.requestedAt)) this.voiceOwner = { path: vaultPath(owner.path), seen: owner.seen, requestedAt: owner.requestedAt };
@@ -2648,7 +2891,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
       modal.save(() => this.createDaily(date), "Open day");
       modal.open();
     } });
-    const refresh = (0, import_obsidian2.debounce)(() => this.refresh(), 120, true);
+    const refresh = (0, import_obsidian3.debounce)(() => this.refresh(), 120, true);
     const watched = (path) => path === this.settings.path || [...this.surfaces.values()].includes(path);
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (watched(file.path)) refresh();
@@ -2660,11 +2903,11 @@ var ColorSprint = class extends import_obsidian2.Plugin {
       if (watched(file.path)) refresh();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, old) => {
-      if (this.voiceOwner?.path === old && file instanceof import_obsidian2.TFile) this.rememberVoiceOwner({ ...this.voiceOwner, path: file.path });
-      if (old === this.settings.path && file instanceof import_obsidian2.TFile) {
+      if (this.voiceOwner?.path === old && file instanceof import_obsidian3.TFile) this.rememberVoiceOwner({ ...this.voiceOwner, path: file.path });
+      if (old === this.settings.path && file instanceof import_obsidian3.TFile) {
         this.settings.path = file.path;
         void this.saveData(this.settings);
-        new import_obsidian2.Notice("Tracker renamed. Update sprint-tracker properties in linked daily notes.");
+        new import_obsidian3.Notice("Tracker renamed. Update sprint-tracker properties in linked daily notes.");
         refresh();
       }
     }));
@@ -2686,6 +2929,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
   }
   onunload() {
     this.stopped = true;
+    this.hudBridge?.stop();
     this.dailyRequest++;
     this.reflectionModal?.close();
     if (this.voicePoll) clearInterval(this.voicePoll);
@@ -2701,7 +2945,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
   }
   file(path = this.settings.path) {
     const file = this.app.vault.getAbstractFileByPath(vaultPath(path));
-    if (!(file instanceof import_obsidian2.TFile)) throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);
+    if (!(file instanceof import_obsidian3.TFile)) throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);
     return file;
   }
   async read(path = this.settings.path) {
@@ -2730,7 +2974,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
     for (const surface of this.surfaces.keys()) void surface.refresh();
   }
   error(error) {
-    new import_obsidian2.Notice(error instanceof Error ? error.message : String(error), 8e3);
+    new import_obsidian3.Notice(error instanceof Error ? error.message : String(error), 8e3);
   }
   attach(root, context = {}) {
     const path = vaultPath(context.tracker || this.settings.path);
@@ -2853,10 +3097,10 @@ var ColorSprint = class extends import_obsidian2.Plugin {
         await waitForAudioEmbed(before, () => editor.getValue(), { cancelled: () => this.stopped });
         if (view?.file?.path === path && typeof view.save === "function") await view.save();
         this.rememberVoiceOwner(null);
-        new import_obsidian2.Notice("Audio added to your journal. You can replay it from Voice reflections.");
+        new import_obsidian3.Notice("Audio added to your journal. You can replay it from Voice reflections.");
       } else {
         this.rememberVoiceOwner(null);
-        new import_obsidian2.Notice("Stop requested. Obsidian is saving the audio as an attachment. Check the saved recording before starting another.");
+        new import_obsidian3.Notice("Stop requested. Obsidian is saving the audio as an attachment. Check the saved recording before starting another.");
       }
     } finally {
       this.voiceSaving = false;
@@ -2866,7 +3110,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
   openVoiceReflection(day) {
     if (this.reflectionModal) {
       this.reflectionModal.focusText();
-      new import_obsidian2.Notice("A reflection draft is already open. Finish or close it before opening another day.");
+      new import_obsidian3.Notice("A reflection draft is already open. Finish or close it before opening another day.");
       return;
     }
     const path = voicePath(this.settings.voiceFolder, day);
@@ -2907,7 +3151,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
           if (!file) throw e;
         }
       }
-      if (!(file instanceof import_obsidian2.TFile)) throw new Error("Reflection journal path is a folder, not a note.");
+      if (!(file instanceof import_obsidian3.TFile)) throw new Error("Reflection journal path is a folder, not a note.");
       await this.app.vault.process(file, (current) => appendReflection(current, draft));
       const latest = this.reflectionDrafts.get(path);
       if (latest?.id === draft.id && latest.text === draft.text) {
@@ -2917,7 +3161,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
         } catch {
         }
       }
-      new import_obsidian2.Notice("Reflection saved as Markdown. Your vault sync can carry the text.");
+      new import_obsidian3.Notice("Reflection saved as Markdown. Your vault sync can carry the text.");
     });
     this.reflectionQueue = operation.catch(() => {
     });
@@ -2926,8 +3170,8 @@ var ColorSprint = class extends import_obsidian2.Plugin {
   async readVoiceReflection(day) {
     const path = voicePath(this.settings.voiceFolder, day);
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (file && !(file instanceof import_obsidian2.TFile)) throw new Error("Voice journal path is a folder, not a note.");
-    return { path, text: file instanceof import_obsidian2.TFile ? await this.app.vault.read(file) : "" };
+    if (file && !(file instanceof import_obsidian3.TFile)) throw new Error("Voice journal path is a folder, not a note.");
+    return { path, text: file instanceof import_obsidian3.TFile ? await this.app.vault.read(file) : "" };
   }
   async openVoiceJournal(day, record2 = false) {
     if (this.voiceSaving) throw new Error("The previous recording is still saving. Keep its journal open until the audio player appears.");
@@ -2940,7 +3184,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
       await this.ensureFolder(path);
       file = this.app.vault.getAbstractFileByPath(path) || await this.app.vault.create(path, record2 ? voiceScaffold(day) : reflectionScaffold(day));
     }
-    if (!(file instanceof import_obsidian2.TFile)) throw new Error("Voice journal path is a folder, not a note.");
+    if (!(file instanceof import_obsidian3.TFile)) throw new Error("Voice journal path is a folder, not a note.");
     if (recorderState(bridge).recording === true && this.app.workspace.getActiveFile()?.path !== path) throw new Error("Stop and save the current recording before switching journals.");
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.openFile(file, { active: true, state: { mode: "source" } });
@@ -2957,7 +3201,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
       throw new Error("Journal opened, but the recorder could not start. Use Audio recorder: Start recording manually.");
     }
     this.syncVoiceControls();
-    new import_obsidian2.Notice("Recorder requested. Allow microphone access if asked. Use the floating Stop & save button when finished.");
+    new import_obsidian3.Notice("Recorder requested. Allow microphone access if asked. Use the floating Stop & save button when finished.");
   }
   async openDailyMarkdown(path) {
     const file = this.file(path);
@@ -2980,21 +3224,21 @@ var ColorSprint = class extends import_obsidian2.Plugin {
   async createNote(path = this.settings.path) {
     vaultPath(path);
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new import_obsidian2.Notice("Note already exists. No content was replaced.");
+      new import_obsidian3.Notice("Note already exists. No content was replaced.");
       this.refresh();
       return;
     }
     await this.ensureFolder(path);
     await this.app.vault.create(path, starter());
     this.refresh();
-    new import_obsidian2.Notice("Markdown starter created. Choose tasks in Pages to plan your first day.");
+    new import_obsidian3.Notice("Markdown starter created. Choose tasks in Pages to plan your first day.");
   }
   async frontmatter(path) {
     const source = this.app.vault.getAbstractFileByPath(path);
-    if (!(source instanceof import_obsidian2.TFile)) return {};
+    if (!(source instanceof import_obsidian3.TFile)) return {};
     const text = await this.app.vault.read(source);
-    const info = (0, import_obsidian2.getFrontMatterInfo)(text);
-    return info.exists ? (0, import_obsidian2.parseYaml)(info.frontmatter) : {};
+    const info = (0, import_obsidian3.getFrontMatterInfo)(text);
+    return info.exists ? (0, import_obsidian3.parseYaml)(info.frontmatter) : {};
   }
   async openDailyFile(file) {
     const request = ++this.dailyRequest;
@@ -3011,9 +3255,9 @@ var ColorSprint = class extends import_obsidian2.Plugin {
       await this.ensureFolder(path);
       file = await this.app.vault.create(path, dailyScaffold(date, this.settings.path, true));
     }
-    if (!(file instanceof import_obsidian2.TFile)) throw new Error("Daily destination is a folder, not a note.");
+    if (!(file instanceof import_obsidian3.TFile)) throw new Error("Daily destination is a folder, not a note.");
     await this.app.workspace.getLeaf("tab").openFile(file);
-    new import_obsidian2.Notice("Daily dashboard opened. Existing notes are preserved.");
+    new import_obsidian3.Notice("Daily dashboard opened. Existing notes are preserved.");
   }
   chooseNote() {
     const modal = new FormModal(this.app, "Choose your tracker note");
@@ -3027,7 +3271,7 @@ var ColorSprint = class extends import_obsidian2.Plugin {
     modal.open();
   }
 };
-var SprintView = class extends import_obsidian2.ItemView {
+var SprintView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -3062,7 +3306,7 @@ var SprintView = class extends import_obsidian2.ItemView {
     if (this.surface) this.plugin.detach(this.surface);
   }
 };
-var SprintEmbed = class extends import_obsidian2.MarkdownRenderChild {
+var SprintEmbed = class extends import_obsidian3.MarkdownRenderChild {
   constructor(el, plugin, source, sourcePath) {
     super(el);
     this.plugin = plugin;
@@ -3081,7 +3325,7 @@ var SprintEmbed = class extends import_obsidian2.MarkdownRenderChild {
     const request = ++this.request;
     try {
       const fm = await this.plugin.frontmatter(this.sourcePath);
-      const config = this.source.trim() ? (0, import_obsidian2.parseYaml)(this.source) : {};
+      const config = this.source.trim() ? (0, import_obsidian3.parseYaml)(this.source) : {};
       const link = embedLink(config, fm, this.plugin.settings.path);
       if (this.disposed || request !== this.request) return;
       if (this.surface) this.plugin.detach(this.surface);
@@ -3110,7 +3354,7 @@ var SprintEmbed = class extends import_obsidian2.MarkdownRenderChild {
     if (this.surface) this.plugin.detach(this.surface);
   }
 };
-var SprintSettings = class extends import_obsidian2.PluginSettingTab {
+var SprintSettings = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -3119,30 +3363,30 @@ var SprintSettings = class extends import_obsidian2.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Daily dashboards" });
-    new import_obsidian2.Setting(containerEl).setName("Open linked daily notes as a sprint").setDesc("Only notes with color-sprint: true and sprint-open: true auto-open. Set sprint-open: false to stay with the inline embed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenDaily).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Open linked daily notes as a sprint").setDesc("Only notes with color-sprint: true and sprint-open: true auto-open. Set sprint-open: false to stay with the inline embed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenDaily).onChange(async (value) => {
       this.plugin.settings.autoOpenDaily = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian2.Setting(containerEl).setName("Daily note folder").setDesc("Used by the daily dashboard creation commands.").addText((input) => input.setValue(this.plugin.settings.dailyFolder).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Daily note folder").setDesc("Used by the daily dashboard creation commands.").addText((input) => input.setValue(this.plugin.settings.dailyFolder).onChange(async (value) => {
       try {
         this.plugin.settings.dailyFolder = vaultPath(value, true);
         await this.plugin.saveData(this.plugin.settings);
       } catch {
       }
     }));
-    new import_obsidian2.Setting(containerEl).setName("Daily filename format").addDropdown((input) => input.addOptions({ "MM-DD-YYYY": "MM-DD-YYYY", "YYYY-MM-DD": "YYYY-MM-DD" }).setValue(this.plugin.settings.dailyFormat).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Daily filename format").addDropdown((input) => input.addOptions({ "MM-DD-YYYY": "MM-DD-YYYY", "YYYY-MM-DD": "YYYY-MM-DD" }).setValue(this.plugin.settings.dailyFormat).onChange(async (value) => {
       this.plugin.settings.dailyFormat = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian2.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
+    new import_obsidian3.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
     containerEl.createEl("h2", { text: "Sync safety" });
-    new import_obsidian2.Setting(containerEl).setName("Primary phone checkpoints on this device").setDesc("Device-local preference. Enabled by default on mobile, off on desktop. Captures explicit checkbox actions, including unchecks. Use one primary phone; disagreements between primary devices need review.").addToggle((toggle) => toggle.setValue(this.plugin.primaryPhone).onChange((value) => {
+    new import_obsidian3.Setting(containerEl).setName("Primary phone checkpoints on this device").setDesc("Device-local preference. Enabled by default on mobile, off on desktop. Captures explicit checkbox actions, including unchecks. Use one primary phone; disagreements between primary devices need review.").addToggle((toggle) => toggle.setValue(this.plugin.primaryPhone).onChange((value) => {
       this.plugin.app.saveLocalStorage("color-sprint.primary-phone", value);
       this.plugin.primaryPhone = value;
     }));
-    new import_obsidian2.Setting(containerEl).setName("Review sync and recovery").setDesc("Review pending planning proposals and restore phone checkbox states with a backup. Does not claim server synchronization.").addButton((button) => button.setButtonText("Sync review").onClick(() => this.plugin.openSyncReview()));
+    new import_obsidian3.Setting(containerEl).setName("Review sync and recovery").setDesc("Review pending planning proposals and restore phone checkbox states with a backup. Does not claim server synchronization.").addButton((button) => button.setButtonText("Sync review").onClick(() => this.plugin.openSyncReview()));
     containerEl.createEl("h2", { text: "Reflections \xB7 dictate or type" });
-    new import_obsidian2.Setting(containerEl).setName("Reflection journal folder").setDesc("Dated Markdown text journals. The existing Voice folder is retained for compatibility; no audio recording is needed.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
+    new import_obsidian3.Setting(containerEl).setName("Reflection journal folder").setDesc("Dated Markdown text journals. The existing Voice folder is retained for compatibility; no audio recording is needed.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
       try {
         const folder = vaultPath(value, true);
         await this.plugin.saveData({ ...this.plugin.settings, voiceFolder: folder });
@@ -3151,14 +3395,14 @@ var SprintSettings = class extends import_obsidian2.PluginSettingTab {
       }
     }));
     containerEl.createEl("h2", { text: "Completion feedback" });
-    for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) new import_obsidian2.Setting(containerEl).setName(label).setDesc(key === "motion" ? "Always respects system Reduce Motion." : key === "haptics" ? "Uses vibration only when the device exposes it." : "Quiet synthesized chimes after successful saves.").addToggle((toggle) => toggle.setValue(this.plugin.settings.feedback[key]).onChange(async (value) => {
+    for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) new import_obsidian3.Setting(containerEl).setName(label).setDesc(key === "motion" ? "Always respects system Reduce Motion." : key === "haptics" ? "Uses vibration only when the device exposes it." : "Quiet synthesized chimes after successful saves.").addToggle((toggle) => toggle.setValue(this.plugin.settings.feedback[key]).onChange(async (value) => {
       this.plugin.settings.feedback[key] = value;
       await this.plugin.saveData(this.plugin.settings);
       this.plugin.refresh();
     }));
   }
 };
-var SyncReviewModal = class extends import_obsidian2.Modal {
+var SyncReviewModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, path) {
     super(app);
     this.setTitle("Color Sprint \xB7 Sync review");
@@ -3166,11 +3410,11 @@ var SyncReviewModal = class extends import_obsidian2.Modal {
     this.dispose = mountSyncPanel(this.contentEl, { primary: plugin.primaryPhone, relay: version ? `Relay ${version} detected locally. Check Relay's own Sync status for conflicts and transport state.` : "Relay status unavailable here. These are local recovery and planning checks, not server acknowledgments.", load: () => plugin.syncStore.review(path), baseline: (current) => plugin.syncStore.baseline(path, current), apply: async (proposal, current, keepCurrent) => {
       await plugin.syncStore.apply(path, proposal, current, keepCurrent);
       plugin.refresh();
-      new import_obsidian2.Notice("Planning proposal processed; current progress preserved. Relay delivery is not yet verified.");
+      new import_obsidian3.Notice("Planning proposal processed; current progress preserved. Relay delivery is not yet verified.");
     }, restore: async (review) => {
       await plugin.syncStore.restore(path, review.current, review.recovery);
       plugin.refresh();
-      new import_obsidian2.Notice("Reviewed phone checkbox states restored. Backup kept; verify Relay on the other device.");
+      new import_obsidian3.Notice("Reviewed phone checkbox states restored. Backup kept; verify Relay on the other device.");
     }, archive: () => plugin.syncStore.archiveUnconfirmed(), open: (target) => plugin.openNote(target) });
   }
   onClose() {
@@ -3178,19 +3422,19 @@ var SyncReviewModal = class extends import_obsidian2.Modal {
     this.contentEl.empty();
   }
 };
-var ReflectionModal = class extends import_obsidian2.Modal {
+var ReflectionModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, day, path, closed) {
     super(app);
     this.closed = closed;
     this.shouldRestoreSelection = false;
     this.setTitle(`Reflection \xB7 ${day}`);
-    this.component = new import_obsidian2.Component();
+    this.component = new import_obsidian3.Component();
     this.component.load();
     this.dispose = mountReflectionPanel(this.contentEl, { draft: plugin.getReflectionDraft(path), draftChanged: (draft) => plugin.keepReflectionDraft(path, draft), save: (draft) => plugin.saveReflection(path, day, draft), read: async () => {
       const file = app.vault.getAbstractFileByPath(path);
-      if (file && !(file instanceof import_obsidian2.TFile)) throw new Error("Reflection path is not a note.");
-      return { path, text: file instanceof import_obsidian2.TFile ? await app.vault.read(file) : "" };
-    }, renderMarkdown: (note, body) => import_obsidian2.MarkdownRenderer.render(app, note.text, body, note.path, this.component), open: async () => {
+      if (file && !(file instanceof import_obsidian3.TFile)) throw new Error("Reflection path is not a note.");
+      return { path, text: file instanceof import_obsidian3.TFile ? await app.vault.read(file) : "" };
+    }, renderMarkdown: (note, body) => import_obsidian3.MarkdownRenderer.render(app, note.text, body, note.path, this.component), open: async () => {
       await plugin.openVoiceJournal(day);
       this.close();
     }, saved: () => this.close() });
@@ -3205,7 +3449,7 @@ var ReflectionModal = class extends import_obsidian2.Modal {
     this.contentEl.empty();
   }
 };
-var VoiceReflectionModal = class extends import_obsidian2.Modal {
+var VoiceReflectionModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, day) {
     super(app);
     this.plugin = plugin;
@@ -3217,9 +3461,9 @@ var VoiceReflectionModal = class extends import_obsidian2.Modal {
       this.close();
       await plugin.stopVoiceRecording();
     }, read: () => plugin.readVoiceReflection(day), renderMarkdown: async (note, body) => {
-      this.component = new import_obsidian2.Component();
+      this.component = new import_obsidian3.Component();
       this.component.load();
-      await import_obsidian2.MarkdownRenderer.render(app, note.text, body, note.path, this.component);
+      await import_obsidian3.MarkdownRenderer.render(app, note.text, body, note.path, this.component);
     }, open: async (record2) => {
       if (record2) requireRecorder(plugin.recorderBridge());
       this.close();
@@ -3233,7 +3477,7 @@ var VoiceReflectionModal = class extends import_obsidian2.Modal {
     this.contentEl.empty();
   }
 };
-var FormModal = class extends import_obsidian2.Modal {
+var FormModal = class extends import_obsidian3.Modal {
   constructor(app, title) {
     super(app);
     this.setTitle(title);
@@ -3241,7 +3485,7 @@ var FormModal = class extends import_obsidian2.Modal {
     this.errorEl = this.contentEl.createEl("p", { cls: "cs-form-error", attr: { role: "alert" } });
   }
   field(name, desc, value, change, type = "text") {
-    new import_obsidian2.Setting(this.contentEl).setName(name).setDesc(desc).addText((input) => {
+    new import_obsidian3.Setting(this.contentEl).setName(name).setDesc(desc).addText((input) => {
       input.setValue(value);
       input.inputEl.type = type;
       input.inputEl.setAttribute("aria-label", name);
@@ -3249,17 +3493,17 @@ var FormModal = class extends import_obsidian2.Modal {
     });
   }
   text(name, desc, value, change) {
-    new import_obsidian2.Setting(this.contentEl).setName(name).setDesc(desc).addTextArea((input) => {
+    new import_obsidian3.Setting(this.contentEl).setName(name).setDesc(desc).addTextArea((input) => {
       input.setValue(value);
       input.inputEl.setAttribute("aria-label", name);
       input.onChange(change);
     });
   }
   select(name, desc, value, options, change) {
-    new import_obsidian2.Setting(this.contentEl).setName(name).setDesc(desc).addDropdown((input) => input.addOptions(options).setValue(value).onChange(change));
+    new import_obsidian3.Setting(this.contentEl).setName(name).setDesc(desc).addDropdown((input) => input.addOptions(options).setValue(value).onChange(change));
   }
   save(action, label = "Save") {
-    new import_obsidian2.Setting(this.contentEl).addButton((button) => button.setButtonText(label).setCta().onClick(async () => {
+    new import_obsidian3.Setting(this.contentEl).addButton((button) => button.setButtonText(label).setCta().onClick(async () => {
       button.setDisabled(true);
       this.errorEl.textContent = "";
       try {

@@ -1,5 +1,10 @@
 # Markdown tracker format · version 1
 
+The tracker schema remains version 1 in plugin 0.11.0. Merge safety uses separate
+versioned Markdown proposals and recovery records, not a new tracker database.
+See [SYNC.md](SYNC.md) and [HUD-BRIDGE.md](HUD-BRIDGE.md). Companion apps must not
+flatten pending proposals into this note or restore checkpoints automatically.
+
 Create a tracker with the plugin's starter command and keep these exact second-level headings once each: **Tasks**, **Schedule**, **Goals**, **Sessions**, **Timer**. Arbitrary prose and other sections are preserved. Fenced examples are ignored. Use the complete starter for the required tables; this page explains their contents.
 
 ## Sprint window

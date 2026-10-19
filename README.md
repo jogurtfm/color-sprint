@@ -6,6 +6,11 @@ A calm, color-coded surface for habits, tasks, goals, and focus sessions in **Ob
 
 ## Install with BRAT
 
+Windows HUD 0.6.0 uses plugin 0.11.0+'s paired bridge for focus/checkoff controls,
+so Obsidian owns tracker writes. Pending planning proposals and primary-phone
+recovery records stay separate. See [HUD-BRIDGE.md](HUD-BRIDGE.md) for setup,
+pairing, privacy, failure behavior and manual-install fallback. No tracker migration.
+
 1. Install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat) from Obsidian's community plugins on your iPhone.
 2. In BRAT settings, choose **Add beta plugin** and enter **`https://github.com/jogurtfm/color-sprint`**.
 3. Enable **Color Sprint** in community plugins.
