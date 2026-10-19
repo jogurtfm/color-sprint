@@ -76,7 +76,7 @@ The template uses `{{date:YYYY-MM-DD}}` in the properties and `{{date:dddd, MMMM
 
 Task completions remain in the tracker's Schedule section; focus history remains in Sessions. Do not copy the same completion checkboxes into both notes and expect them to sync. The daily scaffold includes a short evening reflection with room, workout, creative/admin evidence and one next action.
 
-For spoken reflection, tap **🎙** in the dashboard. It opens the voice panel for the dashboard's selected date. **Record in journal** opens a separate dated Markdown journal and requests Obsidian's enabled Audio recorder. Stop and save before switching notes. The panel replays existing journal embeds; there is no automatic transcription and no extra task checkbox. See [voice reflection setup](README.md#capture-a-voice-reflection--new-in-070).
+For spoken reflection, tap **🎙** in the dashboard. It opens the voice panel for the dashboard's selected date. **Record in journal** opens a separate dated Markdown journal and requests Obsidian's enabled Audio recorder. A floating **Stop & save** control stays visible while recording; the panel and command palette also have stop actions. For a Color Sprint capture, Stop restores its original journal before saving. Wait for its audio player before leaving the note. The panel replays existing journal embeds; there is no automatic transcription and no extra task checkbox. See [voice reflection setup](README.md#capture-a-voice-reflection--new-in-070).
 
 ## Update from 0.1.0
 

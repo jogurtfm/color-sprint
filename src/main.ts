@@ -5,6 +5,8 @@ import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
 import { FeedbackSettings, DEFAULT_FEEDBACK } from './feedback';
 import { DEFAULT_VOICE_FOLDER, RecorderBridge, recorderState, requireRecorder, voicePath, voiceScaffold, mountVoicePanel } from './voice';
+import { requireRecording, waitForAudioEmbed, mountRecordingBar, VoiceState } from './voice';
+import type { MarkdownView } from 'obsidian';
 
 const VIEW='color-sprint-view';
 interface Settings {path:string;autoOpenDaily:boolean;dailyFolder:string;dailyFormat:string;feedback:FeedbackSettings;voiceFolder:string}
@@ -16,7 +18,11 @@ export default class ColorSprint extends Plugin {
   private dailyRequest=0;
   private stopped=false;
   private bypassDaily=new Set<string>();
+  private voiceOwner:{path:string;seen:boolean;requestedAt:number}|null=null;
+  private voiceSaving=false;private voiceStopPromise:Promise<void>|null=null;
+  private voiceControls:ReturnType<typeof mountRecordingBar>|null=null;private voicePoll:ReturnType<typeof setInterval>|null=null;
   async onload():Promise<void>{
+    try{const owner=this.app.loadLocalStorage?.('color-sprint.voice-capture');if(owner&&typeof owner.path==='string'&&typeof owner.seen==='boolean'&&Number.isFinite(owner.requestedAt))this.voiceOwner={path:vaultPath(owner.path),seen:owner.seen,requestedAt:owner.requestedAt};}catch{}
     const saved=await this.loadData();if(saved&&typeof saved.path==='string')this.settings.path=saved.path;
     if(typeof saved?.autoOpenDaily==='boolean')this.settings.autoOpenDaily=saved.autoOpenDaily;
     if(typeof saved?.dailyFolder==='string')this.settings.dailyFolder=saved.dailyFolder;
@@ -30,6 +36,7 @@ export default class ColorSprint extends Plugin {
     this.addCommand({id:'open',name:'Open tracker',callback:()=>{void this.open().catch(e=>this.error(e));}});
     this.addCommand({id:'open-digest',name:'Open daily digest / itinerary',callback:()=>{void this.open({tab:'Digest'}).catch(e=>this.error(e));}});
     this.addCommand({id:'voice-reflection',name:'Capture a voice reflection',callback:()=>this.openVoiceReflection(localDay())});
+    this.addCommand({id:'stop-voice-recording',name:'Stop and save audio recording',callback:()=>{void this.stopVoiceRecording().catch(e=>this.error(e));}});
     this.addCommand({id:'choose-note',name:'Choose tracker Markdown note',callback:()=>this.chooseNote()});
     this.addCommand({id:'create-starter',name:'Create starter Markdown note',callback:()=>{void this.createNote().catch(e=>this.error(e));}});
     this.addCommand({id:'open-source',name:'Open tracker Markdown',callback:()=>{void this.openNote().catch(e=>this.error(e));}});
@@ -40,12 +47,14 @@ export default class ColorSprint extends Plugin {
     this.registerEvent(this.app.vault.on('modify',file=>{if(watched(file.path))refresh();}));
     this.registerEvent(this.app.vault.on('create',file=>{if(watched(file.path))refresh();}));
     this.registerEvent(this.app.vault.on('delete',file=>{if(watched(file.path))refresh();}));
-    this.registerEvent(this.app.vault.on('rename',(file,old)=>{if(old===this.settings.path&&file instanceof TFile){this.settings.path=file.path;void this.saveData(this.settings);new Notice('Tracker renamed. Update sprint-tracker properties in linked daily notes.');refresh();}}));
+    this.registerEvent(this.app.vault.on('rename',(file,old)=>{if(this.voiceOwner?.path===old&&file instanceof TFile)this.rememberVoiceOwner({...this.voiceOwner,path:file.path});if(old===this.settings.path&&file instanceof TFile){this.settings.path=file.path;void this.saveData(this.settings);new Notice('Tracker renamed. Update sprint-tracker properties in linked daily notes.');refresh();}}));
     this.registerEvent(this.app.workspace.on('file-open',file=>{void this.openDailyFile(file).catch(e=>this.error(e));}));
     this.app.workspace.onLayoutReady(()=>{if(!this.stopped)void this.openDailyFile(this.app.workspace.getActiveFile()).catch(e=>this.error(e));});
-    this.registerDomEvent(document,'visibilitychange',()=>{if(!document.hidden)this.refresh();});
+    this.registerDomEvent(document,'visibilitychange',()=>{if(!document.hidden){this.refresh();this.syncVoiceControls();}});
+    this.voiceControls=mountRecordingBar(document.body,{state:()=>this.voiceState(),stop:()=>this.stopVoiceRecording(),target:()=>this.voiceOwner?.path||'Obsidian Audio recorder',error:e=>this.error(e)});
+    this.syncVoiceControls();this.voicePoll=setInterval(()=>this.syncVoiceControls(),300);
   }
-  onunload():void {this.stopped=true;this.dailyRequest++;for(const surface of this.surfaces.keys())surface.destroy();this.surfaces.clear();}
+  onunload():void {this.stopped=true;this.dailyRequest++;if(this.voicePoll)clearInterval(this.voicePoll);this.voiceControls?.destroy();for(const surface of this.surfaces.keys())surface.destroy();this.surfaces.clear();}
   async open(context:Context={}):Promise<void>{let leaf=this.app.workspace.getLeavesOfType(VIEW)[0];if(!leaf)leaf=this.app.workspace.getLeaf('tab');await leaf.setViewState({type:VIEW,active:true,state:{tracker:context.tracker||this.settings.path,date:context.day||localDay(),page:context.page||'All',tab:context.tab||'Today',dailyNote:context.dailyNote}});await this.app.workspace.revealLeaf(leaf);}
   file(path=this.settings.path):TFile{const file=this.app.vault.getAbstractFileByPath(vaultPath(path));if(!(file instanceof TFile))throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);return file;}
   async read(path=this.settings.path):Promise<string>{return this.app.vault.read(this.file(path));}
@@ -75,9 +84,31 @@ export default class ColorSprint extends Plugin {
   detach(surface:Surface):void{surface.destroy();this.surfaces.delete(surface);}
   async openNote(path=this.settings.path):Promise<void>{await this.app.workspace.getLeaf('tab').openFile(this.file(path));}
   recorderBridge():RecorderBridge|undefined{return (this.app as App&{commands?:RecorderBridge}).commands;}
+  voiceState():VoiceState{return {...recorderState(this.recorderBridge()),saving:this.voiceSaving};}
+  private rememberVoiceOwner(owner:typeof this.voiceOwner):void{this.voiceOwner=owner;try{this.app.saveLocalStorage?.('color-sprint.voice-capture',owner);}catch{}}
+  private syncVoiceControls():void{const state=this.voiceState();if(this.voiceOwner){if(state.recording===true&&!this.voiceOwner.seen)this.rememberVoiceOwner({...this.voiceOwner,seen:true});else if(state.recording===false&&!state.saving&&(this.voiceOwner.seen||Date.now()-this.voiceOwner.requestedAt>60000))this.rememberVoiceOwner(null);}this.voiceControls?.update();}
+  stopVoiceRecording():Promise<void>{if(this.voiceStopPromise)return this.voiceStopPromise;const operation=this.performVoiceStop();this.voiceStopPromise=operation;void operation.finally(()=>{if(this.voiceStopPromise===operation)this.voiceStopPromise=null;}).catch(()=>{});return operation;}
+  private async performVoiceStop():Promise<void>{
+    const bridge=this.recorderBridge();requireRecording(bridge);this.voiceSaving=true;this.voiceControls?.update();
+    try{
+      // The core recorder chooses its destination when stopping. Restore only a
+      // journal owned by this device's Color Sprint capture, never a guessed date.
+      const ownedPath=this.voiceOwner?.path;
+      if(ownedPath){const file=this.file(ownedPath);const active=this.app.workspace.activeEditor;if(this.app.workspace.getActiveFile()?.path!==ownedPath||active?.file?.path!==ownedPath){const leaf=this.app.workspace.getLeaf('tab');await leaf.openFile(file,{active:true,state:{mode:'source'}});await this.app.workspace.revealLeaf(leaf);}}
+      const info=this.app.workspace.activeEditor;const active=this.app.workspace.getActiveFile()?.path===info?.file?.path?info:null;const path=active?.file?.path;const editor=active?.editor;
+      if(ownedPath&&(path!==ownedPath||!editor))throw new Error('The recording journal is not ready. Open it in the editor, then tap Stop & save again.');
+      const before=editor?.getValue();const view=this.app.workspace.getLeavesOfType('markdown').map(leaf=>leaf.view as MarkdownView).find(view=>view.file?.path===path&&view.editor===editor);
+      if(editor){const last=editor.lastLine();editor.setCursor({line:last,ch:editor.getLine(last).length});}
+      requireRecording(bridge);if(!bridge!.executeCommandById!('audio-recorder:stop'))throw new Error('The recorder could not stop. Try Stop & save again, or use Audio recorder: Stop recording.');
+      this.voiceControls?.update();
+      if(editor&&path&&before!==undefined){await waitForAudioEmbed(before,()=>editor.getValue(),{cancelled:()=>this.stopped});if(view?.file?.path===path&&typeof view.save==='function')await view.save();this.rememberVoiceOwner(null);new Notice('Audio added to your journal. You can replay it from Voice reflections.');}
+      else{this.rememberVoiceOwner(null);new Notice('Stop requested. Obsidian is saving the audio as an attachment. Check the saved recording before starting another.');}
+    }finally{this.voiceSaving=false;this.syncVoiceControls();}
+  }
   openVoiceReflection(day:string):void{new VoiceReflectionModal(this.app,this,day).open();}
   async readVoiceReflection(day:string):Promise<{path:string;text:string}>{const path=voicePath(this.settings.voiceFolder,day);const file=this.app.vault.getAbstractFileByPath(path);if(file&&!(file instanceof TFile))throw new Error('Voice journal path is a folder, not a note.');return {path,text:file instanceof TFile?await this.app.vault.read(file):''};}
   async openVoiceJournal(day:string,record=false):Promise<void>{
+    if(this.voiceSaving)throw new Error('The previous recording is still saving. Keep its journal open until the audio player appears.');
     const bridge=this.recorderBridge();if(record)requireRecorder(bridge);
     const path=voicePath(this.settings.voiceFolder,day);
     if(recorderState(bridge).recording===true&&this.app.workspace.getActiveFile()?.path!==path)throw new Error('Stop and save the current recording before switching journals.');
@@ -91,8 +122,8 @@ export default class ColorSprint extends Plugin {
     const active=this.app.workspace.activeEditor;
     if(this.app.workspace.getActiveFile()?.path!==path||active?.file?.path!==path||!active.editor)throw new Error('Journal opened. Use Audio recorder: Start recording here after the editor is ready.');
     const last=active.editor.lastLine();active.editor.setCursor({line:last,ch:active.editor.getLine(last).length});
-    requireRecorder(bridge);if(!bridge!.executeCommandById!('audio-recorder:start'))throw new Error('Journal opened, but the recorder could not start. Use Audio recorder: Start recording manually.');
-    new Notice('Recorder requested. Allow microphone access if asked. Stay in this note and use Audio recorder: Stop recording to save.');
+    requireRecorder(bridge);this.rememberVoiceOwner({path,seen:false,requestedAt:Date.now()});if(!bridge!.executeCommandById!('audio-recorder:start')){this.rememberVoiceOwner(null);throw new Error('Journal opened, but the recorder could not start. Use Audio recorder: Start recording manually.');}
+    this.syncVoiceControls();new Notice('Recorder requested. Allow microphone access if asked. Use the floating Stop & save button when finished.');
   }
   async openDailyMarkdown(path:string):Promise<void>{const file=this.file(path);this.bypassDaily.add(path);try{await this.app.workspace.getLeaf('tab').openFile(file);}finally{this.bypassDaily.delete(path);}}
   private async ensureFolder(path:string):Promise<void>{const pieces=path.split('/');pieces.pop();let parent='';for(const piece of pieces){parent=parent?`${parent}/${piece}`:piece;if(!this.app.vault.getAbstractFileByPath(parent))await this.app.vault.createFolder(parent);}}
@@ -149,7 +180,7 @@ class VoiceReflectionModal extends Modal {
   private component:Component|null=null;private dispose:()=>void;
   constructor(app:App,private plugin:ColorSprint,private day:string){
     super(app);this.shouldRestoreSelection=false;this.setTitle(`Voice reflection · ${day}`);
-    this.dispose=mountVoicePanel(this.contentEl,{day,state:recorderState(plugin.recorderBridge()),read:()=>plugin.readVoiceReflection(day),renderMarkdown:async(note,body)=>{this.component=new Component();this.component.load();await MarkdownRenderer.render(app,note.text,body,note.path,this.component);},open:async record=>{if(record)requireRecorder(plugin.recorderBridge());this.close();await plugin.openVoiceJournal(day,record);},error:e=>plugin.error(e)});
+    this.dispose=mountVoicePanel(this.contentEl,{day,state:plugin.voiceState(),getState:()=>plugin.voiceState(),stop:async()=>{this.close();await plugin.stopVoiceRecording();},read:()=>plugin.readVoiceReflection(day),renderMarkdown:async(note,body)=>{this.component=new Component();this.component.load();await MarkdownRenderer.render(app,note.text,body,note.path,this.component);},open:async record=>{if(record)requireRecorder(plugin.recorderBridge());this.close();await plugin.openVoiceJournal(day,record);},error:e=>plugin.error(e)});
   }
   onClose():void{this.dispose();this.component?.unload();this.component=null;this.contentEl.empty();}
 }

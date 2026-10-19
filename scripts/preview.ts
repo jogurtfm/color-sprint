@@ -1,7 +1,7 @@
 import { Surface,Host } from '../src/surface';
 import { starter } from '../src/starter';
 import { FeedbackSettings, DEFAULT_FEEDBACK } from '../src/feedback';
-import { mountVoicePanel, voicePath } from '../src/voice';
+import { mountVoicePanel, mountRecordingBar, voicePath } from '../src/voice';
 import { parseBoard,setEntry,saveTask,saveSubtask,setGoal,scheduleGroup,startTimer,startGroupTimer,moveGroupTimer,pauseTimer,resumeTimer,refreshTimer,finishTimer,addWorkoutLog,addQuickCount,localDay,addDays,entryFor,Task,Goal,timeBlockFor,saveTimeBlock,clearTimeBlock } from '../src/model';
 
 let md=localStorage.getItem('color-sprint-demo')||starter();
@@ -25,4 +25,4 @@ const params=new URLSearchParams(location.search);
 const requestedTab=params.get('view')||'';const tab=({'today':'Today','digest':'Digest','week':'Week','pages':'Pages','goals':'Goals','history':'History'} as const)[requestedTab as 'today'];
 const surface=new Surface(document.getElementById('app')!,host,{embedded:params.has('embed'),day:params.get('date')||undefined,page:params.get('page')||undefined,tab});void surface.refresh();
 // Test hook for validating external Markdown edits; never included in the plugin bundle.
-Object.assign(window,{colorSprintPreview:{getMarkdown:()=>md,setMarkdown:(value:string)=>change(()=>value)}});
+Object.assign(window,{colorSprintPreview:{getMarkdown:()=>md,setMarkdown:(value:string)=>change(()=>value),simulateRecording:()=>{let state={available:true,recording:true,saving:false};const control=mountRecordingBar(document.body,{state:()=>state,target:()=> 'Demo recording — no microphone',stop:async()=>{state={...state,saving:true};control.update();await new Promise(resolve=>setTimeout(resolve,250));state={...state,recording:false,saving:false};control.update();control.destroy();},error:e=>host.error(e)});}}});
