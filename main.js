@@ -1943,6 +1943,149 @@ function mountVoicePanel(root, options) {
   };
 }
 
+// src/reflection.ts
+function newReflectionDraft() {
+  return { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`, text: "", created: (/* @__PURE__ */ new Date()).toISOString() };
+}
+function reflectionDraft(value) {
+  if (!value || typeof value !== "object") return null;
+  const draft = value;
+  return typeof draft.id === "string" && /^[a-z0-9-]{6,80}$/.test(draft.id) && typeof draft.text === "string" && typeof draft.created === "string" && Number.isFinite(Date.parse(draft.created)) ? { id: draft.id, text: draft.text, created: draft.created } : null;
+}
+function reflectionScaffold(day) {
+  if (!validDay(day)) throw new Error("Choose a real reflection date.");
+  return `---
+reflection-date: "${day}"
+---
+
+# Reflection \xB7 ${day}
+
+Capture with the iPhone keyboard microphone or type directly. Review dictated words before saving.
+
+`;
+}
+function appendReflection(text, draft) {
+  if (!reflectionDraft(draft) || !draft.text.trim()) throw new Error("Add a few words before saving.");
+  const marker = `<!-- color-sprint-reflection:${draft.id} -->`;
+  if (text.includes(marker)) return text;
+  return `${text}${text.endsWith("\n") ? "" : "\n"}
+## Reflection \xB7 ${draft.created}
+
+${marker}
+
+${draft.text.trim()}
+`;
+}
+function mountReflectionPanel(root, options) {
+  const doc = root.ownerDocument;
+  let closed = false, pending = false, composing = false, draft = { ...options.draft };
+  root.classList.add("cs-reflection");
+  const el = (tag, parent, cls, text = "") => {
+    const node = doc.createElement(tag);
+    node.className = cls;
+    node.textContent = text;
+    parent.append(node);
+    return node;
+  };
+  el("p", root, "cs-voice-intro", "Tap below, then the microphone on your iPhone keyboard. Speak, finish dictation, review your words, and save. Typing works too.");
+  const label = el("label", root, "cs-reflection-label", "What is on your mind?");
+  const input = el("textarea", label, "cs-reflection-input");
+  input.value = draft.text;
+  input.rows = 5;
+  input.setAttribute("aria-label", "Reflection text");
+  input.placeholder = "No need to organize it first\u2026";
+  input.setAttribute("autocapitalize", "sentences");
+  input.spellcheck = true;
+  const status = el("p", root, "cs-voice-status", draft.text ? "Unfinished draft restored on this device." : "Text saves as Markdown. No recording file is created.");
+  status.setAttribute("role", "status");
+  const error = el("p", root, "cs-form-error");
+  error.setAttribute("role", "alert");
+  const remember = () => {
+    draft = { ...draft, text: input.value };
+    try {
+      options.draftChanged({ ...draft });
+      error.textContent = "";
+      status.textContent = "Draft kept on this device. Save to sync it with your journal.";
+    } catch (e) {
+      error.textContent = `Draft could not be kept on this device. Save to your journal before closing. ${e instanceof Error ? e.message : String(e)}`;
+    }
+  };
+  input.addEventListener("input", remember);
+  input.addEventListener("compositionstart", () => {
+    composing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+    remember();
+  });
+  const actions = el("div", root, "cs-voice-actions");
+  const focus = el("button", actions, "", "Dictate / type");
+  focus.type = "button";
+  focus.addEventListener("click", () => input.focus());
+  const save = el("button", actions, "mod-cta", "Save reflection");
+  save.type = "button";
+  const open = el("button", actions, "", "Open journal");
+  open.type = "button";
+  const setPending = (value) => {
+    pending = value;
+    input.readOnly = value;
+    save.disabled = value;
+    focus.disabled = value;
+    open.disabled = value;
+    save.textContent = value ? "Saving\u2026" : "Save reflection";
+  };
+  save.addEventListener("click", () => {
+    if (pending) return;
+    if (composing) {
+      error.textContent = "Finish dictation or text composition on the keyboard, then save.";
+      return;
+    }
+    remember();
+    const snapshot = { ...draft };
+    if (!snapshot.text.trim()) {
+      error.textContent = "Add a few words before saving.";
+      input.focus();
+      return;
+    }
+    setPending(true);
+    error.textContent = "";
+    void options.save(snapshot).then(() => {
+      if (!closed) options.saved();
+    }).catch((e) => {
+      if (!closed) error.textContent = `Not saved. Your text is still here. ${e instanceof Error ? e.message : String(e)}`;
+    }).finally(() => {
+      if (!closed) setPending(false);
+    });
+  });
+  open.addEventListener("click", () => {
+    if (pending) return;
+    remember();
+    void options.open().catch((e) => {
+      if (!closed) error.textContent = e instanceof Error ? e.message : String(e);
+    });
+  });
+  const help = el("details", root, "cs-reflection-help");
+  el("summary", help, "", "Keyboard microphone missing?");
+  el("p", help, "", "On iPhone: Settings \u2192 General \u2192 Keyboard \u2192 Enable Dictation. Color Sprint cannot start or stop Apple Dictation for you. Finish dictation using the keyboard before saving. Apple controls speech processing.");
+  el("p", root, "cs-voice-hint", "Closing keeps an unfinished draft on this device; it does not sync until saved. Existing journal entries and recordings stay intact.");
+  const existing = el("details", root, "cs-reflection-existing");
+  el("summary", existing, "", "Saved entries for this day");
+  void options.read().then(async (note) => {
+    if (closed) return;
+    if (!note.text) {
+      el("p", existing, "cs-muted", "Nothing saved yet.");
+      return;
+    }
+    const body = el("div", existing, "cs-voice-preview");
+    await options.renderMarkdown(note, body);
+  }).catch((e) => {
+    if (!closed) error.textContent = e instanceof Error ? e.message : String(e);
+  });
+  return () => {
+    closed = true;
+  };
+}
+
 // src/main.ts
 var VIEW = "color-sprint-view";
 var ColorSprint = class extends import_obsidian.Plugin {
@@ -1950,6 +2093,9 @@ var ColorSprint = class extends import_obsidian.Plugin {
     super(...arguments);
     this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY", feedback: { ...DEFAULT_FEEDBACK }, voiceFolder: DEFAULT_VOICE_FOLDER };
     this.queue = Promise.resolve();
+    this.reflectionQueue = Promise.resolve();
+    this.reflectionModal = null;
+    this.reflectionDrafts = /* @__PURE__ */ new Map();
     this.surfaces = /* @__PURE__ */ new Map();
     this.dailyRequest = 0;
     this.stopped = false;
@@ -1990,7 +2136,8 @@ var ColorSprint = class extends import_obsidian.Plugin {
     this.addCommand({ id: "open-digest", name: "Open daily digest / itinerary", callback: () => {
       void this.open({ tab: "Digest" }).catch((e) => this.error(e));
     } });
-    this.addCommand({ id: "voice-reflection", name: "Capture a voice reflection", callback: () => this.openVoiceReflection(localDay()) });
+    this.addCommand({ id: "voice-reflection", name: "Capture a reflection (dictate or type)", callback: () => this.openVoiceReflection(localDay()) });
+    this.addCommand({ id: "legacy-audio-reflection", name: "Open legacy audio reflections", callback: () => this.openLegacyVoiceReflection(localDay()) });
     this.addCommand({ id: "stop-voice-recording", name: "Stop and save audio recording", callback: () => {
       void this.stopVoiceRecording().catch((e) => this.error(e));
     } });
@@ -2050,6 +2197,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
   onunload() {
     this.stopped = true;
     this.dailyRequest++;
+    this.reflectionModal?.close();
     if (this.voicePoll) clearInterval(this.voicePoll);
     this.voiceControls?.destroy();
     for (const surface of this.surfaces.keys()) surface.destroy();
@@ -2219,7 +2367,64 @@ var ColorSprint = class extends import_obsidian.Plugin {
     }
   }
   openVoiceReflection(day) {
+    if (this.reflectionModal) {
+      this.reflectionModal.focusText();
+      new import_obsidian.Notice("A reflection draft is already open. Finish or close it before opening another day.");
+      return;
+    }
+    const path = voicePath(this.settings.voiceFolder, day);
+    this.reflectionModal = new ReflectionModal(this.app, this, day, path, () => {
+      this.reflectionModal = null;
+    });
+    this.reflectionModal.open();
+    this.reflectionModal.focusText();
+  }
+  openLegacyVoiceReflection(day) {
     new VoiceReflectionModal(this.app, this, day).open();
+  }
+  getReflectionDraft(path) {
+    let draft = this.reflectionDrafts.get(path);
+    if (!draft) {
+      draft = reflectionDraft(this.app.loadLocalStorage?.(`color-sprint.reflection-draft:${path}`)) || newReflectionDraft();
+      this.reflectionDrafts.set(path, draft);
+    }
+    return { ...draft };
+  }
+  keepReflectionDraft(path, draft) {
+    this.reflectionDrafts.set(path, { ...draft });
+    if (typeof this.app.saveLocalStorage !== "function") throw new Error("Persistent local drafts are unavailable in this Obsidian version.");
+    this.app.saveLocalStorage(`color-sprint.reflection-draft:${path}`, draft);
+  }
+  saveReflection(path, day, draft) {
+    const operation = this.reflectionQueue.then(async () => {
+      vaultPath(path);
+      if (!validDay(day)) throw new Error("Choose a real reflection date.");
+      appendReflection("", draft);
+      let file = this.app.vault.getAbstractFileByPath(path);
+      if (!file) {
+        await this.ensureFolder(path);
+        try {
+          file = await this.app.vault.create(path, reflectionScaffold(day));
+        } catch (e) {
+          file = this.app.vault.getAbstractFileByPath(path);
+          if (!file) throw e;
+        }
+      }
+      if (!(file instanceof import_obsidian.TFile)) throw new Error("Reflection journal path is a folder, not a note.");
+      await this.app.vault.process(file, (current) => appendReflection(current, draft));
+      const latest = this.reflectionDrafts.get(path);
+      if (latest?.id === draft.id && latest.text === draft.text) {
+        this.reflectionDrafts.delete(path);
+        try {
+          this.app.saveLocalStorage?.(`color-sprint.reflection-draft:${path}`, null);
+        } catch {
+        }
+      }
+      new import_obsidian.Notice("Reflection saved as Markdown. Your vault sync can carry the text.");
+    });
+    this.reflectionQueue = operation.catch(() => {
+    });
+    return operation;
   }
   async readVoiceReflection(day) {
     const path = voicePath(this.settings.voiceFolder, day);
@@ -2236,7 +2441,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
     let file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       await this.ensureFolder(path);
-      file = this.app.vault.getAbstractFileByPath(path) || await this.app.vault.create(path, voiceScaffold(day));
+      file = this.app.vault.getAbstractFileByPath(path) || await this.app.vault.create(path, record2 ? voiceScaffold(day) : reflectionScaffold(day));
     }
     if (!(file instanceof import_obsidian.TFile)) throw new Error("Voice journal path is a folder, not a note.");
     if (recorderState(bridge).recording === true && this.app.workspace.getActiveFile()?.path !== path) throw new Error("Stop and save the current recording before switching journals.");
@@ -2433,8 +2638,8 @@ var SprintSettings = class extends import_obsidian.PluginSettingTab {
       await this.plugin.saveData(this.plugin.settings);
     }));
     new import_obsidian.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
-    containerEl.createEl("h2", { text: "Voice reflections" });
-    new import_obsidian.Setting(containerEl).setName("Voice journal folder").setDesc("Dated Markdown journals. Audio recorder uses your normal attachment location.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
+    containerEl.createEl("h2", { text: "Reflections \xB7 dictate or type" });
+    new import_obsidian.Setting(containerEl).setName("Reflection journal folder").setDesc("Dated Markdown text journals. The existing Voice folder is retained for compatibility; no audio recording is needed.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
       try {
         const folder = vaultPath(value, true);
         await this.plugin.saveData({ ...this.plugin.settings, voiceFolder: folder });
@@ -2448,6 +2653,33 @@ var SprintSettings = class extends import_obsidian.PluginSettingTab {
       await this.plugin.saveData(this.plugin.settings);
       this.plugin.refresh();
     }));
+  }
+};
+var ReflectionModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, day, path, closed) {
+    super(app);
+    this.closed = closed;
+    this.shouldRestoreSelection = false;
+    this.setTitle(`Reflection \xB7 ${day}`);
+    this.component = new import_obsidian.Component();
+    this.component.load();
+    this.dispose = mountReflectionPanel(this.contentEl, { draft: plugin.getReflectionDraft(path), draftChanged: (draft) => plugin.keepReflectionDraft(path, draft), save: (draft) => plugin.saveReflection(path, day, draft), read: async () => {
+      const file = app.vault.getAbstractFileByPath(path);
+      if (file && !(file instanceof import_obsidian.TFile)) throw new Error("Reflection path is not a note.");
+      return { path, text: file instanceof import_obsidian.TFile ? await app.vault.read(file) : "" };
+    }, renderMarkdown: (note, body) => import_obsidian.MarkdownRenderer.render(app, note.text, body, note.path, this.component), open: async () => {
+      await plugin.openVoiceJournal(day);
+      this.close();
+    }, saved: () => this.close() });
+  }
+  focusText() {
+    this.contentEl.querySelector("textarea")?.focus();
+  }
+  onClose() {
+    this.dispose();
+    this.component.unload();
+    this.closed();
+    this.contentEl.empty();
   }
 };
 var VoiceReflectionModal = class extends import_obsidian.Modal {
