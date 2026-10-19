@@ -1,6 +1,8 @@
 # Markdown tracker format · version 1
 
-The tracker schema remains version 1 in plugin 0.11.0. Merge safety uses separate
+The tracker schema remains version 1 in plugin 0.12.0. The optional Focus Queue and
+extended Quick Queue timer require plugin 0.12.0+ on every participating device.
+See [Quick Queue format and handoff](QUICK-QUEUE.md). Merge safety uses separate
 versioned Markdown proposals and recovery records, not a new tracker database.
 See [SYNC.md](SYNC.md) and [HUD-BRIDGE.md](HUD-BRIDGE.md). Companion apps must not
 flatten pending proposals into this note or restore checkpoints automatically.

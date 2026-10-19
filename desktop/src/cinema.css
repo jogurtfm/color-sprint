@@ -1,0 +1,45 @@
+/* Cinematic optics are always below the working UI and never own hit targets. */
+body{--cinema-accent:#70e3ed}
+.cinema-airframe{position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:.24;transition:opacity 600ms ease}
+.cinema-routing{fill:none;stroke:#64dce9;stroke-width:1;opacity:.5}.routing-packets{stroke:var(--cinema-accent);stroke-width:2;stroke-dasharray:8 150 2 180;animation:cinema-packets 21s linear infinite}
+.air-targets{fill:none;stroke:#80eaf1;stroke-width:1;opacity:.55}.air-combs{fill:none;stroke:#f4bf76;stroke-width:1;opacity:.4}
+.cinema-assemble .cinema-airframe{animation:cinema-assemble 850ms ease-out both}
+.cinema-optics{position:absolute;inset:-2%;width:104%;height:104%;pointer-events:none;overflow:visible;fill:none;stroke:var(--cinema-accent);opacity:.65;transition:opacity 500ms ease}
+.optics-sweep{transform-origin:300px 300px;animation:cinema-sweep 33s linear infinite;stroke-width:2;opacity:.5}.optics-sweep circle{fill:var(--cinema-accent);stroke:none}
+.optics-group{stroke:var(--sector-color);stroke-width:1;opacity:.4;transition:opacity 350ms ease}.optics-group.sector-selected{opacity:1;stroke-width:2}.optics-group>circle:not(.sector-track){fill:var(--sector-color);stroke:none}.optics-group text{fill:var(--sector-color);stroke:none;font:8px Consolas,monospace;letter-spacing:1px}.optic-brackets{stroke:var(--cinema-accent);stroke-width:1;stroke-dasharray:25 4}
+.ring-stage{isolation:isolate}.ring-stage>.cinema-optics{z-index:0}.ring-stage>.core-readout{z-index:2}
+body[data-focus-phase="engaged"] .cinema-airframe{opacity:.075}
+body[data-focus-phase="engaged"] .optics-sweep{stroke:#f1c786;animation-duration:50s}
+body[data-focus-phase="engaged"] .holo-cube,body[data-focus-phase="engaged"] .holo-float,body[data-focus-phase="engaged"] .holo-orbit{animation-play-state:paused}
+body[data-focus-phase="engaged"] .core-kicker{color:#f3ce91}
+body[data-focus-phase="engaged"] .neural-panel canvas{opacity:.12}
+body[data-focus-phase="paused"] .optic-brackets{stroke:#aaa7f2;stroke-dasharray:4 5}
+body[data-focus-phase="stale"] .cinema-optics{stroke:#ed8999;opacity:.28}
+.cinema-engage .optic-brackets{animation:cinema-lock 650ms ease-out}
+.cinema-impact{position:absolute;inset:22%;pointer-events:none;color:#f2c480;z-index:1;display:block}
+.impact-ring{position:absolute;inset:0;border:1px solid currentColor;border-radius:50%;animation:cinema-impact 900ms ease-out both}
+.impact-second{inset:8%;border-style:dashed;animation-delay:100ms}
+.impact-spark{position:absolute;left:50%;top:50%;width:3px;height:3px;background:currentColor;transform:rotate(var(--angle)) translateY(-45px);animation:cinema-spark 800ms ease-out both}
+body[data-cinema="balanced"] .cinema-airframe{opacity:.1}body[data-cinema="balanced"] .cinema-optics{opacity:.35}body[data-cinema="balanced"] .routing-packets{animation:none}
+body[data-cinema="quiet"] .cinema-airframe,body[data-cinema="quiet"] .cinema-optics,body[data-cinema="quiet"] .wire-sphere,body[data-cinema="quiet"] .holo-cube,body[data-cinema="quiet"] .holo-orbit,body[data-cinema="quiet"] .holo-anchor{display:none}
+body[data-cinema="quiet"] .holo-float{animation:none}body[data-cinema="quiet"] .holo-tilt{transform:none!important}
+body[data-cinema="quiet"] .neural-panel canvas{display:none}
+.cinema-quality-row{display:flex;align-items:center;gap:14px;font:9px Consolas,monospace;color:#8bdde8;margin:15px 0}
+.cinema-quality-row select{flex:1;min-width:0;padding:9px 12px;background:#091b29;color:#d5edf0;border:1px solid #3c6a78;border-radius:14px;font:11px Consolas,monospace}
+.command-deck{width:min(680px,calc(100vw - 42px));padding:20px 24px;border-radius:26px;border:1px solid #76deed;background:linear-gradient(140deg,#102c3bf5,#04121cfb);box-shadow:inset 0 0 30px #51dbe00d,0 0 0 5px #4ac9dd15,0 25px 100px #000b}
+.command-deck>header{display:flex;align-items:center;justify-content:space-between;gap:16px}.command-deck>header small{font:8px Consolas,monospace;letter-spacing:2px;color:#74d4df}.command-deck h2{font-size:25px;margin:5px 0 16px;color:#e4f6fa}.command-deck>header button{font-size:22px;min-width:36px;min-height:36px}
+.command-deck>input{display:block;width:100%;min-height:46px;padding:12px 15px;border:1px solid #619eab;border-radius:14px;background:#03131f;color:#effbff;font-size:15px;outline-offset:3px}
+#command-deck-results{max-height:min(52vh,420px);overflow-y:auto;margin-top:14px;scrollbar-width:thin;scrollbar-color:#427988 transparent}
+.deck-choice{display:flex;align-items:center;gap:14px;min-height:53px;margin:4px 0;padding:10px 12px;border:1px solid transparent;border-radius:13px;cursor:pointer;background:#102c3b33}.deck-choice:hover,.deck-choice[aria-selected="true"]{border-color:#5cbbcd99;background:#24516570}
+.deck-glyph{font-size:22px;color:#8ae9ee;flex:none}.deck-choice strong{display:block;font-size:13px;font-weight:500;color:#e4f4f7}.deck-choice small{display:block;margin-top:4px;font-size:10px;color:#a0bdc9;line-height:1.4}
+.command-deck-status{font-size:10px;line-height:1.6;color:#b5cdd8;margin:12px 0 8px}.command-deck>footer{font:9px Consolas,monospace;color:#79b7c8;border-top:1px solid #285363;padding-top:12px}
+.geometry-paused .cinema-optics *,.geometry-paused .cinema-airframe *,.effects-paused .cinema-optics *,.effects-paused .cinema-airframe *,.edge-hidden .cinema-optics *,.edge-hidden .cinema-airframe *{animation-play-state:paused!important}
+@keyframes cinema-packets{to{stroke-dashoffset:-680}}
+@keyframes cinema-sweep{to{transform:rotate(360deg)}}
+@keyframes cinema-assemble{from{opacity:.05;clip-path:inset(45% 0 45% 0)}to{opacity:.24;clip-path:inset(0)}}
+@keyframes cinema-lock{from{transform:scale(1.04);transform-origin:center;opacity:.25}to{transform:scale(1);transform-origin:center;opacity:1}}
+@keyframes cinema-impact{from{transform:scale(.8);opacity:.8}to{transform:scale(1.8);opacity:0}}
+@keyframes cinema-spark{from{transform:rotate(var(--angle)) translateY(-45px);opacity:.9}to{transform:rotate(var(--angle)) translateY(-100px);opacity:0}}
+.motion-off .cinema-airframe,.motion-off .cinema-airframe *,.motion-off .cinema-optics *,.motion-off .cinema-impact *{animation:none!important;transition:none!important}
+.motion-off .cinema-impact{display:none}
+@media(prefers-reduced-motion:reduce){.cinema-airframe,.cinema-airframe *,.cinema-optics *,.cinema-impact *{animation:none!important;transition:none!important}.cinema-impact{display:none}}

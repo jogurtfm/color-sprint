@@ -1,0 +1,26 @@
+/* Both root and body must be clear: a transparent body alone inherits the old blue HTML canvas. */
+html,body{background:transparent!important}
+body[data-mode^="rim-"] .rim-top,body[data-mode^="rim-"] .rim-queue{background:linear-gradient(160deg,rgba(8,24,35,.76),rgba(4,15,24,.84));box-shadow:inset 0 1px 0 #b6f6ff12}
+body[data-mode^="rim-"] .rim-surface{filter:drop-shadow(0 1px 2px #000a)}
+/* The SVG owns the curved fill; never paint its surrounding rectangular container. */
+body[data-mode^="rim-"] .rim-focus{background:transparent}
+body[data-mode^="rim-"] .rim-surface button{background:#00000038;text-shadow:0 1px 3px #000}
+body[data-mode^="rim-"] .rim-top{gap:8px;padding-left:13px;padding-right:13px}
+body[data-mode^="rim-"] .rim-brand{font-size:10px;letter-spacing:1px}
+body[data-mode^="rim-"] .rim-surface #app{text-shadow:0 1px 3px #000}
+body[data-mode^="rim-"] .rim-focus-definition{color:#d5e7e9;text-shadow:0 1px 3px #000}
+body[data-mode^="rim-"] #app{opacity:1;transform:translate(0,0);transition:opacity 210ms ease,transform 210ms cubic-bezier(.2,.7,.2,1)}
+body[data-mode="rim-top"].edge-hidden #app{opacity:0;transform:translateY(-14px)}
+body[data-mode="rim-focus"].edge-hidden #app{opacity:0;transform:translateY(16px)}
+body[data-mode="rim-queue"].edge-hidden #app{opacity:0;transform:translateX(16px)}
+body[data-mode="hud"] .hud-shell{background:transparent}
+body[data-mode="hud"] .panel{background:#00000032;backdrop-filter:blur(5px)}
+body[data-mode="hud"] .scanlines{display:none}
+body[data-mode="hud"] .brand,body[data-mode="hud"] .core,body[data-mode="hud"] .utility-bar{text-shadow:0 1px 4px #000}
+.sync-check{font:8px/1.4 Consolas,monospace;color:#b2e4dc;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.sync-check.error{color:#ffadbb}
+.rim-queue-footer .sync-check{font-size:7px;margin-top:4px}
+.sync-checking{animation:refresh-spin 1s linear infinite}
+.widget-drag .refresh-widget{font-size:14px}
+@keyframes refresh-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){body[data-mode^="rim-"] #app{transition:none!important}}

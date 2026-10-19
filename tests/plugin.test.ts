@@ -12,9 +12,32 @@ import { saveTask } from '../src/model';
 import { syncNote, parseCheckpoint, PlanProposal } from '../src/sync';
 import {generateKeyPairSync,randomUUID,sign} from 'node:crypto';
 import {HudRequest,hudNote,hudFolder,signedHudBody,hudPayload} from '../src/hud-protocol';
+import {enqueueTask,startQuickQueue,queueItemsFor,focusQueue} from '../src/model';
 const require=createRequire(import.meta.url);
 const {JSDOM}=require('jsdom');
 const settle=(ms=20)=>new Promise(resolve=>setTimeout(resolve,ms));
+
+test('mobile mixed queue can be built, reordered, timed, finished forward and cancelled without disappearing',async()=>{
+  const day=localDay(),h=await harness(starter(day),{}, {mobile:true});try{
+    h.view.contentEl.querySelector('[aria-label="Add Make Bed to focus queue"]').click();await settle();
+    h.view.contentEl.querySelector('[aria-label="Add Study Japanese to focus queue"]').click();await settle();
+    h.button('Queue').click();await settle();assert.equal(h.document.querySelectorAll('.cs-queue-row').length,2);
+    h.view.contentEl.querySelector('[aria-label="up Study Japanese in queue"]').click();await settle();assert.equal(parseBoard(h.text).queueItems[0].taskId,'japanese');
+    const minutes=h.view.contentEl.querySelector('[aria-label="Minutes for Study Japanese"]');minutes.value='5';minutes.dispatchEvent(new h.dom.window.Event('change'));await settle();
+    h.button('Start queue').click();await settle();let b=parseBoard(h.text);assert.match(b.timer!.owner!,/^runner-/);assert.equal(focusQueue(b,b.timer!)[0].minutes,5);
+    h.button('Finish & next').click();await settle();b=parseBoard(h.text);assert.equal(b.timer!.cursor,1);assert.equal(b.entries.find(e=>e.taskId==='japanese')!.done,true);
+    h.button('Cancel').click();await settle();h.button('Queue').click();await settle();assert.equal(queueItemsFor(parseBoard(h.text),day).length,2);assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='japanese')!.done);assert.equal(h.notices.length,0);
+  }finally{await h.close();}
+});
+
+test('only the designated plugin runner advances automatically; another device must take over explicitly',async()=>{
+  const day=localDay(),store=new Map<string,unknown>([['color-sprint.queue-device','runner-phone']]);let text=enqueueTask(enqueueTask(starter(day),'make-bed',day),'brush-teeth',day);text=startQuickQueue(text,day,Date.now()-125000,'runner-windows');
+  const h=await harness(text,{}, {mobile:true,store});try{
+    await h.plugin.advanceQueues();assert.equal(parseBoard(h.text).timer!.cursor,0);assert.equal(h.writes,0);
+    h.button('Queue').click();await settle();h.button('Run on this device').click();await settle();assert.equal(parseBoard(h.text).timer!.owner,'runner-phone');
+    await h.plugin.advanceQueues();await settle();const b=parseBoard(h.text);assert.equal(b.timer!.cursor,1);assert.ok(b.entries.every(e=>!e.done));assert.equal(h.notices.length,0);
+  }finally{await h.close();}
+});
 
 async function harness(initial=starter(),initialFiles:Record<string,string>={},voiceOptions:{store?:Map<string,unknown>;recorder?:unknown;mobile?:boolean}={}) {
   const dom=new JSDOM('<!doctype html><body></body>',{url:'https://preview.invalid'});const document=dom.window.document;const proto=dom.window.HTMLElement.prototype;

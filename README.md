@@ -1,5 +1,9 @@
 # Color Sprint
 
+Local development: **0.12.0** adds mixed, editable Quick Queues shared with the
+Windows HUD **0.11.0**, plus desktop workspace tabs. See [Quick Queue guide](QUICK-QUEUE.md).
+These builds are prepared locally; this line does not mean a BRAT release was published.
+
 A calm, color-coded surface for habits, tasks, goals, and focus sessions in **Obsidian on iPhone, iPad, and desktop**. Your tracker is an ordinary Markdown note: edit it in Obsidian or tap through the interface. Both use the same data.
 
 ![Mobile tracker](docs/mobile-preview.png)
@@ -96,7 +100,7 @@ Optional Markdown Time Blocks display suggested start/end times on cards and in 
 
 No Node.js, filesystem, Electron, or network APIs are used by the plugin. Obsidian's Vault API performs reads and atomic edits. No account, analytics, or external service is required.
 
-iOS can suspend Obsidian. The timer uses persisted timestamps instead of counting background ticks, so elapsed time is reconstructed on return. **There is no background alarm or push notification.** The timer continues until you pause/save; reaching the focus target does not end it or mark work complete. Before changing devices, pause or save the timer. Vault sync conflicts across two simultaneously active devices still require your sync provider's conflict handling.
+iOS can suspend Obsidian. The timer uses persisted timestamps instead of counting background ticks, so elapsed time is reconstructed on return. **There is no background alarm or push notification.** Quick Queue catches up elapsed timed steps when its owning device resumes; other focus modes continue until you pause/save. Reaching any target never marks work complete. Before changing devices, sync, then explicitly use **Run on this device** for Quick Queue (or pause/save other timers). Runner ownership is not a distributed lock; simultaneous offline edits can still conflict in your sync provider.
 
 Sounds use Web Audio after an interaction; volume, silent mode, or audio routing can affect what you hear. Haptics use the browser Vibration API where available and are **not guaranteed on iPhone**. There is no native Taptic Engine bridge or new phone permission that enables unsupported vibration. Feedback failures never block a saved checkbox. Preferences are stored in plugin settings, not the task Markdown.
 

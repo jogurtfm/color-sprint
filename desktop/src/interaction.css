@@ -1,0 +1,34 @@
+/* Explicit native hit regions: decoration never owns buttons or date controls. */
+button,input,select,summary,[data-radial-id],.date-controls,.topbar nav,.rim-top nav{-webkit-app-region:no-drag!important}
+.topbar.drag{-webkit-app-region:no-drag}.topbar .brand{-webkit-app-region:drag}
+/* Chromium's native drag hit map must not include a perspective-transformed toolbar. */
+body[data-mode="hud"] .topbar,body[data-mode="hud"] .utility-bar{transform:none!important;transform-style:flat!important}
+.workspace-tabs{position:relative;z-index:8}.workspace-tabs,.workspace-tabs *{-webkit-app-region:no-drag!important}
+.topbar nav,.rim-top nav,.widget-drag>div{isolation:isolate;-webkit-app-region:no-drag!important}
+.topbar nav *,.rim-top nav *,.widget-drag>div *{ -webkit-app-region:no-drag!important }
+.date-controls,.topbar nav{position:relative;z-index:5}
+button:not(:disabled),input,select{pointer-events:auto}
+.radial-controls{position:absolute;inset:0;z-index:8;pointer-events:none;isolation:isolate}
+.radial-sectors{position:absolute;inset:0;width:100%;height:100%;fill:#061926bd;stroke:#84d8e73d;stroke-width:1;pointer-events:none}
+.radial-sectors path{transition:fill 180ms,stroke 180ms;vector-effect:non-scaling-stroke}
+.radial-sectors .sector-hot{fill:#205567cf;stroke:#b2f2ff;filter:drop-shadow(0 0 3px #72e1ff66)}
+.radial-flow{fill:none;stroke:#8edcea66;stroke-width:1;stroke-dasharray:8 34 2 64;transform-origin:center;animation:radial-orbit-flow 14s linear infinite}
+.radial-button{position:absolute!important;width:54px;height:48px;min-height:44px;padding:4px!important;display:grid;align-content:center;justify-items:center;gap:1px;transform:translate(-50%,-50%);border:1px solid #79d9e459!important;background:#081e2bf0!important;border-radius:42%!important;color:#b9eff7;pointer-events:auto;box-shadow:inset 0 1px 0 #b5efff20,0 3px 10px #0006;letter-spacing:0!important;transition:color 160ms,border-color 160ms,box-shadow 160ms,scale 160ms}
+.radial-button>span{font-size:20px;line-height:1}.radial-button>small{font:8px 'Segoe UI',sans-serif;white-space:nowrap}
+.radial-button:not(:disabled):hover,.radial-button:focus-visible{scale:1.08;border-color:#c1f7ff!important;box-shadow:0 0 16px #64c9e73b,inset 0 1px 0 #d1f4ff40}
+.radial-button:active{transform:translate(-50%,-50%);scale:.96}
+.radial-button:disabled{opacity:.3}.radial-primary{border-color:#e3bb7caa!important;color:#ffe0a7;background:#283027f5!important}
+.radial-danger:not(:disabled){color:#f4a0ad}.has-radial>.orbit-label{visibility:hidden}
+.has-radial .gpu-globe-port{left:10%!important;bottom:13%!important;width:15%!important;height:15%!important}
+.core-compact .radial-button{width:44px;height:40px;min-height:40px}.core-compact .radial-button>small{font-size:7px}.core-compact .radial-button>span{font-size:17px}
+.rim-date-nav{display:flex;align-items:center;gap:2px;-webkit-app-region:no-drag}.rim-date-nav span{font:10px Consolas,monospace;white-space:nowrap}.rim-date-nav button{min-width:26px;min-height:30px;padding:1px 5px!important;font-size:17px!important}
+body[data-mode="rim-top"] #system-clock{display:none}
+body[data-mode="rim-top"] .rim-brand{font-size:9px;letter-spacing:.4px}
+body[data-mode="rim-top"] .rim-top{gap:5px}
+.control-feedback{animation:control-feedback 340ms ease-out}
+body[data-focus-phase="engaged"] .radial-primary{animation:radial-engaged 3s ease-in-out infinite}
+.motion-off .radial-flow,.motion-off .control-feedback,.motion-off .radial-primary,.effects-paused .radial-flow{animation:none!important}
+@keyframes radial-orbit-flow{to{transform:rotate(360deg)}}
+@keyframes radial-engaged{50%{box-shadow:0 0 17px #deb97f45,inset 0 0 10px #ecc67b17}}
+@keyframes control-feedback{35%{box-shadow:0 0 18px #8bdbf366,inset 0 0 14px #a1f1ff2b}}
+@media(prefers-reduced-motion:reduce){.radial-flow,.radial-primary,.control-feedback{animation:none!important}.radial-button{transition:none}}

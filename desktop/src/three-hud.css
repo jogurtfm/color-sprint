@@ -1,0 +1,25 @@
+/* Three instruments are clipped away from working UI; the original curved surfaces stay authoritative. */
+.three-hud{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none!important;z-index:6;background:transparent!important;-webkit-app-region:no-drag;transition:opacity 210ms ease}
+.three-hud[hidden]{display:none}
+.gpu-status{font:10px Consolas,monospace;color:#a9e9ef;letter-spacing:1px;padding:8px 0}
+/* Remove duplicate instruments only. Do not flatten/re-shape the original panels or crescent. */
+body[data-gpu="ready"] .spatial-world,body[data-gpu="ready"] .spatial-reactor,
+body[data-gpu="ready"] .ring-stage>.wire-sphere,body[data-gpu="ready"] .rim-orbit>.wire-sphere,
+body[data-gpu="ready"] .program-hologram .holo-cube,body[data-gpu="ready"] .program-hologram .holo-orbit,body[data-gpu="ready"] .program-hologram .holo-anchor{display:none!important;animation:none!important}
+body[data-gpu="ready"] #neural-field{visibility:hidden}
+body[data-gpu="ready"] .program-hologram .holo-tilt,body[data-gpu="ready"] .program-hologram .holo-float{transform:none!important;animation:none!important}
+body[data-gpu="ready"] .holo-emblem{left:auto;right:0;top:auto;bottom:0;width:18px;height:18px;border-radius:5px;transform:none!important;background:#071925ed;border-color:#7ed6e45c;font-size:8px}
+body[data-gpu="ready"] .holo-emblem>img{width:14px;height:14px}
+body[data-gpu="ready"] .launcher-tile:hover,body[data-gpu="ready"] .launcher-tile:focus-visible{transform:translateY(var(--lift,0px));filter:none}
+body[data-gpu="ready"] .ring-stage>svg.visor-rings{opacity:.25}
+body[data-gpu="ready"] .cinema-optics{opacity:.28}
+body[data-gpu="ready"] .cinema-airframe{opacity:.12}
+body[data-gpu="ready"] .core-readout{opacity:1!important;text-shadow:0 2px 6px #000,0 0 15px #071724}
+body[data-gpu="ready"] .core-readout .timer-value{color:#f1fcff;text-shadow:0 2px 8px #000}
+body[data-gpu="ready"] .gpu-globe-port{position:absolute;left:3%;bottom:2%;width:20%;height:20%;pointer-events:none}
+body[data-gpu="ready"] .neural-panel:has(.launcher-dock) .terrain-label{opacity:.45}
+body[data-gpu="ready"] .task-index .holo-cube,body[data-gpu="ready"] .panel-title .holo-cube{animation:none!important}
+body[data-gpu="ready"] .slab-scanner,body[data-gpu="ready"] .slab-rail{animation:none!important}
+body.effects-paused .three-hud{visibility:hidden}
+body.edge-hidden .three-hud{opacity:0}
+@media(prefers-reduced-motion:reduce){.three-hud{transition:none}}

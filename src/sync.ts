@@ -38,7 +38,7 @@ export function mergePlan(baseText:string,currentText:string,proposedText:string
   mergeRows('availability',['label','days','start','end','timezone'],id,saveAvailability);
   mergeRows('focusTargets',['minutes'],dateId,saveFocusTarget);
   if(base.start!==proposed.start||base.end!==proposed.end)result.conflicts.push('Sprint date-range changes require review; current dates retained.');
-  for(const field of ['timer','sessions','workoutLogs','quickCounts','reflections'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
+  for(const field of ['timer','sessions','workoutLogs','quickCounts','reflections','queueItems'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
   parseBoard(result.text);return result;
 }
 

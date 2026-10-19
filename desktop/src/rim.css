@@ -1,0 +1,45 @@
+/* Native windows occupy only these narrow edge clusters. No window spans the center. */
+body[data-mode^="rim-"]{background:transparent;min-height:0;overflow:hidden;margin:0;padding:0}
+body[data-mode^="rim-"] .scanlines{display:none}
+body[data-mode^="rim-"] #app{height:100vh}
+.rim-surface{height:100%;position:relative;color:#d5f2f6;font-family:'Bahnschrift','Segoe UI',sans-serif}
+.rim-surface button{letter-spacing:.5px;font-size:10px;min-height:30px;padding:5px 9px;border-radius:14px;background:#09222de8;border-color:#35616b}
+.rim-surface button:hover{border-color:#6eeafb;background:#163d48}
+.rim-surface .icon{padding:3px 8px;font-size:16px;border-color:transparent;min-width:30px}
+.rim-top{margin:2px 5px;height:52px;padding:5px 17px 8px;display:flex;align-items:center;gap:13px;border:1px solid #3b8394;border-radius:12px 12px 48% 48% / 12px 12px 25px 25px;background:linear-gradient(180deg,#081723f5,#0d2c38ed);box-shadow:inset 0 -3px 12px #4ce8ff11,0 0 12px #21bdd21a}
+.rim-brand{color:#7aeaff;font:11px Consolas,monospace;letter-spacing:2px;white-space:nowrap}
+.rim-top #system-clock{font:12px Consolas,monospace;color:#b3d5df;min-width:60px}
+.rim-win-count{white-space:nowrap;font:10px Consolas,monospace;color:#b2cbd2;margin-right:auto}
+.rim-win-count b{font-size:16px;color:#efbf78;font-weight:400;margin-right:4px}
+.rim-top nav{display:flex;gap:2px;align-items:center;-webkit-app-region:no-drag}
+.rim-arc{width:100%;height:100%;position:absolute;inset:0;pointer-events:none;filter:drop-shadow(0 0 4px #39cce61c)}
+.rim-focus-content{position:absolute;inset:37px 51px 9px;display:grid;grid-template-columns:100px minmax(0,1fr);gap:20px;align-items:center}
+.rim-orbit{width:100px;height:100px;position:relative;display:grid;place-items:center}
+.rim-orbit .visor-rings{position:absolute;inset:0}
+.rim-orbit #focus-time{font-size:23px;font-weight:300;font-variant-numeric:tabular-nums;letter-spacing:.3px;color:#e7faff;z-index:1}
+.rim-focus-copy{min-width:0}
+.rim-focus-copy .focus-name{font-size:16px;max-width:none;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;line-height:1.3;text-align:left}
+.rim-focus-definition{font:10px/1.35 'Segoe UI',sans-serif;color:#9cbcc7;margin:4px 0 0;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.rim-focus-copy #focus-meta{font:8px Consolas,monospace;color:#6fa8b7;letter-spacing:.6px;margin:4px 0 6px;min-height:10px}
+.rim-actions{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.rim-actions .primary{color:#d2fff7;border-color:#49bba7;background:#133d3b}
+.rim-actions .danger{color:#e4a8b4}
+.rim-read-only{font:9px Consolas,monospace;color:#e4bb7b}
+.rim-queue{margin:3px 4px;height:calc(100% - 6px);border:1px solid #2f6d7f;border-right:3px solid #48cce0;border-radius:64px 15px 15px 64px / 38% 15px 15px 38%;background:linear-gradient(105deg,#0b2633dd,#06151ff5);padding:16px 12px 11px 31px;box-shadow:inset 14px 0 24px #40c6de08;overflow:hidden}
+.rim-queue::before{content:'';position:absolute;left:13px;top:28px;bottom:28px;width:16px;border-left:1px dashed #61d4d766;border-radius:50%;pointer-events:none}
+.rim-queue-header{display:flex;justify-content:space-between;align-items:center;gap:4px;font:9px Consolas,monospace;color:#79dce9;letter-spacing:1px;margin-bottom:7px}
+.rim-task-list{max-height:calc(100% - 52px);overflow:auto;scrollbar-width:thin;scrollbar-color:#205368 transparent}
+.rim-task{display:flex;align-items:center;gap:8px;min-height:42px;border-bottom:1px solid #28445066;padding:4px 0}
+.rim-task input{accent-color:var(--task-color);width:17px;height:17px;flex:0 0 17px;margin:0;cursor:pointer}
+.rim-task .task-select{min-height:28px;padding:0;border:none;border-radius:0;background:transparent;min-width:0;text-align:left}
+.rim-task .task-select strong{font-size:11px;line-height:1.3;color:var(--task-color)}
+.rim-task .task-select small{font-size:8px;letter-spacing:.3px;margin-top:3px}
+.rim-task.done strong{text-decoration:line-through;opacity:.55}
+.rim-queue-footer{font:8px Consolas,monospace;color:#6e97a6;padding-top:8px}
+.rim-surface .rim-alert{color:#ffb0bb;font:10px/1.4 Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:5px 0}
+.rim-connect{height:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #397b8b;border-radius:25px;background:#0a202bf2;font:11px Consolas,monospace;padding:8px}
+body[data-mode^="rim-"] #toast{top:4px;bottom:auto;left:8px;transform:none;max-width:calc(100% - 16px);padding:8px 11px;border-radius:15px;font-size:10px;line-height:1.3;max-height:75px;overflow:hidden}
+body[data-mode^="rim-"] #toast.visible{transform:none}
+.celebrate .rim-arc{animation:win-ring .8s ease-out}
+.celebrate .rim-win-count b{animation:win-glow .8s ease-out}
+@media(max-width:570px){.rim-top{gap:8px;padding-left:10px;padding-right:10px}.rim-brand{font-size:10px;letter-spacing:1px}.rim-top #system-clock{font-size:10px}.rim-focus-content{inset:40px 32px 8px;gap:10px;grid-template-columns:85px minmax(0,1fr)}.rim-orbit{width:85px;height:85px}.rim-actions button{font-size:9px;padding:4px 7px;min-height:28px}}

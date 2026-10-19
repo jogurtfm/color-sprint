@@ -1,0 +1,50 @@
+/* Small CSS 3-D scenes; stable buttons/labels stay outside the moving geometry. */
+.launcher-tile>.program-hologram{position:relative;display:block;width:40px;height:36px;flex:none;border:0;border-radius:0;background:none;box-shadow:none;perspective:190px;pointer-events:none;--cube-edge:25px;--cube-depth:12.5px}
+.holo-tilt{position:absolute;inset:0;display:block;transform-style:preserve-3d;transform:rotateX(var(--aim-x,0deg)) rotateY(var(--aim-y,0deg));transition:transform 180ms ease}
+.holo-float{position:absolute;inset:0;display:grid;place-items:center;transform-style:preserve-3d;animation:holo-float 5s ease-in-out infinite;animation-delay:var(--phase,0s)}
+.holo-cube{position:absolute;left:calc(50% - var(--cube-edge)/2);top:calc(45% - var(--cube-edge)/2);width:var(--cube-edge);height:var(--cube-edge);display:block;transform-style:preserve-3d;transform:rotateX(-24deg) rotateY(-36deg) rotateZ(8deg);animation:holo-tumble var(--spin-time,22s) linear infinite;animation-delay:var(--phase,0s)}
+.cube-face{position:absolute;inset:0;display:block;border:1px solid currentColor;background:linear-gradient(90deg,transparent 48%,color-mix(in srgb,currentColor 14%,transparent) 50%,transparent 52%),linear-gradient(transparent 48%,color-mix(in srgb,currentColor 14%,transparent) 50%,transparent 52%);box-shadow:inset 0 0 6px color-mix(in srgb,currentColor 7%,transparent);backface-visibility:visible;opacity:.7;transition:border-color 200ms ease,opacity 200ms ease}
+.cube-front{transform:translateZ(var(--cube-depth))}.cube-back{transform:rotateY(180deg) translateZ(var(--cube-depth))}.cube-left{transform:rotateY(-90deg) translateZ(var(--cube-depth))}.cube-right{transform:rotateY(90deg) translateZ(var(--cube-depth))}.cube-top{transform:rotateX(90deg) translateZ(var(--cube-depth))}.cube-bottom{transform:rotateX(-90deg) translateZ(var(--cube-depth))}
+.holo-emblem{position:absolute;left:50%;top:45%;display:grid;place-items:center;width:19px;height:19px;transform:translate(-50%,-50%) translateZ(22px);background:#061923d9;border:1px solid color-mix(in srgb,currentColor 48%,transparent);border-radius:5px;font:9px Consolas,monospace;box-shadow:0 0 9px #03111e}
+.holo-emblem>img{width:16px;height:16px;object-fit:contain}.holo-emblem>span{font:inherit;line-height:1}
+.holo-orbit{position:absolute;left:3px;right:3px;bottom:1px;height:10px;border:1px dashed currentColor;border-radius:50%;opacity:.32;transform:rotate(-12deg);animation:holo-orbit 12s linear infinite;animation-delay:var(--phase,0s)}
+.holo-anchor{position:absolute;bottom:1px;left:calc(50% - 1px);width:2px;height:2px;background:currentColor;box-shadow:0 0 7px currentColor}
+.launcher-tile:hover .holo-cube,.launcher-tile:focus-visible .holo-cube{animation-play-state:paused}
+.launcher-tile:hover .cube-face,.launcher-tile:focus-visible .cube-face{opacity:1;box-shadow:inset 0 0 9px color-mix(in srgb,currentColor 16%,transparent),0 0 4px color-mix(in srgb,currentColor 24%,transparent)}
+.launcher-tile:hover .holo-emblem,.launcher-tile:focus-visible .holo-emblem{background:#09283af5;border-color:currentColor;box-shadow:0 0 9px color-mix(in srgb,currentColor 30%,transparent)}
+.launcher-tile:focus-visible{outline:1px solid currentColor!important;outline-offset:1px}
+.launcher-tile:hover,.launcher-tile:focus-visible,.launcher-tile:active{transform:translateY(var(--lift,0px))}
+.launcher-tile:hover .holo-tilt,.launcher-tile:focus-visible .holo-tilt{transform:translateY(-2px) rotateX(var(--aim-x,-7deg)) rotateY(var(--aim-y,9deg))}
+.launcher-tile:active .holo-tilt{transform:translateY(1px) scale(.94)}
+.launcher-tile.unconfigured .cube-face{border-style:dashed}
+.launcher-tile small{position:relative;z-index:2;color:#e0eff6;text-shadow:0 1px 3px #000}
+.launcher-tile>.program-hologram~i{top:2px;z-index:3}
+.rim-focus.has-launcher .launcher-tile>.program-hologram{width:36px;height:31px;--cube-edge:22px;--cube-depth:11px}
+.rim-focus.has-launcher .holo-emblem{width:17px;height:17px;font-size:8px}.rim-focus.has-launcher .holo-emblem>img{width:14px;height:14px}
+.rim-focus.has-launcher .launcher-apps{padding-top:6px}
+.neural-panel>.launcher-dock .launcher-tile{flex-basis:54px;gap:3px}
+/* Real latitude/longitude rings in a shared 3-D coordinate space, not telemetry. */
+.wire-sphere{position:absolute;inset:18%;display:block;pointer-events:none;perspective:650px;color:#6ce6ed;opacity:.32;mask-image:radial-gradient(circle,transparent 0 32%,#000 65%);-webkit-mask-image:radial-gradient(circle,transparent 0 32%,#000 65%)}
+.sphere-gimbal,.sphere-spin{position:absolute;inset:0;display:block;transform-style:preserve-3d}
+.sphere-gimbal{transform:rotateX(-21deg) rotateZ(-14deg)}
+.sphere-spin{transform:rotateY(24deg);animation:sphere-turn 70s linear infinite}
+.sphere-meridian,.sphere-latitude,.sphere-equator{position:absolute;display:block;border:1px solid currentColor;border-radius:50%;backface-visibility:visible;pointer-events:none}
+.sphere-meridian{inset:0;opacity:.55}.sphere-latitude{transform:rotateX(90deg);opacity:.65}
+.sphere-equator{inset:0;transform:rotateX(90deg);border-style:dashed;border-color:#f2c789;opacity:.8}
+.sphere-orbital{position:absolute;inset:-8%;display:block;border:1px dashed currentColor;border-radius:50%;opacity:.45;transform:rotateX(65deg) rotateZ(-22deg);animation:sphere-orbit 36s linear infinite}
+.orbital-b{inset:-14%;border-color:#edbd72;animation-direction:reverse;animation-duration:51s;opacity:.6}
+.sphere-axis{position:absolute;left:50%;top:-15%;bottom:-15%;width:1px;display:block;background:linear-gradient(transparent,#74f0f0,transparent);transform:rotate(-14deg);opacity:.25}
+.core-readout{z-index:2}.core-readout .focus-name,.core-readout .timer-value{text-shadow:0 2px 8px #020b12,0 0 20px #020b12}
+.rim-orbit>.wire-sphere{inset:9%;perspective:230px;opacity:.33;mask-image:radial-gradient(circle,transparent 0 38%,#000 72%);-webkit-mask-image:radial-gradient(circle,transparent 0 38%,#000 72%)}
+.rim-orbit .sphere-meridian,.rim-orbit .sphere-latitude{border-width:.6px}
+.widget-shell .wire-sphere{opacity:.25}
+.edge-hidden .holo-float,.edge-hidden .holo-cube,.edge-hidden .holo-orbit,.edge-hidden .sphere-spin,.edge-hidden .sphere-orbital,.effects-paused .holo-float,.effects-paused .holo-cube,.effects-paused .holo-orbit,.effects-paused .sphere-spin,.effects-paused .sphere-orbital{animation-play-state:paused!important}
+@keyframes holo-float{0%,100%{transform:translateY(1px)}50%{transform:translateY(-2px)}}
+@keyframes holo-tumble{0%{transform:rotateX(-24deg) rotateY(-36deg) rotateZ(8deg)}50%{transform:rotateX(16deg) rotateY(144deg) rotateZ(-8deg)}100%{transform:rotateX(-24deg) rotateY(324deg) rotateZ(8deg)}}
+@keyframes holo-orbit{to{transform:rotate(348deg)}}
+@keyframes sphere-turn{to{transform:rotateY(384deg)}}
+@keyframes sphere-orbit{to{transform:rotateX(65deg) rotateZ(338deg)}}
+.motion-off .holo-tilt{transform:none!important}
+.geometry-paused .holo-float,.geometry-paused .holo-cube,.geometry-paused .holo-orbit,.geometry-paused .sphere-spin,.geometry-paused .sphere-orbital{animation-play-state:paused!important}
+.motion-off .holo-float,.motion-off .holo-cube,.motion-off .holo-orbit,.motion-off .sphere-spin,.motion-off .sphere-orbital{animation:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){.holo-tilt{transform:none!important;transition:none!important}.holo-float,.holo-cube,.holo-orbit,.sphere-spin,.sphere-orbital{animation:none!important;transition:none!important}}

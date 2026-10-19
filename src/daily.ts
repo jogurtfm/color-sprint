@@ -1,7 +1,7 @@
 import { localDay, validDay } from './model';
 
 export interface DailyLink {date:string;tracker:string;page:string;autoOpen:boolean}
-export interface EmbedLink extends DailyLink {view:'Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'}
+export interface EmbedLink extends DailyLink {view:'Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'|'Queue'}
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))return {};return value as Record<string,unknown>;}
 export function vaultPath(value:string,folder=false):string{
   const path=value.trim();if(!path||path.startsWith('/')||/[\\:\r\n]/.test(path)||path.split('/').some(p=>!p||p==='..'||p==='.'||p.startsWith('.'))||(!folder&&!path.endsWith('.md')))throw new Error(`Use a visible vault-relative ${folder?'folder':'.md path'}: ${path}`);return path;
@@ -16,7 +16,7 @@ export function embedLink(config:unknown,frontmatter:unknown,fallbackTracker:str
   const rawDate=cfg.date==='today'?localDay():cfg.date??fm['sprint-date'];
   const tracker=typeof cfg.tracker==='string'?cfg.tracker:typeof fm['sprint-tracker']==='string'?fm['sprint-tracker']:fallbackTracker;
   const page=typeof cfg.page==='string'?cfg.page:typeof fm['sprint-page']==='string'?fm['sprint-page']:'All';
-  const views:Record<string,EmbedLink['view']>={today:'Today',digest:'Digest',week:'Week',pages:'Pages',goals:'Goals',history:'History'};
+  const views:Record<string,EmbedLink['view']>={today:'Today',digest:'Digest',week:'Week',pages:'Pages',goals:'Goals',history:'History',queue:'Queue'};
   const view=views[String(cfg.view??'today').toLowerCase()];if(!view)throw new Error('Embed view must be today, digest, week, pages, goals, or history.');
   return {date:dateValue(rawDate),tracker:vaultPath(tracker),page:page.trim()||'All',autoOpen:false,view};
 }

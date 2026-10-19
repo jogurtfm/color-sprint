@@ -1,0 +1,57 @@
+/* Glass changes its own alpha; the native window always keeps a clear exterior. */
+body{--glass-idle:rgba(5,20,32,.46);--glass-active:rgba(5,20,32,.82)}
+body[data-mode="hud"] .panel{clip-path:none;border-radius:32px;background:linear-gradient(155deg,rgba(12,39,53,.44),rgba(3,15,26,.58));border-color:#477d8970;isolation:isolate;transition:background 240ms ease,border-color 240ms ease,box-shadow 240ms ease}
+body[data-mode="hud"] .panel:hover,body[data-mode="hud"] .panel:focus-within{background:linear-gradient(155deg,rgba(12,39,53,.78),rgba(3,15,26,.86));border-color:#70dbea9c;box-shadow:inset 0 0 20px #47d9ec0a,0 0 18px #34cbe00c}
+body[data-mode="hud"] .left-column .panel{border-radius:52px 22px 22px 52px / 20% 22px 22px 20%;padding-left:24px}
+body[data-mode="hud"] .right-column .panel{border-radius:22px 52px 52px 22px / 22px 20% 20% 22px;padding-right:24px}
+body[data-mode="hud"] .lower-deck .panel{border-radius:22px 22px 52px 52px / 22px 22px 35% 35%}
+body[data-mode="hud"] .panel::after{left:24px;width:calc(100% - 48px);border-top-color:#6de5e8;opacity:.25}
+body[data-mode="hud"] .panel>:not(.panel-circuit){position:relative;z-index:1;opacity:.78;transition:opacity 180ms ease}
+body[data-mode="hud"] .panel:hover>:not(.panel-circuit),body[data-mode="hud"] .panel:focus-within>:not(.panel-circuit){opacity:1}
+body[data-mode="hud"] .topbar{position:relative;isolation:isolate;border:1px solid #3c697a80;border-radius:18px 18px 48% 48% / 18px 18px 22px 22px;background:linear-gradient(180deg,#0b23336e,#06152244);padding:7px 14px 12px}
+body[data-mode="hud"] .topbar:hover,body[data-mode="hud"] .topbar:focus-within{background:linear-gradient(180deg,#0b2333c9,#061522a6)}
+body[data-mode="hud"] .brand h1{font-size:21px;letter-spacing:3px}
+body[data-mode="hud"] .topbar nav{gap:3px}
+body[data-mode="hud"] .topbar nav>button:not(.icon){font-size:8px;letter-spacing:.7px;padding:7px 9px;border-radius:14px}
+body[data-mode="hud"] .topbar>.panel-circuit{z-index:-1}
+body[data-mode="hud"] .ring-stage::before{content:'';position:absolute;inset:18%;border-radius:50%;background:radial-gradient(ellipse,#0928378f,#04111b66 75%);border:1px solid #56dbe22e;box-shadow:inset 0 0 30px #40dce00a;pointer-events:none;transition:background 240ms ease}
+body[data-mode="hud"] .center-column:hover .ring-stage::before,body[data-mode="hud"] .center-column:focus-within .ring-stage::before{background:radial-gradient(ellipse,#092837c4,#04111baa 75%)}
+body[data-mode="hud"] .focus-actions button{border-radius:18px;clip-path:none;background:#09263799}
+body[data-mode="hud"] .focus-actions .engage{border-radius:24px;clip-path:none}
+body[data-mode="hud"] .neural-panel{border-radius:28px;border:1px solid #367b892b;background:#06182433}
+body[data-mode="hud"] .system-footer{border-radius:50%;border-top-color:#3a8a9638}
+.hud-shell{position:relative;isolation:isolate}
+.visor-frame{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);z-index:-1;fill:none;stroke:#60dce1;stroke-width:1;pointer-events:none;filter:drop-shadow(0 0 3px #4ce2eb22)}
+.visor-frame .frame-track{opacity:.3;stroke-width:2}.visor-frame .frame-bow{opacity:.4}.visor-frame .frame-ticks{opacity:.6;stroke-width:2}
+.panel-circuit{position:absolute;inset:2px;width:calc(100% - 4px);height:calc(100% - 4px);z-index:0;fill:none;pointer-events:none;overflow:visible;opacity:.6}
+.circuit-track{stroke:#64d8e7;stroke-width:.6;opacity:.16}
+.fx-dash{stroke:#69e8f0;stroke-width:1;stroke-dasharray:13 9 2 9;stroke-opacity:.46;fill:none;animation:circuit-flow 34s linear infinite;filter:drop-shadow(0 0 2px #56e8ee55)}
+.fx-signal{stroke:#efbd72;stroke-width:1.2;stroke-dasharray:24 190;stroke-opacity:.65;fill:none;animation:signal-flow 17s linear infinite}
+.right-column .fx-dash,.reflection-panel .fx-dash{animation-direction:reverse;animation-duration:42s}
+.activity-panel .fx-signal{animation-delay:-6s}.wins-panel .fx-signal{animation-delay:-11s}
+.panel:hover .fx-dash,.panel:focus-within .fx-dash{stroke-opacity:.8}
+/* Lower idle glass/ink on floating surfaces; hover AND keyboard focus restore contrast. */
+body[data-mode="focus"] .widget-shell,body[data-mode="day"] .widget-shell{background:linear-gradient(150deg,rgba(12,38,53,.46),rgba(3,14,24,.58));border-radius:36px;border-color:#5a9baa77;backdrop-filter:blur(6px);transition:background 220ms ease,border-color 220ms ease}
+body[data-mode="focus"] .widget-shell:hover,body[data-mode="focus"] .widget-shell:focus-within,body[data-mode="day"] .widget-shell:hover,body[data-mode="day"] .widget-shell:focus-within{background:linear-gradient(150deg,rgba(12,38,53,.78),rgba(3,14,24,.88));border-color:#7ce6eeaa}
+.widget-shell{position:relative;isolation:isolate}.widget-shell>.panel-circuit{z-index:-1}
+.widget-shell .widget-drag,.widget-shell .focus-name,.widget-shell .focus-help,.widget-shell .focus-actions,.widget-shell .widget-day,.widget-shell footer{opacity:.72;transition:opacity 200ms ease}
+.widget-shell:hover .widget-drag,.widget-shell:hover .focus-name,.widget-shell:hover .focus-help,.widget-shell:hover .focus-actions,.widget-shell:hover .widget-day,.widget-shell:hover footer,.widget-shell:focus-within .widget-drag,.widget-shell:focus-within .focus-name,.widget-shell:focus-within .focus-help,.widget-shell:focus-within .focus-actions,.widget-shell:focus-within .widget-day,.widget-shell:focus-within footer{opacity:1}
+body[data-mode^="rim-"] .rim-top,body[data-mode^="rim-"] .rim-queue{background:linear-gradient(155deg,rgba(8,24,35,.46),rgba(4,15,24,.58));transition:background 220ms ease}
+body[data-mode^="rim-"] .rim-top:hover,body[data-mode^="rim-"] .rim-top:focus-within,body[data-mode^="rim-"] .rim-queue:hover,body[data-mode^="rim-"] .rim-queue:focus-within{background:linear-gradient(155deg,rgba(8,24,35,.78),rgba(4,15,24,.88))}
+.rim-glass-fill{opacity:.66;transition:opacity 220ms ease}
+.rim-focus:hover .rim-glass-fill,.rim-focus:focus-within .rim-glass-fill{opacity:1}
+.rim-top>.rim-brand,.rim-top>.rim-win-count,.rim-top>nav,.rim-queue>.rim-queue-header,.rim-queue>.rim-task-list,.rim-focus .rim-focus-copy{opacity:.72;transition:opacity 200ms ease}
+.rim-top:hover>.rim-brand,.rim-top:hover>.rim-win-count,.rim-top:hover>nav,.rim-top:focus-within>.rim-brand,.rim-top:focus-within>.rim-win-count,.rim-top:focus-within>nav,.rim-queue:hover>.rim-queue-header,.rim-queue:hover>.rim-task-list,.rim-queue:focus-within>.rim-queue-header,.rim-queue:focus-within>.rim-task-list,.rim-focus:hover .rim-focus-copy,.rim-focus:focus-within .rim-focus-copy{opacity:1}
+.rim-surface:has(.rim-alert) .rim-alert{opacity:1}
+.rim-top>.panel-circuit,.rim-queue>.panel-circuit{z-index:-1}
+.rim-top,.rim-queue{isolation:isolate}
+.rim-orbit .visor-rings{filter:drop-shadow(0 0 3px #6ceaf133)}
+.rim-orbit #focus-time,.widget-shell #focus-time{opacity:.95;text-shadow:0 1px 4px #000,0 0 14px #45d9ed44}
+button.needs-editing{opacity:1;color:#ffe0a2;border-color:#cfa35d99;background:#3d2d1466}
+.rim-surface button.needs-editing{color:#ffe0a2;border-color:#cfa35d99}
+.edge-hidden .fx-dash,.edge-hidden .fx-signal,.edge-hidden .ring-drift,.effects-paused *{animation-play-state:paused!important}
+@keyframes circuit-flow{to{stroke-dashoffset:-660}}
+@keyframes signal-flow{to{stroke-dashoffset:-856}}
+@media(max-width:1300px){body[data-mode="hud"] .topbar nav>button:not(.icon){font-size:7px;padding:6px 7px}body[data-mode="hud"] .brand h1{font-size:17px;letter-spacing:2px}body[data-mode="hud"] .left-column .panel{padding-left:19px}body[data-mode="hud"] .right-column .panel{padding-right:19px}}
+@media(prefers-reduced-motion:reduce){.fx-dash,.fx-signal,.ring-drift,.ring-backspin{animation:none!important}*{transition:none!important}}
+.motion-off *{animation:none!important;transition:none!important}

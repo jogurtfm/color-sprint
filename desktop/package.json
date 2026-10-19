@@ -1,0 +1,21 @@
+{
+  "name": "color-sprint-hud",
+  "productName": "Color Sprint HUD",
+  "version": "0.11.0",
+  "description": "A local-first Windows visor and desktop widgets for Color Sprint Markdown.",
+  "private": true,
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node launch.mjs",
+    "test": "node build.mjs --tests && node --test test-results/core.test.cjs test-results/rim.test.cjs test-results/navigation.test.cjs test-results/sync.test.cjs test-results/editing.test.cjs test-results/launcher.test.cjs test-results/bridge.test.cjs test-results/three.test.cjs tests/three-dom.test.mjs tests/dom.test.mjs",
+    "package": "node package.mjs"
+  },
+  "devDependencies": {
+    "@types/three": "0.180.0",
+    "electron": "44.9.0"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  }
+}

@@ -11,7 +11,8 @@ export interface Task {id:string; title:string; color:ColorId; page:string; kind
 export interface Entry {date:string; taskId:string; detail:string; done:boolean}
 export interface Goal {id:string; due:string; page:string; title:string; evidence:string; done:boolean}
 export interface Session {id:string; date:string; taskId:string; seconds:number; note:string}
-export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number; cursor:number; stepOffset:number}
+export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number; cursor:number; stepOffset:number; itemIds?:string[];owner?:string}
+export interface QueueItem {id:string;date:string;taskId:string;subtaskId:string;minutes:number;title:string;definition:string}
 export interface Subtask {id:string; taskId:string; context:string; minutes:number; title:string; definition:string; done:boolean; completed:string}
 export interface FocusStep {id:string; taskId:string; subtask?:Subtask; title:string; definition:string; minutes:number; done:boolean}
 export interface WorkoutLog {id:string; date:string; taskId:'workout'|'treadmill'; minutes:number; distance:number; details:string; note:string}
@@ -20,10 +21,13 @@ export interface GroupRef {kind:'page'|'color'; value:string}
 export interface TimeBlock {date:string;taskId:string;start:string;end:string;timezone:string;status:'suggested'|'scheduled'|'needs-review';eventId:string;eventUrl:string}
 export interface Availability {id:string;label:string;days:string;start:string;end:string;timezone:string}
 export interface FocusTarget {date:string;taskId:string;minutes:number}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; start:string; end:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
+const LEGACY_QUICK_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds | Queue item IDs |';
+const QUICK_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds | Queue item IDs | Runner device |';
+export const FOCUS_QUEUE_HEADER='| ID | Date | Task ID | Subtask ID or - | Minutes | Action | Done means |';
 const QUEUE_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor |';
 const LEGACY_TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds |';
 export const WORKOUT_LOG_HEADER='| ID | Date | Task ID | Duration minutes | Distance miles | Sets / reps / load | Notes |';
@@ -31,7 +35,7 @@ export const QUICK_COUNT_HEADER='| ID | Date | Task ID | Amount | Unit |';
 export const TIME_BLOCK_HEADER='| Date | Task ID | Start | End | Time zone | Status | Calendar event ID | Event URL |';
 export const AVAILABILITY_HEADER='| ID | Label | Days | Start | End | Time zone |';
 export const FOCUS_TARGET_HEADER='| Date | Task ID | Minutes |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets'];
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -58,7 +62,7 @@ function table(lines:string[],range:Range,header:string):string[][]{
   const width=splitCells(header).length;return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
 }
 function timerTable(lines:string[],range:Range):string[][]{
-  const rows=dataLines(lines,range).filter(x=>x.trim().startsWith('|'));if(rows.length<2)throw new Error(`Expected table header: ${TIMER_HEADER}`);const header=rows[0].replace(/\s/g,'');const width=header===TIMER_HEADER.replace(/\s/g,'')?8:header===QUEUE_TIMER_HEADER.replace(/\s/g,'')?7:header===LEGACY_TIMER_HEADER.replace(/\s/g,'')?6:0;if(!width)throw new Error(`Expected table header: ${TIMER_HEADER}`);if(!splitCells(rows[1]).every(x=>/^:?-{3,}:?$/.test(x)))throw new Error('Table requires a Markdown separator row.');return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
+  const rows=dataLines(lines,range).filter(x=>x.trim().startsWith('|'));if(rows.length<2)throw new Error(`Expected table header: ${TIMER_HEADER}`);const header=rows[0].replace(/\s/g,'');const width=header===QUICK_TIMER_HEADER.replace(/\s/g,'')?10:header===LEGACY_QUICK_TIMER_HEADER.replace(/\s/g,'')?9:header===TIMER_HEADER.replace(/\s/g,'')?8:header===QUEUE_TIMER_HEADER.replace(/\s/g,'')?7:header===LEGACY_TIMER_HEADER.replace(/\s/g,'')?6:0;if(!width)throw new Error(`Expected table header: ${TIMER_HEADER}`);if(!splitCells(rows[1]).every(x=>/^:?-{3,}:?$/.test(x)))throw new Error('Table requires a Markdown separator row.');return rows.slice(2).map(x=>{const parts=splitCells(x);if(parts.length!==width)throw new Error(`Expected ${width} cells: ${x}`);return parts;});
 }
 function unique(ids:string[],kind:string):void {if(ids.some(x=>!/^[-a-z0-9]+$/.test(x)))throw new Error(`${kind} IDs must use lowercase letters, numbers, and hyphens.`);if(new Set(ids).size!==ids.length)throw new Error(`Duplicate ${kind} ID. Give every item its own stable ID.`);}
 function number(value:string):number {if(!/^\d+(\.\d+)?$/.test(value)||!Number.isFinite(Number(value)))throw new Error(`Invalid nonnegative number: ${value}`);return Number(value);}
@@ -72,11 +76,11 @@ export function parseBoard(text:string):Board {
   if(new Set(entries.map(x=>`${x.date}/${x.taskId}`)).size!==entries.length)throw new Error('Duplicate task/date in Schedule. Combine details or give separate tasks unique IDs.');
   const goals=checkboxRows(lines,rs.get('Goals')!).map(({done,parts:p})=>{if(p.length!==5)throw new Error('Goals rows need ID | Due date or - | Page | Goal | Evidence.');if(p[1]!=='-'&&!validDay(p[1]))throw new Error(`Invalid goal due date: ${p[1]}`);if(!p[2]||p[2]==='All'||!p[3])throw new Error('Goals need a title and page. All is a reserved page name.');return {id:p[0],due:p[1],page:p[2],title:p[3],evidence:p[4],done};});unique(goals.map(x=>x.id),'goal');
   const sessions=table(lines,rs.get('Sessions')!,SESSION_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],seconds:number(p[3]),note:p[4]}));unique(sessions.map(x=>x.id),'session');for(const session of sessions)if(!validDay(session.date))throw new Error('Invalid session date.');
-  const timers=timerTable(lines,rs.get('Timer')!).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5]),cursor:p.length>=7?integer(p[6]):0,stepOffset:p.length===8?number(p[7]):0}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
+  const timers=timerTable(lines,rs.get('Timer')!).map(p=>({id:p[0],taskId:p[1],date:p[2],started:p[3],elapsed:number(p[4]),target:number(p[5]),cursor:p.length>=7?integer(p[6]):0,stepOffset:p.length>=8?number(p[7]):0,...(p.length>=9&&p[8]!=='-'?{itemIds:p[8].split(','),...(p.length===10&&p[9]!=='-'?{owner:p[9]}:{})}: {})}));if(timers.length>1)throw new Error('Only one active timer is supported per tracker.');const timer=timers[0]||null;
   if(timer){unique([timer.id],'timer');if(!validDay(timer.date)|| (timer.started!=='-'&&!Number.isFinite(Date.parse(timer.started))))throw new Error('Invalid timer date or start timestamp.');}
   const workoutRange=rs.get('Workout Log');const workoutLogs=workoutRange?table(lines,workoutRange,WORKOUT_LOG_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2] as WorkoutLog['taskId'],minutes:number(p[3]),distance:number(p[4]),details:p[5],note:p[6]})):[];unique(workoutLogs.map(x=>x.id),'workout log');for(const log of workoutLogs)if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill'))throw new Error('Workout Log rows must use a valid date and Workout or Treadmill task ID.');
   const quickRange=rs.get('Quick Counts');const quickCounts=quickRange?table(lines,quickRange,QUICK_COUNT_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],amount:number(p[3]),unit:p[4]})):[];unique(quickCounts.map(x=>x.id),'quick count');for(const count of quickCounts)if(!validDay(count.date)||count.amount<=0||!count.unit)throw new Error('Quick Counts need a valid date, positive amount, and unit.');
-  const taskIds=new Set(tasks.map(x=>x.id));const knownReference=(id:string)=>taskIds.has(id)||!!parseGroupTimerId(id);for(const item of [...entries,...sessions,...timers,...quickCounts])if(!knownReference(item.taskId))throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
+  const taskIds=new Set(tasks.map(x=>x.id));const knownReference=(id:string)=>taskIds.has(id)||!!parseGroupTimerId(id)||isQuickQueue(id);for(const item of [...entries,...sessions,...timers,...quickCounts])if(!knownReference(item.taskId))throw new Error(`Unknown task ID: ${item.taskId}. Restore the task row or update its references.`);
   const reflectionRange=rs.get('Reflections');const reflections=reflectionRange?dataLines(lines,reflectionRange).map(line=>line.trim().replace(/^[-*]\s+|^>\s?/,'')).filter(line=>line&&!line.startsWith('<!--')):[];
   const match=text.match(/^Sprint: (\d{4}-\d{2}-\d{2}) \/ (\d{4}-\d{2}-\d{2})\s*$/m);const start=match?.[1]||localDay();const end=match?.[2]||addDays(start,13);if(!validDay(start)||!validDay(end)||end<start)throw new Error('Invalid Sprint date range.');
   const subRange=rs.get('Subtasks');const subtasks=subRange?checkboxRows(lines,subRange).map(({done,parts:p})=>{if(p.length!==7)throw new Error('Subtask rows need ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or -.');const sub:Subtask={id:p[0],taskId:p[1],context:p[2],minutes:number(p[3]),title:p[4],definition:p[5],completed:p[6],done};if(!taskIds.has(sub.taskId)||!sub.title||!sub.context||sub.minutes>1440||(sub.completed!=='-'&&!validDay(sub.completed)))throw new Error('Invalid subtask parent, title, duration, or completed date.');return sub;}):[];unique(subtasks.map(sub=>sub.id),'subtask');
@@ -87,7 +91,12 @@ export function parseBoard(text:string):Board {
   const focusRange=rs.get('Focus Targets');const focusTargets=focusRange?table(lines,focusRange,FOCUS_TARGET_HEADER).map(p=>({date:p[0],taskId:p[1],minutes:number(p[2])})):[];
   for(const target of focusTargets)if(!validDay(target.date)||!taskIds.has(target.taskId)||target.minutes>1440)throw new Error('Focus Targets need a real date, known task ID, and 0–1440 minutes.');
   if(new Set(focusTargets.map(target=>`${target.date}/${target.taskId}`)).size!==focusTargets.length)throw new Error('Duplicate focus target for task/date.');
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,start,end};
+  const queueRange=rs.get('Focus Queue');const queueItems:QueueItem[]=queueRange?table(lines,queueRange,FOCUS_QUEUE_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],subtaskId:p[3],minutes:number(p[4]),title:p[5],definition:p[6]})):[];
+  unique(queueItems.map(item=>item.id),'queue item');
+  for(const item of queueItems)if(!validDay(item.date)||!taskIds.has(item.taskId)||!item.title||item.minutes>1440||(item.subtaskId!=='-'&&!subtasks.some(s=>s.id===item.subtaskId&&s.taskId===item.taskId)))throw new Error('Focus Queue needs valid dates, tasks, steps and 0–1440 minutes.');
+  if(timer&&isQuickQueue(timer.taskId)){if((timer.owner!==undefined&&!/^[-a-z0-9]{1,100}$/.test(timer.owner))||timer.taskId!==quickQueueId(timer.date)||!timer.itemIds?.length||new Set(timer.itemIds).size!==timer.itemIds.length||timer.itemIds.some(id=>!queueItems.some(item=>item.id===id&&item.date===timer.date))||timer.cursor>=timer.itemIds.length)throw new Error('Active queue references missing items. Restore the queue rows or cancel the timer.');}
+  else if(timer?.itemIds?.length)throw new Error('Only a Quick Queue timer can contain queue item IDs.');
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,start,end};
 }
 export function validTime(value:string):boolean{return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);}
 function validTimezone(value:string):boolean{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}}
@@ -97,7 +106,11 @@ export function timeBlockLabel(block:TimeBlock):string{return `${block.status===
 export function availabilityFor(board:Board,date:string):Availability[]{return board.availability.filter(block=>scheduled({repeat:block.days} as Task,date));}
 export function taskSubtasks(board:Board,taskId:string,date:string):Subtask[]{const detail=entryFor(board,taskId,date)?.detail.toLowerCase()||'';return board.subtasks.filter(sub=>sub.taskId===taskId&&(sub.context==='-'||detail.includes(sub.context.toLowerCase())));}
 export function focusMinutes(board:Board,task:Task,date:string):number{return board.focusTargets.find(target=>target.taskId===task.id&&target.date===date)?.minutes??task.minutes;}
-export function focusQueue(board:Board,timer:Timer):FocusStep[]{const group=parseGroupTimerId(timer.taskId);const tasks=board.tasks.filter(task=>group?(group.kind==='page'?task.page===group.value:task.color===group.value):task.id===timer.taskId);return tasks.flatMap(task=>{const subs=taskSubtasks(board,task.id,timer.date);return subs.length?subs.map(sub=>({id:sub.id,taskId:task.id,subtask:sub,title:sub.title,definition:sub.definition,minutes:sub.minutes,done:sub.done})):[{id:task.id,taskId:task.id,title:task.title,definition:task.definition,minutes:group?focusMinutes(board,task,timer.date):timer.target/60,done:!!entryFor(board,task.id,timer.date)?.done}];});}
+export const quickQueueId=(date:string)=>'queue:'+date;
+export function isQuickQueue(id:string):boolean{return id.startsWith('queue:')&&validDay(id.slice(6));}
+export function focusQueue(board:Board,timer:Timer):FocusStep[]{
+  if(isQuickQueue(timer.taskId))return (timer.itemIds||[]).map(id=>{const item=board.queueItems.find(q=>q.id===id)!;const sub=item.subtaskId==='-'?undefined:board.subtasks.find(s=>s.id===item.subtaskId);return {id:item.id,taskId:item.taskId,subtask:sub,title:item.title,definition:item.definition,minutes:item.minutes,done:sub?sub.done:!!entryFor(board,item.taskId,timer.date)?.done};});
+  const group=parseGroupTimerId(timer.taskId);const tasks=board.tasks.filter(task=>group?(group.kind==='page'?task.page===group.value:task.color===group.value):task.id===timer.taskId);return tasks.flatMap(task=>{const subs=taskSubtasks(board,task.id,timer.date);return subs.length?subs.map(sub=>({id:sub.id,taskId:task.id,subtask:sub,title:sub.title,definition:sub.definition,minutes:sub.minutes,done:sub.done})):[{id:task.id,taskId:task.id,title:task.title,definition:task.definition,minutes:group?focusMinutes(board,task,timer.date):timer.target/60,done:!!entryFor(board,task.id,timer.date)?.done}];});}
 export function dailyWins(board:Board,date:string):{tasks:number;subtasks:number}{return {tasks:board.entries.filter(entry=>entry.date===date&&entry.done).length,subtasks:board.subtasks.filter(sub=>sub.done&&sub.completed===date).length};}
 export function validRepeat(value:string):boolean {return value==='-'||value==='daily'||/^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);}
 export function scheduled(task:Task,day:string):boolean {return task.repeat==='daily'||task.repeat.split(',').includes(['sun','mon','tue','wed','thu','fri','sat'][new Date(`${day}T12:00:00`).getDay()]);}
@@ -153,9 +166,9 @@ export function setGoal(text:string,goal:Goal):string{
 export function timerSeconds(timer:Timer,now=Date.now()):number{return Math.floor(timer.elapsed+(timer.started==='-'?0:Math.max(0,now-Date.parse(timer.started))/1000));}
 export function writeTimer(text:string,timer:Timer|null):string{
   parseBoard(text);const lines=text.split(/\r?\n/);const timerRange=ranges(lines).get('Timer')!;const indices:number[]=[];let fenced=false;for(let i=timerRange.start;i<timerRange.end;i++){if(/^\s*(`{3,}|~{3,})/.test(lines[i])){fenced=!fenced;continue;}if(!fenced&&lines[i].trim().startsWith('|'))indices.push(i);}
-  const row=timer?`| ${[timer.id,timer.taskId,timer.date,timer.started,String(timer.elapsed),String(timer.target),String(timer.cursor),String(timer.stepOffset)].map(cell).join(' | ')} |`:'';
+  const row=timer?`| ${[timer.id,timer.taskId,timer.date,timer.started,String(timer.elapsed),String(timer.target),String(timer.cursor),String(timer.stepOffset),...(timer.itemIds?[timer.itemIds.join(','),timer.owner||'-']:[])].map(cell).join(' | ')} |`:'';
   // Replace the header, separator, and row together; leading blanks and old active rows are safe.
-  for(let i=indices.length-1;i>=0;i--)lines.splice(indices[i],1);const rows=[TIMER_HEADER,'| --- | --- | --- | --- | --- | --- | --- | --- |'];if(row)rows.push(row);lines.splice(indices[0],0,...rows);const next=lines.join(text.includes('\r\n')?'\r\n':'\n');parseBoard(next);return next;
+  for(let i=indices.length-1;i>=0;i--)lines.splice(indices[i],1);const rows=[timer?.itemIds?QUICK_TIMER_HEADER:TIMER_HEADER,`| ${Array(timer?.itemIds?10:8).fill('---').join(' | ')} |`];if(row)rows.push(row);lines.splice(indices[0],0,...rows);const next=lines.join(text.includes('\r\n')?'\r\n':'\n');parseBoard(next);return next;
 }
 export function startTimer(text:string,taskId:string,date:string,now=Date.now()):string{
   const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Open its focus screen to resume or finish it.');const task=board.tasks.find(t=>t.id===taskId);if(!task||!validDay(date))throw new Error('Task or date not found.');const scheduledText=entryFor(board,taskId,date)?text:setEntry(text,date,taskId,false);return writeTimer(scheduledText,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:focusMinutes(board,task,date)*60,cursor:0,stepOffset:0});
@@ -183,7 +196,64 @@ export function finishTimer(text:string,id:string,note:string,now=Date.now()):st
 }
 export function finishFocus(text:string,id:string,expectedStepId:string,note='',now=Date.now()):string{
   const board=parseBoard(text);if(board.sessions.some(session=>session.id===id)&&board.timer?.id!==id)return text;const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh before finishing.');const queue=focusQueue(board,timer);const step=queue[Math.min(timer.cursor,Math.max(0,queue.length-1))];if(!step||step.id!==expectedStepId)throw new Error('Focus item changed. Check the current item before finishing.');
-  let next=entryFor(board,step.taskId,timer.date)?text:setEntry(text,timer.date,step.taskId,false);next=step.subtask?(step.done?next:setSubtaskDone(next,step.subtask.id,true,timer.date)):setEntry(next,timer.date,step.taskId,true);return finishTimer(next,id,`Finished: ${step.title}${note.trim()?`. ${note.trim()}`:''}`,now);
+  let next=entryFor(board,step.taskId,timer.date)?text:setEntry(text,timer.date,step.taskId,false);next=step.subtask?(step.done?next:setSubtaskDone(next,step.subtask.id,true,timer.date)):setEntry(next,timer.date,step.taskId,true);if(isQuickQueue(timer.taskId)&&timer.cursor<queue.length-1)return moveGroupTimer(next,id,1,now);return finishTimer(next,id,`Finished: ${step.title}${note.trim()?`. ${note.trim()}`:''}`,now);
 }
 export function cancelTimer(text:string,id:string):string{const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh before cancelling.');let next=text;const step=focusQueue(board,timer)[Math.min(timer.cursor,Math.max(0,focusQueue(board,timer).length-1))];if(step&&!entryFor(board,step.taskId,timer.date))next=setEntry(next,timer.date,step.taskId,false);return writeTimer(next,null);}
+function writeQueueItems(text:string,items:QueueItem[]):string {
+  const nl=text.includes('\r\n')?'\r\n':'\n';let next=text;
+  if(!ranges(text.split(/\r?\n/)).has('Focus Queue'))next+=`${nl}## Focus Queue${nl}${nl}${FOCUS_QUEUE_HEADER}${nl}| --- | --- | --- | --- | --- | --- | --- |${nl}`;
+  const lines=next.split(/\r?\n/),range=ranges(lines).get('Focus Queue')!,indices:number[]=[];let fenced=false;
+  for(let i=range.start;i<range.end;i++){if(/^\s*(`{3,}|~{3,})/.test(lines[i])){fenced=!fenced;continue;}if(!fenced&&lines[i].trim().startsWith('|'))indices.push(i);}
+  const rows=[FOCUS_QUEUE_HEADER,'| --- | --- | --- | --- | --- | --- | --- |',...items.map(item=>`| ${[item.id,item.date,item.taskId,item.subtaskId,String(item.minutes),item.title,item.definition].map(cell).join(' | ')} |`)];
+  for(let i=indices.length-1;i>=0;i--)lines.splice(indices[i],1);lines.splice(indices[0],0,...rows);next=lines.join(nl);parseBoard(next);return next;
+}
+export function queueItemsFor(board:Board,date:string):QueueItem[]{return board.queueItems.filter(item=>item.date===date);}
+export function enqueueTask(text:string,taskId:string,date:string):string {
+  let board=parseBoard(text);const task=board.tasks.find(task=>task.id===taskId);
+  if(!task||!validDay(date))throw new Error('Choose a known task and real queue date.');
+  if(entryFor(board,taskId,date)?.done)throw new Error('This task is complete. Reopen it explicitly before queueing it again.');
+  let next=entryFor(board,taskId,date)?text:setEntry(text,date,taskId,false);board=parseBoard(next);
+  const subs=taskSubtasks(board,taskId,date).filter(sub=>!sub.done);
+  const candidates=subs.length?subs.map(sub=>({subtaskId:sub.id,minutes:sub.minutes,title:sub.title,definition:sub.definition})):[{subtaskId:'-',minutes:taskId==='mindfulness'?Math.max(15,focusMinutes(board,task,date)):focusMinutes(board,task,date),title:task.title,definition:task.definition}];
+  const added=candidates.filter(item=>!board.queueItems.some(old=>old.date===date&&old.taskId===taskId&&old.subtaskId===item.subtaskId)).map(item=>({...item,id:`fq-${Date.now()}-${Math.random().toString(36).slice(2,10)}`,date,taskId}));
+  if(queueItemsFor(board,date).length+added.length>100)throw new Error('Keep each daily queue to 100 steps or fewer.');
+  if(!added.length)return next;next=writeQueueItems(next,[...board.queueItems,...added]);
+  if(board.timer&&board.timer.taskId===quickQueueId(date))next=writeTimer(next,{...board.timer,itemIds:[...board.timer.itemIds!,...added.map(item=>item.id)]});
+  return next;
+}
+export function editQueue(text:string,date:string,id:string,operation:'up'|'down'|'remove'|'minutes'|'clear',minutes?:number):string {
+  const board=parseBoard(text);if(!validDay(date))throw new Error('Invalid queue date.');const items=queueItemsFor(board,date),timer=board.timer?.taskId===quickQueueId(date)?board.timer:null;
+  if(operation==='clear'){if(timer)throw new Error('Cancel the active queue before clearing it.');return writeQueueItems(text,board.queueItems.filter(item=>item.date!==date));}
+  const index=items.findIndex(item=>item.id===id);if(index<0)throw new Error('Queue item changed. Refresh first.');
+  const activeIndex=timer?.itemIds?.indexOf(id)??-1;if(timer&&activeIndex>=0&&activeIndex<=timer.cursor)throw new Error('Active and earlier steps are locked. Use Finish or Skip for the current item.');
+  if(operation==='minutes'){if(!Number.isFinite(minutes)||minutes!<0||minutes!>1440)throw new Error('Use 0–1440 minutes; 0 is an open stopwatch.');if(items[index].taskId==='mindfulness'&&minutes!<15)throw new Error('Meditation has a 15-minute minimum.');items[index]={...items[index],minutes:minutes!};}
+  else if(operation==='remove')items.splice(index,1);
+  else{const other=index+(operation==='up'?-1:1);if(other<0||other>=items.length)return text;const otherIndex=timer?.itemIds?.indexOf(items[other].id)??-1;if(timer&&otherIndex>=0&&otherIndex<=timer.cursor)throw new Error('Cannot move an item ahead of the current step.');[items[index],items[other]]=[items[other],items[index]];}
+  let next=text;if(timer){const prefix=timer.itemIds!.slice(0,timer.cursor+1),ids=[...prefix,...items.filter(item=>!prefix.includes(item.id)&&timer.itemIds!.includes(item.id)).map(item=>item.id)];next=writeTimer(next,{...timer,itemIds:ids});}
+  return writeQueueItems(next,[...board.queueItems.filter(item=>item.date!==date),...items]);
+}
+export function startQuickQueue(text:string,date:string,now=Date.now(),owner='standalone'):string {
+  const board=parseBoard(text);if(board.timer)throw new Error('Finish or cancel the active timer first.');if(!validDay(date))throw new Error('Invalid queue date.');
+  const itemIds=queueItemsFor(board,date).filter(item=>item.subtaskId==='-'?!entryFor(board,item.taskId,date)?.done:!board.subtasks.find(sub=>sub.id===item.subtaskId)?.done).map(item=>item.id);
+  if(!itemIds.length)throw new Error('Add an unfinished task to the queue first.');
+  return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:quickQueueId(date),date,started:new Date(now).toISOString(),elapsed:0,target:0,cursor:0,stepOffset:0,itemIds,owner});
+}
+export function claimQuickQueue(text:string,id:string,owner:string):string{const timer=parseBoard(text).timer;if(!timer||timer.id!==id||!isQuickQueue(timer.taskId)||!/^[-a-z0-9]{1,100}$/.test(owner))throw new Error('Queue or runner changed. Refresh first.');return writeTimer(text,{...timer,owner});}
+export function queueNeedsAdvance(board:Board,now=Date.now()):boolean {
+  const timer=board.timer;if(!timer||!isQuickQueue(timer.taskId)||timer.started==='-')return false;const step=focusQueue(board,timer)[timer.cursor];return !!step&&step.minutes>0&&timerSeconds(timer,now)-timer.stepOffset>=step.minutes*60;
+}
+/** Elapsed targets advance attention, never completion. Safe to repeat after sync/resume. */
+export function advanceQuickQueue(text:string,id:string,cursor:number,now=Date.now()):string {
+  const board=parseBoard(text),timer=board.timer;if(!timer||timer.id!==id||timer.cursor!==cursor||!queueNeedsAdvance(board,now))return text;
+  const queue=focusQueue(board,timer),elapsed=timerSeconds(timer,now);let current=timer.cursor,offset=timer.stepOffset;
+  while(current<queue.length){const seconds=queue[current].minutes*60;if(seconds<=0||elapsed-offset<seconds)break;offset+=seconds;
+    if(current===queue.length-1)return finishTimer(writeTimer(text,{...timer,started:'-',elapsed:offset,stepOffset:offset}),id,'Quick Queue targets elapsed. Task completion was not inferred.',now);
+    current++;
+  }
+  return writeTimer(text,{...timer,cursor:current,stepOffset:offset});
+}
+export function skipQuickQueue(text:string,id:string,now=Date.now()):string {
+  const board=parseBoard(text),timer=board.timer;if(!timer||timer.id!==id||!isQuickQueue(timer.taskId))throw new Error('Quick Queue changed. Refresh first.');
+  return timer.cursor<focusQueue(board,timer).length-1?moveGroupTimer(text,id,1,now):finishTimer(text,id,'Quick Queue ended with Skip; unfinished tasks stay unchecked.',now);
+}
 export function duration(seconds:number):string{const s=Math.max(0,Math.floor(seconds));return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;}

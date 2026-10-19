@@ -3,13 +3,14 @@ import {processHudRequest} from './hud-protocol';
 const TRUST='color-sprint.hud-trust';
 export class HudBridge {
   private tail:Promise<unknown>=Promise.resolve();private stopped=false;private pairing:PairHudModal|null=null;
-  constructor(private app:App,private change:(fn:(text:string)=>string,tracker:string)=>Promise<void>){}
+  constructor(private app:App,private change:(fn:(text:string)=>string,tracker:string)=>Promise<void>,private runner?:()=>string){}
   stop(){this.stopped=true;this.pairing?.close();}
   revoke(){if(!this.app.saveLocalStorage)throw new Error('Local pairing storage unavailable.');this.app.saveLocalStorage(TRUST,{});}
   handle(params:Record<string,string>):Promise<void>{const work=this.tail.catch(()=>{}).then(async()=>{
     if(this.stopped)return;if(Platform.isMobile)throw new Error('HUD controls must be handled by Obsidian on the same Windows computer.');
     if(params.vault!==this.app.vault.getName())throw new Error('HUD request belongs to another vault.');
     const result=await processHudRequest({
+      runner:this.runner,
       read:async path=>{const file=this.app.vault.getAbstractFileByPath(path);if(!file)return null;if(!(file instanceof TFile)||file.stat.size>4*1024*1024)throw new Error('HUD note is invalid or too large.');return this.app.vault.read(file);},
       create:async(path,text)=>{if(this.stopped)throw new Error('Plugin stopped.');const parts=path.split('/');parts.pop();let parent='';for(const part of parts){parent=parent?parent+'/'+part:part;if(!this.app.vault.getAbstractFileByPath(parent))try{await this.app.vault.createFolder(parent);}catch(error){if(!this.app.vault.getAbstractFileByPath(parent))throw error;}}await this.app.vault.create(path,text);},
       replace:async(path,before,after)=>{const file=this.app.vault.getAbstractFileByPath(path);if(!(file instanceof TFile))throw new Error('HUD receipt missing.');await this.app.vault.process(file,current=>{if(current!==before)throw new Error('HUD receipt changed; inspect it.');return after;});},

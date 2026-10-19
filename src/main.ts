@@ -12,6 +12,7 @@ import { SyncStore } from './sync-store';
 import { mountSyncPanel } from './sync-panel';
 import { PhoneCheckpoint } from './sync';
 import { HudBridge } from './hud-store';
+import {advanceQuickQueue,queueNeedsAdvance} from './model';
 
 const VIEW='color-sprint-view';
 interface Settings {path:string;autoOpenDaily:boolean;dailyFolder:string;dailyFormat:string;feedback:FeedbackSettings;voiceFolder:string}
@@ -19,6 +20,7 @@ interface Context extends SurfaceOptions {tracker?:string;dailyNote?:string}
 export default class ColorSprint extends Plugin {
   settings:Settings={path:'Sync/Color Sprint.md',autoOpenDaily:true,dailyFolder:'Sync/Daily',dailyFormat:'MM-DD-YYYY',feedback:{...DEFAULT_FEEDBACK},voiceFolder:DEFAULT_VOICE_FOLDER};
   private queue:Promise<void>=Promise.resolve();
+  private queuePoll:ReturnType<typeof setInterval>|null=null;private advancingQueue=false;
   private reflectionQueue:Promise<void>=Promise.resolve();private reflectionModal:ReflectionModal|null=null;
   private reflectionDrafts=new Map<string,ReflectionDraft>();
   syncStore!:SyncStore;primaryPhone=false;
@@ -31,7 +33,7 @@ export default class ColorSprint extends Plugin {
   private voiceSaving=false;private voiceStopPromise:Promise<void>|null=null;
   private voiceControls:ReturnType<typeof mountRecordingBar>|null=null;private voicePoll:ReturnType<typeof setInterval>|null=null;
   async onload():Promise<void>{
-    this.hudBridge=new HudBridge(this.app,(fn,path)=>this.change(fn,path));
+    this.hudBridge=new HudBridge(this.app,(fn,path)=>this.change(fn,path),()=>this.queueDevice());
     this.registerObsidianProtocolHandler('color-sprint-hud',params=>{if(params.review==='1'){try{if(params.vault!==this.app.vault.getName())throw new Error('Wrong vault.');this.file(params.tracker);this.openSyncReview(params.tracker);}catch(e){this.error(e);}return;}void this.hudBridge.handle(params).catch(e=>this.error(e));});
     this.addCommand({id:'revoke-hud-pairings',name:'Revoke desktop HUD pairings on this device',callback:()=>{try{this.hudBridge.revoke();new Notice('HUD pairings revoked on this device.');}catch(e){this.error(e);}}});
     const primary=this.app.loadLocalStorage?.('color-sprint.primary-phone');this.primaryPhone=typeof primary==='boolean'?primary:!!Platform?.isMobile;this.syncStore=new SyncStore(this.app,message=>new Notice(message,10000));
@@ -68,9 +70,17 @@ export default class ColorSprint extends Plugin {
     this.registerDomEvent(document,'visibilitychange',()=>{if(!document.hidden){this.refresh();this.syncVoiceControls();}});
     this.voiceControls=mountRecordingBar(document.body,{state:()=>this.voiceState(),stop:()=>this.stopVoiceRecording(),target:()=>this.voiceOwner?.path||'Obsidian Audio recorder',error:e=>this.error(e)});
     this.syncVoiceControls();this.voicePoll=setInterval(()=>this.syncVoiceControls(),300);
+    this.queuePoll=setInterval(()=>void this.advanceQueues(),1000);
   }
-  onunload():void {this.stopped=true;this.hudBridge?.stop();this.dailyRequest++;this.reflectionModal?.close();if(this.voicePoll)clearInterval(this.voicePoll);this.voiceControls?.destroy();for(const surface of this.surfaces.keys())surface.destroy();this.surfaces.clear();}
+  onunload():void {this.stopped=true;if(this.queuePoll)clearInterval(this.queuePoll);this.hudBridge?.stop();this.dailyRequest++;this.reflectionModal?.close();if(this.voicePoll)clearInterval(this.voicePoll);this.voiceControls?.destroy();for(const surface of this.surfaces.keys())surface.destroy();this.surfaces.clear();}
+  private async advanceQueues():Promise<void>{
+    if(this.stopped||this.advancingQueue)return;this.advancingQueue=true;
+    try{for(const path of new Set([this.settings.path,...this.surfaces.values()])){
+      try{const board=parseBoard(await this.read(path)),timer=board.timer,device=this.app.loadLocalStorage?.('color-sprint.queue-device');if(typeof device==='string'&&timer&&timer.owner===device&&queueNeedsAdvance(board))await this.change(text=>{const current=parseBoard(text);return current.timer?.owner===device?advanceQuickQueue(text,timer.id,timer.cursor):text;},path);}catch{/* Missing/stale notes remain visible in their own surface; never guess a repair. */}
+    }}finally{this.advancingQueue=false;}
+  }
   async open(context:Context={}):Promise<void>{let leaf=this.app.workspace.getLeavesOfType(VIEW)[0];if(!leaf)leaf=this.app.workspace.getLeaf('tab');await leaf.setViewState({type:VIEW,active:true,state:{tracker:context.tracker||this.settings.path,date:context.day||localDay(),page:context.page||'All',tab:context.tab||'Today',dailyNote:context.dailyNote}});await this.app.workspace.revealLeaf(leaf);}
+  private queueDevice():string{const stored=this.app.loadLocalStorage?.('color-sprint.queue-device');if(typeof stored==='string'&&/^[-a-z0-9]{1,100}$/.test(stored))return stored;if(!this.app.saveLocalStorage)throw new Error('Device-local queue ownership is unavailable. Update Obsidian first.');const device='runner-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);this.app.saveLocalStorage('color-sprint.queue-device',device);return device;}
   file(path=this.settings.path):TFile{const file=this.app.vault.getAbstractFileByPath(vaultPath(path));if(!(file instanceof TFile))throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);return file;}
   async read(path=this.settings.path):Promise<string>{return this.app.vault.read(this.file(path));}
   change(transform:(text:string)=>string,path=this.settings.path):Promise<void>{
@@ -83,6 +93,7 @@ export default class ColorSprint extends Plugin {
     const path=vaultPath(context.tracker||this.settings.path);
     const change=(fn:(text:string)=>string)=>this.change(fn,path);
     const host:Host={
+      queueOwner:()=>this.queueDevice(),
       read:()=>this.read(path),change,
       getFeedback:()=>({...this.settings.feedback}),saveFeedback:async prefs=>{await this.saveData({...this.settings,feedback:prefs});this.settings.feedback={...prefs};this.refresh();},
       openVoiceReflection:day=>this.openVoiceReflection(day),

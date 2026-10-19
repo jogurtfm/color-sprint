@@ -1,0 +1,127 @@
+/* Spatial cockpit: actual perspective/XYZ surfaces, not global window opacity. */
+#app{--camera-x:0deg;--camera-y:0deg}
+body[data-mode="hud"] .hud-shell{perspective:2000px;perspective-origin:50% 42%;padding:22px 38px 14px;gap:15px}
+body[data-mode="hud"] .dashboard{perspective:1800px;perspective-origin:50% 45%;grid-template-columns:minmax(240px,1fr) minmax(390px,1.5fr) minmax(250px,1fr);gap:30px}
+.dashboard>.left-column,.dashboard>.right-column,.dashboard>.center-column,.lower-deck{transform-style:preserve-3d}
+body[data-mode="hud"] .spatial-panel{isolation:auto;transform-style:preserve-3d;backface-visibility:visible;overflow:visible;clip-path:none;border:1px solid #70e2f19c;background:rgba(4,16,29,var(--visor-glass,.88));box-shadow:inset 0 1px 0 #b3f9ff38,inset 0 0 30px #58c5ef0b,0 10px 28px #0004;transition:border-color 240ms,box-shadow 240ms}
+body[data-mode="hud"] .left-column>.panel{transform:rotateY(11deg) rotateX(1deg);transform-origin:right center}
+body[data-mode="hud"] .right-column>.panel{transform:rotateY(-11deg) rotateX(1deg);transform-origin:left center}
+body[data-mode="hud"] .lower-deck>.panel{transform:rotateX(7deg) translateZ(4px);transform-origin:center top}
+body[data-mode="hud"] .topbar{transform:rotateX(-6deg);transform-origin:center bottom}
+body[data-mode="hud"] .utility-bar{transform:rotateX(-3deg) translateZ(4px)}
+body[data-mode="hud"] .neural-panel{transform:rotateX(8deg);transform-origin:center top}
+.spatial-panel>.spatial-hull,.hud-shell .spatial-panel>.spatial-hull{position:absolute!important;inset:0;z-index:auto!important;display:block;pointer-events:none;transform-style:preserve-3d;border-radius:inherit;opacity:1!important;transform:none}
+.spatial-hull>i{position:absolute;display:block;pointer-events:none;border-radius:inherit;backface-visibility:visible}
+.slab-back{inset:0;transform:translateZ(-20px);border:1px solid #2ca4c0a8;background:linear-gradient(135deg,#071a36c9,#101933af);box-shadow:0 0 20px #30d5ff17}
+.slab-top,.slab-bottom{left:0;width:100%;height:20px;background:linear-gradient(90deg,#1d5b7755,#77d9ef55,#183c6844);border:1px solid #62bfd450}
+.slab-top{top:0;transform-origin:center top;transform:rotateX(-90deg)}.slab-bottom{bottom:0;transform-origin:center bottom;transform:rotateX(90deg)}
+.slab-left,.slab-right{top:0;height:100%;width:20px;background:linear-gradient(#203f7266,#59cada44,#0c244bcc);border:1px solid #6edbea66}
+.slab-left{left:0;transform-origin:left center;transform:rotateY(90deg)}.slab-right{right:0;transform-origin:right center;transform:rotateY(-90deg)}
+.slab-rail{inset:-5px;border:1px dashed #65dff285;transform:translateZ(-32px);animation:slab-depth 7s ease-in-out infinite;animation-delay:var(--slab-phase,0s)}
+.rail-two{inset:5px;border-color:#ba8bff66;transform:translateZ(6px);animation-direction:reverse;animation-duration:11s}
+.slab-scanner{inset:1px;border-radius:inherit;background:linear-gradient(110deg,transparent 35%,#a1f6ff0e 48%,#a1f6ff19 50%,transparent 60%);background-size:300% 100%;animation:slab-scan 8s linear infinite;animation-delay:var(--slab-phase,0s);transform:translateZ(2px)}
+.spatial-panel.slab-inspecting,.spatial-panel:focus-within{border-color:#b4f6ffd9!important;box-shadow:inset 0 0 25px #4acbe819,0 0 22px #64daee23!important}
+.slab-inspecting>.spatial-hull .slab-rail,.spatial-panel:focus-within>.spatial-hull .slab-rail{animation-play-state:paused;border-color:var(--cinema-accent,#73edfa)}
+.spatial-panel>.panel-title{transform:translateZ(10px);gap:8px;min-height:23px}
+body[data-mode="hud"] .panel-title{font-size:9px;letter-spacing:1.7px;color:#8de7f1}
+body[data-mode="hud"] .panel .task-scroll{position:relative;transform:translateZ(8px)}
+body[data-mode="hud"] .panel .panel-foot{transform:translateZ(8px)}
+body[data-mode="hud"] .panel .wins-readout{transform:translateZ(15px)}
+body[data-mode="hud"] .wins-readout>b{color:#ffd292;text-shadow:0 0 22px #ffbe7633}
+body[data-mode="hud"] .center-column{grid-template-rows:18px minmax(0,1fr) 122px}
+body[data-mode="hud"] .ring-stage{width:min(100%,calc(100vh - 420px),540px);min-width:285px;perspective:950px;transform-style:preserve-3d;isolation:auto}
+body[data-mode="hud"] .ring-stage::before{inset:23%;background:radial-gradient(ellipse,#041524ee,#03101ccb 70%);border:1px solid #8ae5ef77;box-shadow:0 0 35px #38c5ee1a,inset 0 0 20px #1b79c619;transform:translateZ(24px)}
+body[data-mode="hud"] .core-readout{transform:translateZ(38px);inset:29% 18% 26%}
+body[data-mode="hud"] .core-readout .timer-value{color:#ecfdff;text-shadow:0 2px 6px #000,0 0 23px #64ddff55}
+body[data-mode="hud"] .focus-actions{transform:perspective(900px) rotateX(6deg);position:relative;z-index:3}
+body[data-mode="hud"] .focus-actions button,body[data-mode="hud"] .topbar button{box-shadow:inset 0 1px 0 #a8e7f52b,0 3px 0 #020a1499;border-color:#5594aaa6;background:linear-gradient(150deg,#10334bc9,#071b2bbf)}
+body[data-mode="hud"] .focus-actions .engage{background:linear-gradient(125deg,#114c62e6,#17365ae6);border-color:#8cf0f2;box-shadow:0 4px 0 #021421aa,0 0 25px #64d7ee1a}
+/* A multi-axis, motorized reactor cage behind the steady time/readout plane. */
+.spatial-reactor{position:absolute;inset:3%;display:block;transform-style:preserve-3d;pointer-events:none;color:var(--cinema-accent,#74e6f5);perspective:850px}
+.reactor-gimbal{position:absolute;inset:1%;display:block;transform-style:preserve-3d;transform:rotateX(58deg) rotateY(-18deg);animation:reactor-gimbal-a 19s linear infinite;animation-delay:var(--gimbal-phase,0s)}
+.gimbal-1{inset:7%;animation-name:reactor-gimbal-b;animation-duration:26s;color:#b49aff}.gimbal-2{inset:12%;animation-name:reactor-gimbal-c;animation-duration:13s;color:#ffc77b}.gimbal-3{inset:-3%;animation-name:reactor-gimbal-b;animation-duration:34s;animation-direction:reverse;color:#69ebd6}
+.reactor-rotor{position:absolute;inset:0;display:block;transform-style:preserve-3d;animation:reactor-rotor 12s linear infinite}
+.reactor-hoop{position:absolute;inset:0;display:block;border:2px solid currentColor;border-radius:50%;box-shadow:0 0 6px color-mix(in srgb,currentColor 30%,transparent),inset 0 0 5px color-mix(in srgb,currentColor 15%,transparent);opacity:.68;backface-visibility:visible}
+.hoop-inner{inset:4%;border:1px dashed currentColor;transform:translateZ(10px);opacity:.6}
+.reactor-stud{position:absolute;top:calc(50% - 3px);left:-3px;width:6px;height:6px;display:block;background:currentColor;box-shadow:0 0 8px currentColor;opacity:.6}
+/* percentage translations keep tick satellites bounded inside each native panel */
+.reactor-stud{left:calc(50% - 3px);transform:rotate(var(--stud-angle)) translateY(-110px);transform-origin:center}
+.reactor-platform{position:absolute;inset:6%;display:block;border:1px solid #66c3f286;border-radius:50%;background:repeating-radial-gradient(circle,transparent 0 10%,#6adcf50d 10.3% 10.7%,transparent 11% 20%);transform:rotateX(72deg) translateZ(-75px);backface-visibility:visible}
+.platform-front{inset:17%;border-color:#ba98ff7a;transform:rotateX(72deg) translateZ(85px)}
+.reactor-crystal{position:absolute;left:calc(50% - 14px);top:1%;width:28px;height:28px;--cube-edge:24px;--cube-depth:12px;color:#c0a7ff;transform-style:preserve-3d}
+.crystal-south{top:auto;bottom:1%;color:#ffc57a}.reactor-crystal .holo-cube{animation-duration:8s}
+.rim-orbit>.spatial-reactor{inset:0;perspective:220px;opacity:.65}.rim-orbit .reactor-stud{display:none}.rim-orbit .reactor-crystal{display:none}.rim-orbit .reactor-hoop{border-width:1px}.rim-orbit .reactor-platform{display:none}
+/* Genuine 3-D glyphs share the spatial grammar across tasks, groups and panels. */
+.spatial-glyph{position:relative;display:inline-block;width:23px;height:23px;flex:0 0 23px;perspective:180px;color:var(--task-color,var(--signal,#83dfee));pointer-events:none;--cube-edge:14px;--cube-depth:7px;--spin-time:14s}
+.glyph-spin{position:absolute;inset:0;display:block;transform-style:preserve-3d}
+.spatial-glyph .holo-cube{animation:none;transform:rotateX(-24deg) rotateY(34deg) rotateZ(5deg)}
+.glyph-diamond .holo-cube{transform:rotateX(-22deg) rotateY(45deg) rotateZ(45deg)}
+.glyph-pedestal{position:absolute;left:1px;right:1px;bottom:1px;height:7px;border:1px solid currentColor;border-radius:50%;transform:rotateX(48deg);opacity:.4}
+.spatial-glyph .wire-sphere{inset:0;opacity:.9;mask-image:none;-webkit-mask-image:none;perspective:100px}.spatial-glyph .sphere-orbital,.spatial-glyph .sphere-axis{display:none}
+.panel-title>.spatial-glyph .holo-cube,.color-signal>.spatial-glyph .holo-cube,.task-row.selected .spatial-glyph .holo-cube,.task-row:hover .spatial-glyph .holo-cube{animation:holo-tumble 12s linear infinite}
+.task-index{display:grid;justify-items:center;min-width:24px;gap:1px}.spatial-index-value{font:7px Consolas,monospace}
+.color-signal>.spatial-glyph{position:absolute;right:0;top:-2px;color:var(--signal);opacity:.8}.color-signal>b{padding-right:16px}
+.panel-title>.spatial-glyph{color:#9ce9f1;margin-right:2px}.panel-title>.spatial-glyph+.panel-title{margin:0}
+/* Spatial launcher: larger emblems inside moving cages, with fixed label hit targets. */
+body[data-mode="hud"] .neural-panel>.launcher-dock{inset:6px 8px 8px}
+body[data-mode="hud"] .launcher-dock{perspective:650px}
+body[data-mode="hud"] .launcher-apps{gap:8px;padding-top:14px;overflow-y:visible}
+body[data-mode="hud"] .neural-panel>.launcher-dock .launcher-tile{flex-basis:58px;min-height:72px}
+body[data-mode="hud"] .launcher-tile>.program-hologram{width:51px;height:47px;--cube-edge:32px;--cube-depth:16px;perspective:200px}
+body[data-mode="hud"] .holo-emblem{width:24px;height:24px;font-size:11px;transform:translate(-50%,-50%) translateZ(28px)}
+body[data-mode="hud"] .holo-emblem>img{width:21px;height:21px}
+body[data-mode="hud"] .launcher-tile small{font-size:9px;max-width:58px}.launcher-tile>.program-hologram .holo-cube{animation-duration:calc(var(--spin-time,20s) * .65)}
+/* Volumetric environment: clear surroundings, tilted floor, globes and satellite orbits. */
+.spatial-world{position:absolute;inset:0;perspective:1700px;pointer-events:none;z-index:-2;overflow:hidden;color:#79ddec;opacity:.65}
+.world-camera{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(var(--camera-x,0deg)) rotateY(var(--camera-y,0deg));transition:transform 300ms ease-out}
+.world-floor{position:absolute;left:-25%;right:-25%;top:64%;height:65%;border:1px solid #5dbee32e;background:repeating-linear-gradient(0deg,transparent 0 39px,#70dbff24 40px 41px),repeating-linear-gradient(90deg,transparent 0 69px,#70dbff21 70px 71px);transform:rotateX(72deg) translateZ(-180px);transform-origin:center top;mask-image:linear-gradient(transparent,#000 25%,#000 70%,transparent)}
+.world-floor>i{position:absolute;inset:0;background:linear-gradient(transparent 45%,#74caff33 50%,transparent 55%);background-size:100% 200%;animation:floor-energy 7s linear infinite}
+.world-ceiling{position:absolute;left:23%;right:23%;top:9%;height:60%;border:1px dashed #b391ff55;border-radius:50%;transform:rotateX(74deg) translateZ(130px);box-shadow:0 0 30px #6498ff11}
+.world-globe{position:absolute;width:200px;height:200px;transform-style:preserve-3d;animation:globe-drift 12s ease-in-out infinite}
+.globe-port{left:25%;top:43%;color:#69dff5}.globe-starboard{right:23%;top:27%;width:235px;height:235px;color:#bc9bff;animation-delay:-4s}.globe-zenith{left:44%;top:10%;width:180px;height:180px;color:#ffc98c;animation-delay:-8s}
+.world-globe>.wire-sphere{inset:0;opacity:.75;color:inherit;mask-image:none;-webkit-mask-image:none;perspective:500px;transform:translateZ(-90px)}
+.world-globe .sphere-spin{animation-duration:26s}.world-globe .sphere-meridian,.world-globe .sphere-latitude{opacity:.6}
+body[data-mode="hud"] .ring-stage>.wire-sphere{opacity:.58}
+.globe-collar{position:absolute;inset:-15%;display:block;border:1px dashed currentColor;border-radius:50%;transform:rotateX(65deg) rotateY(15deg);animation:collar-spin 18s linear infinite;opacity:.55}.collar-b{inset:5%;animation-direction:reverse;animation-duration:23s;transform:rotateY(70deg) rotateX(-20deg)}
+.world-orbits{position:absolute;left:28%;right:28%;top:15%;bottom:15%;transform-style:preserve-3d;transform:rotateX(10deg)}
+.world-orbit{position:absolute;inset:0;display:block;transform-style:preserve-3d;transform:rotateX(var(--orbit-plane)) rotateY(20deg);animation:world-orbit 28s linear infinite;animation-delay:var(--orbit-phase);color:#7196ff}
+.world-orbit>i{position:absolute;inset:0;border:1px solid currentColor;border-radius:50%;opacity:.22}.world-orbit>b{position:absolute;top:47%;left:-10px;width:24px;height:24px;transform-style:preserve-3d;--cube-edge:20px;--cube-depth:10px;--spin-time:11s}.world-orbit:nth-child(even){color:#c79eff;animation-direction:reverse}.world-orbit:nth-child(3){color:#ffcc87}
+.world-towers{position:absolute;left:0;right:0;bottom:5%;height:90px;transform:rotateX(16deg);opacity:.5}.world-towers>i{position:absolute;bottom:0;left:var(--tower-x);width:12px;height:var(--tower-height);border:1px solid #62c7ef66;background:repeating-linear-gradient(transparent 0 5px,#5998c93b 6px 7px);transform:skewY(-20deg);animation:tower-float 6s ease-in-out infinite;animation-delay:var(--tower-phase)}
+/* Compact surfaces keep the native rim's clear center and existing physical bounds. */
+.widget-shell.spatial-panel{perspective:1000px;transform-style:preserve-3d;overflow:visible;border-radius:30px}
+.widget-shell>.spatial-hull,.rim-surface>.spatial-hull{display:none}
+.rim-surface .spatial-reactor{overflow:hidden;border-radius:50%}
+.rim-focus .rim-arc{transform:perspective(700px) rotateX(4deg);transform-origin:center bottom}
+.rim-top{box-shadow:inset 0 1px 0 #97edff44,0 4px 0 #06142855}
+.cinema-impact{transform-style:preserve-3d;perspective:600px}.cinema-impact .impact-ring{animation-name:spatial-impact}
+@keyframes spatial-impact{from{transform:rotateX(28deg) rotateY(-20deg) translateZ(0) scale(.8);opacity:.8}to{transform:rotateX(108deg) rotateY(160deg) translateZ(100px) scale(1.8);opacity:0}}
+.spatial-panel .task-select,.spatial-panel input,.spatial-panel button{position:relative;z-index:2}
+dialog{perspective:1100px;transform-style:preserve-3d;box-shadow:0 5px 0 #0c2b4d,0 10px 0 #071a32,0 16px 35px #0008,0 0 0 1px #78d9ed77}
+.command-deck{transform:perspective(1300px) rotateX(2deg);border-radius:26px 26px 40px 40px}
+.deck-glyph{position:relative;width:26px;height:26px;perspective:160px;--cube-edge:17px;--cube-depth:8.5px;color:#8ae9ee}
+.deck-glyph[data-kind="app"]{color:#be9cff}.deck-glyph[data-kind="system"]{color:#ffce8b}
+.deck-glyph .holo-cube{animation:none}.deck-choice[aria-selected="true"] .holo-cube,.deck-choice:hover .holo-cube{animation:holo-tumble 8s linear infinite}
+body[data-cinema="quiet"] .deck-glyph .holo-cube{animation:none!important}
+/* Work and accessibility modes remain deliberate opt-outs, never altered data. */
+body[data-focus-phase="engaged"] .spatial-world{opacity:.35}
+body[data-cinema="balanced"] .spatial-world{opacity:.28}body[data-cinema="balanced"] .world-orbits,body[data-cinema="balanced"] .world-towers{display:none}
+body[data-cinema="quiet"] .spatial-world,body[data-cinema="quiet"] .spatial-reactor,body[data-cinema="quiet"] .spatial-hull,body[data-cinema="quiet"] .spatial-glyph{display:none!important}
+body[data-cinema="quiet"][data-mode="hud"] .spatial-panel,body[data-cinema="quiet"] .core-readout{transform:none!important}
+body[data-cinema="quiet"] .ring-stage::before{transform:none!important}
+.geometry-paused .spatial-world *,.geometry-paused .spatial-reactor *,.geometry-paused .spatial-hull *,.geometry-paused .spatial-glyph *,.effects-paused .spatial-world *,.effects-paused .spatial-reactor *,.effects-paused .spatial-hull *,.effects-paused .spatial-glyph *,.edge-hidden .spatial-reactor *,.edge-hidden .spatial-hull *,.edge-hidden .spatial-glyph *{animation-play-state:paused!important}
+@keyframes slab-depth{50%{transform:translateZ(-40px);border-color:#acb4ff88}}
+@keyframes slab-scan{to{background-position:300% 0}}
+@keyframes reactor-gimbal-a{0%{transform:rotateX(58deg) rotateY(-18deg)}100%{transform:rotateX(418deg) rotateY(342deg)}}
+@keyframes reactor-gimbal-b{0%{transform:rotateX(-42deg) rotateY(55deg)}100%{transform:rotateX(318deg) rotateY(-305deg)}}
+@keyframes reactor-gimbal-c{0%{transform:rotateX(18deg) rotateY(68deg)}100%{transform:rotateX(-342deg) rotateY(428deg)}}
+@keyframes reactor-rotor{to{transform:rotateZ(360deg)}}
+@keyframes globe-drift{50%{transform:translate3d(8px,-14px,25px)}}
+@keyframes collar-spin{to{transform:rotateX(65deg) rotateY(375deg) rotateZ(360deg)}}
+@keyframes world-orbit{to{transform:rotateX(var(--orbit-plane)) rotateY(380deg) rotateZ(360deg)}}
+@keyframes tower-float{50%{transform:skewY(-20deg) translateY(-12px)}}
+@keyframes floor-energy{to{background-position:0 200%}}
+.motion-off .spatial-world *,.motion-off .spatial-reactor *,.motion-off .spatial-hull *,.motion-off .spatial-glyph *{animation:none!important;transition:none!important}
+.motion-off .world-camera{transform:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){.spatial-world *,.spatial-reactor *,.spatial-hull *,.spatial-glyph *{animation:none!important;transition:none!important}.world-camera{transform:none!important;transition:none!important}}
+@media(max-width:1300px){body[data-mode="hud"] .hud-shell{padding:14px 24px 10px;gap:11px}body[data-mode="hud"] .dashboard{gap:19px;grid-template-columns:minmax(220px,1fr) minmax(350px,1.4fr) minmax(230px,1fr)}body[data-mode="hud"] .left-column>.panel{transform:rotateY(7deg)}body[data-mode="hud"] .right-column>.panel{transform:rotateY(-7deg)}body[data-mode="hud"] .launcher-apps{gap:3px}body[data-mode="hud"] .neural-panel>.launcher-dock .launcher-tile{flex-basis:50px}.world-globe{width:150px;height:150px}}
+@media(max-height:820px){body[data-mode="hud"] .center-column{grid-template-rows:15px minmax(0,1fr) 100px}body[data-mode="hud"] .ring-stage{width:min(100%,calc(100vh - 390px),430px)}body[data-mode="hud"] .launcher-tile>.program-hologram{width:43px;height:38px;--cube-edge:26px;--cube-depth:13px}body[data-mode="hud"] .launcher-tile small{font-size:8px}.spatial-panel>.panel-title{min-height:18px}.world-globe{opacity:.6}}

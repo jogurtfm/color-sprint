@@ -1,0 +1,49 @@
+.launcher-dock{position:relative;height:62px;min-width:0;isolation:isolate;opacity:.78;transition:opacity 180ms ease}
+.launcher-dock:hover,.launcher-dock:focus-within{opacity:1}
+.launcher-curve{position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;overflow:visible}
+.launcher-apps{display:flex;align-items:center;justify-content:center;gap:5px;height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding:10px 4px 1px}
+.launcher-tile{position:relative;display:flex;flex:0 0 48px;align-items:center;justify-content:center;flex-direction:column;gap:2px;min-width:44px;min-height:44px;padding:3px 1px!important;border:0!important;background:transparent!important;color:var(--app-color,#80d8ee)!important;transform:translateY(var(--lift,0px));border-radius:18px!important;transition:transform 180ms ease,filter 180ms ease;letter-spacing:0!important}
+.launcher-tile>span,.launcher-tile>img{width:30px;height:30px;border:1px solid color-mix(in srgb,var(--app-color,#80d8ee) 45%,transparent);border-radius:50%;background:#03121b7d;display:grid;place-items:center;object-fit:contain;font:12px Consolas,monospace;box-shadow:0 0 9px #50d9e010}
+.launcher-tile>img{padding:3px;background:#0719268c}
+.launcher-tile:hover,.launcher-tile:focus-visible{transform:translateY(calc(var(--lift,0px) - 3px));filter:drop-shadow(0 0 5px #57deea55);box-shadow:none}
+.launcher-tile small{font-size:8px;color:#c8dce3;line-height:1;white-space:nowrap;max-width:53px;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000;letter-spacing:0}
+.launcher-tile>i{position:absolute;top:0;right:0;font:5px Consolas,monospace;color:#e6bc7b;font-style:normal;letter-spacing:.2px}
+.launcher-tile.unconfigured>span{border-style:dashed}
+.rim-focus.has-launcher .rim-focus-content{inset:28px 38px 6px;grid-template-columns:90px minmax(0,1fr);gap:12px}
+.rim-focus.has-launcher .rim-orbit{width:90px;height:90px}
+.rim-focus.has-launcher .rim-focus-definition{display:none}
+.rim-focus.has-launcher .rim-focus-copy .focus-name{font-size:13px}
+.rim-focus.has-launcher .rim-focus-copy #focus-meta{font-size:7px;margin:2px 0 4px}
+.rim-focus.has-launcher .rim-actions button{font-size:8px;min-height:25px;padding:3px 8px}
+.rim-focus.has-launcher .launcher-dock{height:54px;margin-top:1px}
+.rim-focus.has-launcher .launcher-tile{min-height:42px;flex-basis:45px}
+.rim-focus.has-launcher .launcher-tile>span,.rim-focus.has-launcher .launcher-tile>img{width:27px;height:27px}
+.rim-focus.has-launcher .launcher-tile small{font-size:7px}
+.rim-focus.has-launcher .launcher-apps{padding-top:8px}
+.neural-panel>.launcher-dock{position:absolute;inset:12px 8px 8px;height:auto;z-index:3;opacity:1}
+.neural-panel:has(.launcher-dock) canvas{opacity:.3}
+.neural-panel:has(.launcher-dock) .terrain-axis{display:none}
+#launcher-config{margin:20px 0;padding:14px 0;border-top:1px solid #295063;border-bottom:1px solid #295063}
+#launcher-config h3{font:11px Consolas,monospace;color:#7bdfea;letter-spacing:1.5px}
+.launcher-config-row{padding:10px 0;border-top:1px solid #234150;display:grid;grid-template-columns:130px minmax(0,1fr);gap:7px 12px}
+.launcher-config-row input{width:100%;background:#071b29;border:1px solid #346275;border-radius:7px;padding:7px;color:#d8eaf0;font-size:12px}
+.launcher-config-row code{font:9px Consolas,monospace;align-self:center;color:#a5bdc9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.launcher-config-row>div{grid-column:1/-1;display:flex;gap:5px;flex-wrap:wrap}
+.launcher-config-row button,.launcher-config-buttons button{font-size:8px;min-height:29px;border-radius:14px}
+.launcher-config-buttons{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.launcher-warning{font-size:11px;color:#f1b37c}
+/* The full visor is a working view: preserve contrast even while idle. Only floating widgets fade. */
+body[data-mode="hud"] .panel{background:rgba(4,15,24,var(--visor-glass,.88));border-color:#538999a6}
+body[data-mode="hud"] .panel:hover,body[data-mode="hud"] .panel:focus-within{background:rgba(4,15,24,var(--visor-glass-hover,.95))}
+body[data-mode="hud"] .panel>:not(.panel-circuit){opacity:1}
+body[data-mode="hud"] .panel .muted,body[data-mode="hud"] .panel-foot{color:#9bb6c3}
+body[data-mode="hud"] .topbar,body[data-mode="hud"] .utility-bar{background:rgba(6,22,34,var(--visor-glass,.88))}
+body[data-mode="hud"] .topbar:hover,body[data-mode="hud"] .topbar:focus-within{background:rgba(6,22,34,var(--visor-glass-hover,.95))}
+body[data-mode="hud"] .utility-bar{padding:4px 12px;border:1px solid #3d6c7b70;border-radius:50% / 35%}
+body[data-mode="hud"] .ring-stage::before{background:rgba(4,15,24,var(--visor-glass,.88))}
+body[data-mode="hud"] .center-column:hover .ring-stage::before,body[data-mode="hud"] .center-column:focus-within .ring-stage::before{background:rgba(4,15,24,var(--visor-glass-hover,.95))}
+body[data-mode="hud"] .neural-panel{background:rgba(4,15,24,var(--visor-glass,.88))}
+.visor-opacity-row{display:flex;align-items:center;gap:14px;font:9px Consolas,monospace;color:#8bdde8;margin:18px 0}
+.visor-opacity-row input{flex:1;accent-color:#65d9e8}
+@media(max-width:570px){.rim-focus.has-launcher .rim-focus-content{inset:29px 28px 5px;grid-template-columns:75px minmax(0,1fr);gap:8px}.rim-focus.has-launcher .rim-orbit{width:75px;height:75px}.rim-focus.has-launcher .launcher-tile{flex-basis:39px}.rim-focus.has-launcher .launcher-apps{justify-content:flex-start;gap:2px}}
+@media(prefers-reduced-motion:reduce){.launcher-dock,.launcher-tile{transition:none!important}}

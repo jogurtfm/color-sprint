@@ -1,5 +1,6 @@
 .cs-root { --cs-ink:var(--text-normal,#26272d); --cs-muted:var(--text-muted,#767681); --cs-paper:var(--background-primary,#f7f6f2); --cs-panel:var(--background-secondary,#eeede8); color:var(--cs-ink); background:var(--cs-paper); padding:24px 24px max(28px,env(safe-area-inset-bottom)); overflow-y:auto; height:100%; box-sizing:border-box; font-family:var(--font-interface,system-ui,sans-serif); }
 .cs-root *, .cs-root *::before, .cs-root *::after { box-sizing:border-box; }
+.cs-queue-add{display:flex;gap:8px;align-items:center;margin:12px 0}.cs-queue-add select{min-width:0;flex:1;max-width:100%;min-height:40px}.cs-queue-list{padding-left:22px}.cs-queue-row{border-left:3px solid var(--cs-color);padding:10px 12px;margin:8px 0;background:var(--cs-panel);border-radius:10px}.cs-queue-row>strong,.cs-queue-row>small{display:block}.cs-queue-row.is-current{outline:2px solid var(--cs-color)}.cs-queue-minutes{width:72px!important;min-height:40px}.cs-queue-row .cs-actions{margin-top:7px}
 .cs-root h1 { font-size:clamp(24px,3vw,36px); font-weight:650; letter-spacing:-1.2px; margin:6px 0 12px; line-height:1.15; }
 .cs-root h2 { font-size:21px; letter-spacing:-.5px; margin:8px 0; }
 .cs-root h3 { margin:0; font-size:16px; }

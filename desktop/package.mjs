@@ -1,0 +1,35 @@
+import {cp,mkdir,readFile,writeFile,copyFile,rename,readdir,stat} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.dirname(fileURLToPath(import.meta.url));process.chdir(root);
+const pkg=JSON.parse(await readFile('package.json','utf8'));
+const stamp=new Date().toISOString().replace(/[-:]/g,'').slice(0,15);
+const name=`Color-Sprint-HUD-${pkg.version}-win-x64-${stamp}`;
+const release=path.join(root,'release'),folder=path.join(release,name);
+await mkdir(release,{recursive:true});
+await cp(path.join(root,'node_modules/electron/dist'),folder,{recursive:true,force:false,errorOnExist:true});
+await rename(path.join(folder,'electron.exe'),path.join(folder,'Color Sprint HUD.exe'));
+const appDir=path.join(folder,'resources/app');await mkdir(appDir,{recursive:true});
+await cp(path.join(root,'dist'),path.join(appDir,'dist'),{recursive:true});
+await writeFile(path.join(appDir,'package.json'),JSON.stringify({name:pkg.name,productName:pkg.productName,version:pkg.version,main:pkg.main},null,2));
+await copyFile(path.join(root,'README.md'),path.join(folder,'START HERE.md'));
+await copyFile(path.join(root,'VALIDATION.md'),path.join(folder,'VALIDATION.md'));
+await copyFile(path.join(root,'WINDOWS-THEME.md'),path.join(folder,'WINDOWS-THEME.md'));
+await copyFile(path.join(root,'../QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE.md'));
+const pluginBundle=path.join(appDir,'dist/obsidian-plugin');await mkdir(pluginBundle,{recursive:true});
+for(const file of ['main.js','manifest.json','styles.css'])await copyFile(path.join(root,'..',file),path.join(pluginBundle,file));
+await copyFile(path.join(root,'../LICENSE'),path.join(folder,'LICENSE-Color-Sprint.txt'));
+await writeFile(path.join(folder,'Launch Color Sprint HUD.cmd'),'@echo off\r\nsetlocal\r\nset ELECTRON_RUN_AS_NODE=\r\nstart "Color Sprint HUD" "%~dp0Color Sprint HUD.exe"\r\n');
+// Release includes only the runtime, compiled application and licenses: no vault, test data or settings.
+const files=[];async function walk(dir){for(const entry of await readdir(dir,{withFileTypes:true})){const filename=path.join(dir,entry.name);if(entry.isDirectory())await walk(filename);else files.push(filename);}}await walk(folder);
+const manifest=[];for(const file of files)manifest.push(`${createHash('sha256').update(await readFile(file)).digest('hex')}  ${path.relative(folder,file).replaceAll('\\','/')}`);
+await writeFile(path.join(folder,'SHA256SUMS.txt'),manifest.join('\n')+'\n');
+const zip=path.join(release,`${name}.zip`);
+// These paths are generated inside this release directory, never user-controlled shell strings.
+const ps=s=>`'${s.replaceAll("'","''")}'`;
+const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Compress-Archive -LiteralPath ${ps(folder)} -DestinationPath ${ps(zip)} -CompressionLevel Optimal -WarningAction SilentlyContinue`],{stdio:'inherit',windowsHide:true});
+if(result.status!==0)throw new Error('ZIP packaging failed. The uncompressed portable folder was preserved.');
+const digest=createHash('sha256').update(await readFile(zip)).digest('hex');await writeFile(`${zip}.sha256`,`${digest}  ${path.basename(zip)}\n`);
+console.log(JSON.stringify({folder,zip,bytes:(await stat(zip)).size,sha256:digest},null,2));
