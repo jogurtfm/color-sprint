@@ -31,6 +31,27 @@ Dates are local calendar dates. Recurrence applies only within this range. Expli
 
 Escape literal pipes as `\|`; backslashes as `\\`. Keep each table row on one physical line. The UI escapes entered text automatically. The UI uses text content, so Markdown/HTML in labels is displayed as text.
 
+## Focus Targets (optional)
+
+Use dated focus durations to increase a habit gradually without making a separate task for every day:
+
+```md
+## Focus Targets
+
+| Date | Task ID | Minutes |
+| --- | --- | --- |
+| 2026-10-18 | japanese | 10 |
+| 2026-10-21 | japanese | 15 |
+| 2026-10-24 | japanese | 20 |
+| 2026-10-28 | japanese | 25 |
+```
+
+Each row overrides that task's **Timer minutes for that exact date only**. It is not an effective-from rule: fill each intended date, or use the task-row default where a date has no override. Minutes are 0–1440; 0 is an open stopwatch. The date must be valid, the task ID must exist, and date/task pairs must be unique. An omitted section preserves previous behavior.
+
+Cards, the meditation shortcut, Digest focus buttons, and group focus use the date's resolved duration. Starting a solo timer saves that target so the running countdown does not jump if the plan is subsequently edited; a new session picks up the new value. Explicit roadmap subtask minutes remain authoritative and are not scaled by a parent target. A target row does not schedule the task, reserve calendar time, record evidence, or complete anything. Task Repeat / Schedule still control whether the task is due. Edit this optional table directly in Markdown; the task edit form changes the fallback duration, not dated rows.
+
+These are planning targets, not proof of work or mandatory progression rules. Preserve actual completion and log a shorter/partial attempt honestly rather than marking a minimum met when it was not. The plugin does not lock manual checkboxes or infer completion from elapsed time.
+
 ## Schedule / daily results
 
 ```md

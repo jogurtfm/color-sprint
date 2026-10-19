@@ -33,6 +33,7 @@ For a manual installation, download `manifest.json`, `main.js`, and `styles.css`
 - **Training surfaces:** `Workout` and `Treadmill` each open their own minimal data-entry screen. They append real duration, distance, sets/load, and notes to `## Workout Log`; this stays separate from plan checkboxes and focus sessions.
 - **Quick increments:** appropriate cards add real, Markdown-backed counts in one tap: `+1` / `+5 reps` for Pushups and Dips, seconds for Plank, and minutes for Treadmill. Quick counts never complete a task or count as a whole workout.
 - **Direct Markdown editing:** checkboxes, task definitions, colors, pages, schedules, recurring weekdays, goals, and timer records remain readable text. File changes refresh the interface.
+- **Graduated daily focus targets:** an optional `## Focus Targets` Markdown table can give one habit different durations on different dates. Cards, Digest focus buttons, meditation, and group queues resolve that day's target. A solo timer keeps its captured target once started. Roadmap step times stay independent. See [the format guide](FORMAT.md#focus-targets-optional); no automatic ramp, forced completion, or calendar booking is imposed.
 
 The six colors match the source palette exactly: pink `#ea9999`, blue `#cfe2f3`, yellow `#fff2cc`, purple `#d9d2e9`, orange `#fce5cd`, and salmon `#e6b8af`. Pages do not merge or reinterpret these color groups.
 

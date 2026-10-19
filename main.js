@@ -44,8 +44,9 @@ var WORKOUT_LOG_HEADER = "| ID | Date | Task ID | Duration minutes | Distance mi
 var QUICK_COUNT_HEADER = "| ID | Date | Task ID | Amount | Unit |";
 var TIME_BLOCK_HEADER = "| Date | Task ID | Start | End | Time zone | Status | Calendar event ID | Event URL |";
 var AVAILABILITY_HEADER = "| ID | Label | Days | Start | End | Time zone |";
+var FOCUS_TARGET_HEADER = "| Date | Task ID | Minutes |";
 var SECTIONS = ["Tasks", "Schedule", "Goals", "Sessions", "Timer"];
-var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts", "Subtasks", "Time Blocks", "Availability"];
+var OPTIONAL_SECTIONS = ["Reflections", "Workout Log", "Quick Counts", "Subtasks", "Time Blocks", "Availability", "Focus Targets"];
 function localDay(date = /* @__PURE__ */ new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -227,7 +228,11 @@ function parseBoard(text) {
   const availability = availRange ? table(lines, availRange, AVAILABILITY_HEADER).map((p) => ({ id: p[0], label: p[1], days: p[2], start: p[3], end: p[4], timezone: p[5] })) : [];
   unique(availability.map((block) => block.id), "availability");
   for (const block of availability) if (!block.label || !validRepeat(block.days) || !validTime(block.start) || !validTime(block.end) || block.end <= block.start || !validTimezone(block.timezone)) throw new Error("Availability blocks need a label, repeat days, HH:MM start/end and time zone.");
-  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, subtasks, timeBlocks, availability, start, end };
+  const focusRange = rs.get("Focus Targets");
+  const focusTargets = focusRange ? table(lines, focusRange, FOCUS_TARGET_HEADER).map((p) => ({ date: p[0], taskId: p[1], minutes: number(p[2]) })) : [];
+  for (const target of focusTargets) if (!validDay(target.date) || !taskIds.has(target.taskId) || target.minutes > 1440) throw new Error("Focus Targets need a real date, known task ID, and 0\u20131440 minutes.");
+  if (new Set(focusTargets.map((target) => `${target.date}/${target.taskId}`)).size !== focusTargets.length) throw new Error("Duplicate focus target for task/date.");
+  return { tasks, entries, goals, sessions, timer, workoutLogs, quickCounts, reflections, subtasks, timeBlocks, availability, focusTargets, start, end };
 }
 function validTime(value) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
@@ -257,12 +262,15 @@ function taskSubtasks(board, taskId, date) {
   const detail = entryFor(board, taskId, date)?.detail.toLowerCase() || "";
   return board.subtasks.filter((sub) => sub.taskId === taskId && (sub.context === "-" || detail.includes(sub.context.toLowerCase())));
 }
+function focusMinutes(board, task, date) {
+  return board.focusTargets.find((target) => target.taskId === task.id && target.date === date)?.minutes ?? task.minutes;
+}
 function focusQueue(board, timer) {
   const group = parseGroupTimerId(timer.taskId);
   const tasks = board.tasks.filter((task) => group ? group.kind === "page" ? task.page === group.value : task.color === group.value : task.id === timer.taskId);
   return tasks.flatMap((task) => {
     const subs = taskSubtasks(board, task.id, timer.date);
-    return subs.length ? subs.map((sub) => ({ id: sub.id, taskId: task.id, subtask: sub, title: sub.title, definition: sub.definition, minutes: sub.minutes, done: sub.done })) : [{ id: task.id, taskId: task.id, title: task.title, definition: task.definition, minutes: task.minutes, done: !!entryFor(board, task.id, timer.date)?.done }];
+    return subs.length ? subs.map((sub) => ({ id: sub.id, taskId: task.id, subtask: sub, title: sub.title, definition: sub.definition, minutes: sub.minutes, done: sub.done })) : [{ id: task.id, taskId: task.id, title: task.title, definition: task.definition, minutes: group ? focusMinutes(board, task, timer.date) : timer.target / 60, done: !!entryFor(board, task.id, timer.date)?.done }];
   });
 }
 function dailyWins(board, date) {
@@ -447,7 +455,7 @@ function startTimer(text, taskId, date, now = Date.now()) {
   const task = board.tasks.find((t) => t.id === taskId);
   if (!task || !validDay(date)) throw new Error("Task or date not found.");
   const scheduledText = entryFor(board, taskId, date) ? text : setEntry(text, date, taskId, false);
-  return writeTimer(scheduledText, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: task.minutes * 60, cursor: 0, stepOffset: 0 });
+  return writeTimer(scheduledText, { id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, taskId, date, started: new Date(now).toISOString(), elapsed: 0, target: focusMinutes(board, task, date) * 60, cursor: 0, stepOffset: 0 });
 }
 function startGroupTimer(text, group, date, now = Date.now()) {
   const board = parseBoard(text);
@@ -966,7 +974,10 @@ var Surface = class {
       this.render();
     }, "cs-link");
     const meditation = b.tasks.find((t) => t.id === "mindfulness");
-    if (meditation) this.button(controls, meditation.minutes ? `Meditate \xB7 ${meditation.minutes}m` : "Meditate", () => this.beginFocus(() => this.host.start(meditation, this.day)), "cs-link cs-meditate", "Start meditation mode");
+    if (meditation) {
+      const minutes = focusMinutes(b, meditation, this.day);
+      this.button(controls, minutes ? `Meditate \xB7 ${minutes}m` : "Meditate", () => this.beginFocus(() => this.host.start(meditation, this.day)), "cs-link cs-meditate", "Start meditation mode");
+    }
     this.el("p", this.root, "cs-muted cs-sprint", `Sprint ${b.start} \u2192 ${b.end}`);
     const fixed = availabilityFor(b, this.day);
     if (fixed.length) this.el("p", this.root, "cs-day-availability", fixed.map((block) => `${block.label} ${clockLabel(block.start)}\u2013${clockLabel(block.end)}`).join(" \xB7 "));
@@ -1030,6 +1041,11 @@ var Surface = class {
   }
   colorHex(task) {
     return COLORS.find((color) => color.id === task.color)?.hex || "#8a59ed";
+  }
+  focusLabel(task, day) {
+    if (taskSubtasks(this.board, task.id, day).length) return "Focus steps";
+    const minutes = focusMinutes(this.board, task, day);
+    return minutes ? `Focus \xB7 ${minutes}m` : "Focus";
   }
   async checkTask(task, day, done) {
     const wasDone = !!entryFor(this.board, task.id, day)?.done;
@@ -1130,7 +1146,7 @@ var Surface = class {
         if (steps.length) this.el("p", detail, "cs-muted", `${steps.filter((step) => step.done).length}/${steps.length} roadmap steps complete`);
         const actions = this.el("div", content, "cs-actions");
         this.button(actions, "Time / details", () => this.host.editEntry(task, day), "cs-small");
-        this.button(actions, "Focus", () => this.beginFocus(() => this.host.start(task, day)), "cs-small");
+        this.button(actions, this.focusLabel(task, day), () => this.beginFocus(() => this.host.start(task, day)), "cs-small");
         const label = this.el("label", row, "cs-itinerary-check");
         const check = this.el("input", label, "cs-check");
         check.type = "checkbox";
@@ -1168,7 +1184,7 @@ var Surface = class {
         }));
         const title = this.el("strong", row, "", task.title);
         if (check.checked) title.title = "Completed";
-        this.button(row, "Focus", () => this.beginFocus(() => this.host.start(task, day)), "cs-small");
+        this.button(row, this.focusLabel(task, day), () => this.beginFocus(() => this.host.start(task, day)), "cs-small");
       }
     }
     const due = board.goals.filter((goal) => goal.due === day);
@@ -1298,7 +1314,8 @@ var Surface = class {
       this.roadmapSurface = task.id;
       this.render();
     }, "cs-small");
-    this.button(actions, subs.length ? "Focus steps" : task.minutes ? `Start focus \xB7 ${task.minutes}m` : "Start focus", () => this.beginFocus(() => this.host.start(task, this.day)), "cs-small cs-start-focus", `Start focus for ${task.title}`);
+    const minutes = focusMinutes(b, task, this.day);
+    this.button(actions, subs.length ? "Focus steps" : minutes ? `Start focus \xB7 ${minutes}m` : "Start focus", () => this.beginFocus(() => this.host.start(task, this.day)), "cs-small cs-start-focus", `Start focus for ${task.title}`);
     this.button(actions, "Edit", () => this.host.editTask(task), "cs-small");
   }
   renderPages() {
