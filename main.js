@@ -24,7 +24,7 @@ __export(main_exports, {
   default: () => ColorSprint
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
 
 // src/model.ts
 var COLORS = [
@@ -373,6 +373,22 @@ function clearTimeBlock(text, taskId, date) {
     const p = splitCells(line);
     return p[0] === date && p[1] === taskId;
   }, () => "", "");
+}
+function saveFocusTarget(text, target) {
+  return upsertPlanTable(text, "Focus Targets", FOCUS_TARGET_HEADER, 3, [target.date, target.taskId, String(target.minutes)], (p) => p[0] === target.date && p[1] === target.taskId);
+}
+function saveAvailability(text, block) {
+  return upsertPlanTable(text, "Availability", AVAILABILITY_HEADER, 6, [block.id, block.label, block.days, block.start, block.end, block.timezone], (p) => p[0] === block.id);
+}
+function upsertPlanTable(text, section, header, width, values, matches) {
+  parseBoard(text);
+  const nl = text.includes("\r\n") ? "\r\n" : "\n";
+  let next = text;
+  if (!ranges(text.split(/\r?\n/)).has(section)) next += `${nl}## ${section}${nl}${nl}${header}${nl}| ${Array(width).fill("---").join(" | ")} |${nl}`;
+  const row = `| ${values.map(cell).join(" | ")} |`;
+  next = lineEdit(next, section, (line) => line.trim().startsWith("|") && matches(splitCells(line)), () => row, row);
+  parseBoard(next);
+  return next;
 }
 function saveSubtask(text, sub) {
   let next = text;
@@ -933,6 +949,7 @@ var Surface = class {
     const tools = this.el("div", head, "cs-toolbar");
     if (this.host.openDaily) this.button(tools, "Daily note \u2197", () => this.host.openDaily(), "cs-link");
     this.button(tools, "Markdown \u2197", () => this.host.openNote(), "cs-link");
+    if (this.host.openSyncReview) this.button(tools, "Sync review", () => this.host.openSyncReview(), "cs-link");
     this.button(tools, "Effects", () => {
       this.effectsOpen = !this.effectsOpen;
       this.render();
@@ -996,6 +1013,7 @@ var Surface = class {
       this.effectsOpen = !this.effectsOpen;
       this.render();
     }, "cs-link");
+    if (this.host.openSyncReview) this.button(mobileTools, "Sync review", () => this.host.openSyncReview(), "cs-link");
     if (this.host.openDaily) this.button(mobileTools, "Daily note \u2197", () => this.host.openDaily(), "cs-link");
     this.tick();
   }
@@ -2086,9 +2104,476 @@ function mountReflectionPanel(root, options) {
   };
 }
 
+// src/sync-store.ts
+var import_obsidian = require("obsidian");
+
+// src/sync.ts
+var SYNC_FOLDER = "Color Sprint Sync";
+function syncFolder(tracker) {
+  const parts = vaultPath(tracker).split("/");
+  parts.pop();
+  return [...parts, SYNC_FOLDER].join("/");
+}
+var equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function syncNote(kind, value) {
+  return `# Color Sprint ${kind}
+
+Keep this record for recovery. Do not overwrite another device's record.
+
+\`\`\`json
+${JSON.stringify(value, null, 2)}
+\`\`\`
+`;
+}
+function payload(text) {
+  if (text.length > 4 * 1024 * 1024) throw new Error("Sync note exceeds the 4 MB safety limit.");
+  const matches = [...text.matchAll(/^```json\r?\n([\s\S]*?)\r?\n```\s*$/gm)];
+  if (matches.length !== 1) throw new Error("Expected one JSON payload in the sync note.");
+  return JSON.parse(matches[0][1]);
+}
+function validId(value) {
+  return typeof value === "string" && /^[a-z0-9-]{6,100}$/.test(value);
+}
+function parseProposal(text) {
+  const p = payload(text);
+  if (!p || p.version !== 1 || !validId(p.id) || typeof p.tracker !== "string" || typeof p.created !== "string" || !Number.isFinite(Date.parse(p.created)) || typeof p.base !== "string" || typeof p.proposed !== "string") throw new Error("Invalid planning proposal.");
+  vaultPath(p.tracker);
+  parseBoard(p.base);
+  parseBoard(p.proposed);
+  return p;
+}
+function mergePlan(baseText, currentText, proposedText) {
+  const base = parseBoard(baseText), proposed = parseBoard(proposedText);
+  parseBoard(currentText);
+  const result = { text: currentText, changes: [], conflicts: [], protected: [] };
+  const mergeRows = (name, fields, key, save, defaults = {}) => {
+    const before = base[name], after = proposed[name];
+    for (const old of before) if (!after.some((row) => key(row) === key(old))) result.conflicts.push(`${name}/${key(old)}: deletion requires review; retained.`);
+    for (const row of after) {
+      const id2 = key(row), old = before.find((item) => key(item) === id2), now = parseBoard(result.text)[name].find((item) => key(item) === id2);
+      const next = now ? { ...now } : { ...row, ...defaults };
+      const labels = [];
+      if (old && !now) {
+        if (fields.some((field) => !equal(old[field], row[field]))) result.conflicts.push(`${name}/${id2}: row was removed on this device; retained removal.`);
+        continue;
+      }
+      for (const field of Object.keys(row)) if (!fields.includes(field) && !["id", "date", "taskId"].includes(field) && !equal(old?.[field], row[field]) && !(old === void 0 && equal(row[field], defaults[field]))) result.protected.push(`${name}/${id2}/${field}: actual progress preserved.`);
+      for (const field of fields) {
+        if (equal(old?.[field], row[field])) continue;
+        if (now && !equal(now[field], old?.[field]) && !equal(now[field], row[field])) {
+          result.conflicts.push(`${name}/${id2}/${field}: changed on both sides. Current: ${JSON.stringify(now[field])}; proposed: ${JSON.stringify(row[field])}`);
+          continue;
+        }
+        next[field] = row[field];
+        if (!now || !equal(now[field], row[field])) labels.push(`${name}/${id2}/${field}: ${JSON.stringify(now?.[field]) ?? "(new)"} \u2192 ${JSON.stringify(row[field])}`);
+      }
+      if (!now) labels.push(`${name}/${id2}: new planned row`);
+      if (!labels.length) continue;
+      try {
+        const text = save(result.text, next);
+        parseBoard(text);
+        result.text = text;
+        result.changes.push(...labels);
+      } catch (error) {
+        result.conflicts.push(`${name}/${id2}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  };
+  const id = (row) => String(row.id), dateId = (row) => `${row.date}/${row.taskId}`;
+  mergeRows("tasks", ["title", "color", "page", "kind", "repeat", "minutes", "definition"], id, saveTask);
+  mergeRows("entries", ["detail"], dateId, (text, row) => setEntry(text, row.date, row.taskId, row.done, row.detail), { done: false });
+  mergeRows("goals", ["due", "page", "title"], id, setGoal, { done: false, evidence: "" });
+  mergeRows("subtasks", ["taskId", "context", "minutes", "title", "definition"], id, saveSubtask, { done: false, completed: "-" });
+  for (const old of base.timeBlocks) if (!proposed.timeBlocks.some((row) => dateId(row) === dateId(old))) result.conflicts.push(`timeBlocks/${old.date}/${old.taskId}: deletion requires review; retained.`);
+  for (const row of proposed.timeBlocks) {
+    const old = base.timeBlocks.find((item) => item.date === row.date && item.taskId === row.taskId), now = parseBoard(result.text).timeBlocks.find((item) => item.date === row.date && item.taskId === row.taskId);
+    if (equal(old, row)) continue;
+    if (!equal(now, old) && !equal(now, row)) {
+      result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: changed on both sides.`);
+      continue;
+    }
+    if (equal(now, row)) continue;
+    try {
+      result.text = saveTimeBlock(result.text, row);
+      result.changes.push(`timeBlocks/${row.date}/${row.taskId}`);
+    } catch (error) {
+      result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  mergeRows("availability", ["label", "days", "start", "end", "timezone"], id, saveAvailability);
+  mergeRows("focusTargets", ["minutes"], dateId, saveFocusTarget);
+  if (base.start !== proposed.start || base.end !== proposed.end) result.conflicts.push("Sprint date-range changes require review; current dates retained.");
+  for (const field of ["timer", "sessions", "workoutLogs", "quickCounts", "reflections"]) if (!equal(base[field], proposed[field])) result.protected.push(`${field}: retained current data; not a planning field.`);
+  parseBoard(result.text);
+  return result;
+}
+function checkboxChanges(before, after) {
+  const b = parseBoard(before), a = parseBoard(after);
+  const checks = [];
+  for (const row of a.entries) {
+    const old = b.entries.find((e) => e.date === row.date && e.taskId === row.taskId);
+    if (old && old.done !== row.done || !old && row.done) checks.push({ kind: "entry", date: row.date, id: row.taskId, done: row.done, detail: row.detail });
+  }
+  for (const row of a.subtasks) {
+    const old = b.subtasks.find((e) => e.id === row.id);
+    if (old && (old.done !== row.done || old.completed !== row.completed) || !old && row.done) checks.push({ kind: "subtask", id: row.id, done: row.done, completed: row.completed });
+  }
+  for (const row of a.goals) {
+    const old = b.goals.find((e) => e.id === row.id);
+    if (old && (old.done !== row.done || old.evidence !== row.evidence) || !old && row.done) checks.push({ kind: "goal", id: row.id, done: row.done, evidence: row.evidence });
+  }
+  return checks;
+}
+function parseCheckpoint(text) {
+  return validateCheckpoint(payload(text));
+}
+function validateCheckpoint(value) {
+  const p = value;
+  if (!p || p.version !== 1 || !validId(p.id) || !validId(p.device) || typeof p.tracker !== "string" || !Number.isSafeInteger(p.sequence) || p.sequence < 1 || typeof p.created !== "string" || !Number.isFinite(Date.parse(p.created)) || !Array.isArray(p.checks) || p.checks.length > 1e3) throw new Error("Invalid phone checkpoint.");
+  vaultPath(p.tracker);
+  for (const c of p.checks) {
+    if (!c || typeof c.id !== "string" || !/^[-a-z0-9]+$/.test(c.id) || typeof c.done !== "boolean" || !["entry", "subtask", "goal"].includes(c.kind) || c.kind === "entry" && (!validDay(c.date) || c.detail !== void 0 && typeof c.detail !== "string") || c.kind === "subtask" && c.completed !== "-" && !validDay(c.completed) || c.kind === "goal" && typeof c.evidence !== "string") throw new Error("Invalid phone checkpoint row.");
+  }
+  return p;
+}
+function recoverPhoneChecks(current, records) {
+  const result = { text: current, changes: [], conflicts: [], protected: [] };
+  parseBoard(current);
+  const latest = /* @__PURE__ */ new Map();
+  for (const record2 of records) {
+    validateCheckpoint(record2);
+    for (const check of record2.checks) {
+      const key = `${check.kind}/${check.kind === "entry" ? check.date + "/" : ""}${check.id}`;
+      let devices = latest.get(key);
+      if (!devices) {
+        devices = /* @__PURE__ */ new Map();
+        latest.set(key, devices);
+      }
+      const old = devices.get(record2.device);
+      if (!old || old.record.sequence < record2.sequence) devices.set(record2.device, { record: record2, check });
+      else if (old.record.sequence === record2.sequence && !equal(old.check, check)) result.conflicts.push(`${key}: duplicate phone sequence disagrees; requires review.`);
+    }
+  }
+  for (const [key, devices] of latest) {
+    const values = [...devices.values()];
+    if (values.some((value) => !equal(value.check, values[0].check)) || result.conflicts.some((issue) => issue.startsWith(key + ":"))) {
+      result.conflicts.push(`${key}: primary mobile devices disagree; no automatic choice.`);
+      continue;
+    }
+    const check = values[0].check, board = parseBoard(result.text);
+    try {
+      let next = result.text;
+      if (check.kind === "entry") {
+        if (!board.tasks.some((t) => t.id === check.id)) throw new Error("Task removed; restore its definition first.");
+        const existing = board.entries.find((row) => row.date === check.date && row.taskId === check.id);
+        if (existing?.done === check.done) continue;
+        next = setEntry(next, check.date, check.id, check.done, existing?.detail ?? check.detail);
+      }
+      if (check.kind === "subtask") {
+        const row = board.subtasks.find((s) => s.id === check.id);
+        if (!row) throw new Error("Subtask removed; restore its definition first.");
+        if (row.done === check.done && row.completed === check.completed) continue;
+        next = saveSubtask(next, { ...row, done: check.done, completed: check.completed });
+      }
+      if (check.kind === "goal") {
+        const row = board.goals.find((g) => g.id === check.id);
+        if (!row) throw new Error("Goal removed; restore its definition first.");
+        if (row.evidence && check.evidence && row.evidence !== check.evidence) result.protected.push(`${key}: current evidence kept; alternate evidence remains in the phone checkpoint.`);
+        const evidence = row.evidence || check.evidence;
+        if (row.done === check.done && row.evidence === evidence) continue;
+        next = setGoal(next, { ...row, done: check.done, evidence });
+      }
+      if (next !== result.text) {
+        result.text = next;
+        result.changes.push(`${key} \u2192 ${check.done ? "checked" : "unchecked"}`);
+      }
+    } catch (error) {
+      result.conflicts.push(`${key}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return result;
+}
+
+// src/sync-store.ts
+var uuid = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 8)}`;
+var OUTBOX = "color-sprint.phone-outbox";
+var DEVICE = "color-sprint.sync-device";
+var SyncStore = class {
+  constructor(app, warn) {
+    this.app = app;
+    this.warn = warn;
+    this.outbox = [];
+    this.unreadable = [];
+    this.sequence = 0;
+    const stored = app.loadLocalStorage?.(DEVICE);
+    this.device = typeof stored?.id === "string" && /^[-a-z0-9]{6,100}$/.test(stored.id) ? stored.id : uuid();
+    this.sequence = Number.isSafeInteger(stored?.sequence) && stored.sequence >= 0 ? stored.sequence : 0;
+    const pending = app.loadLocalStorage?.(OUTBOX);
+    if (Array.isArray(pending)) for (const item of pending) {
+      try {
+        const record2 = validateCheckpoint(item.record);
+        this.outbox.push({ record: record2, committed: item.committed === true });
+        if (record2.device === this.device) this.sequence = Math.max(this.sequence, record2.sequence);
+      } catch {
+        this.unreadable.push(item);
+        this.warn("An unreadable phone recovery record needs manual inspection. It was retained and not used.");
+      }
+    }
+  }
+  persist() {
+    if (!this.app.saveLocalStorage) throw new Error("Update Obsidian to enable durable phone completion checkpoints.");
+    this.app.saveLocalStorage(DEVICE, { id: this.device, sequence: this.sequence });
+    this.app.saveLocalStorage(OUTBOX, [...this.unreadable, ...this.outbox]);
+  }
+  prepare(tracker, before, after) {
+    return this.prepareChecks(tracker, checkboxChanges(before, after));
+  }
+  prepareChecks(tracker, checks) {
+    if (!checks.length) return null;
+    const record2 = { version: 1, id: uuid(), tracker, device: this.device, sequence: ++this.sequence, created: (/* @__PURE__ */ new Date()).toISOString(), checks };
+    validateCheckpoint(record2);
+    this.outbox.push({ record: record2, committed: false });
+    try {
+      this.persist();
+    } catch (error) {
+      this.outbox.pop();
+      throw error;
+    }
+    return record2;
+  }
+  async baseline(tracker, expected) {
+    const file = this.app.vault.getAbstractFileByPath(tracker);
+    if (!(file instanceof import_obsidian.TFile) || await this.app.vault.read(file) !== expected) throw new Error("Tracker changed. Refresh before protecting this phone baseline.");
+    const board = parseBoard(expected);
+    const checks = [...board.entries.map((row) => ({ kind: "entry", date: row.date, id: row.taskId, done: row.done, detail: row.detail })), ...board.subtasks.map((row) => ({ kind: "subtask", id: row.id, done: row.done, completed: row.completed })), ...board.goals.map((row) => ({ kind: "goal", id: row.id, done: row.done, evidence: row.evidence }))];
+    const record2 = this.prepareChecks(tracker, checks);
+    if (record2) await this.committed(record2);
+  }
+  async committed(record2) {
+    const pending = this.outbox.find((item) => item.record.id === record2.id);
+    if (pending) pending.committed = true;
+    try {
+      this.persist();
+      await this.flush();
+    } catch {
+      this.warn("Checkbox saved. Its phone recovery checkpoint is still device-local; open Sync review to retry syncing it.");
+    }
+  }
+  async folder(path) {
+    const parts = path.split("/");
+    parts.pop();
+    let parent = "";
+    for (const part of parts) {
+      parent = parent ? parent + "/" + part : part;
+      if (!this.app.vault.getAbstractFileByPath(parent)) try {
+        await this.app.vault.createFolder(parent);
+      } catch (error) {
+        if (!this.app.vault.getAbstractFileByPath(parent)) throw error;
+      }
+    }
+  }
+  async create(path, text) {
+    await this.folder(path);
+    const file = await this.app.vault.create(path, text);
+    if (await this.app.vault.read(file) !== text) throw new Error("Recovery note read-back failed. Keep the local copy.");
+    return file;
+  }
+  async flush() {
+    for (const item of [...this.outbox]) {
+      if (!item.committed) continue;
+      const path = `${syncFolder(item.record.tracker)}/Phone/${item.record.device}/${item.record.id}.md`, text = syncNote("phone-checkpoint", item.record);
+      const existing = this.app.vault.getAbstractFileByPath(path);
+      if (existing) {
+        if (!(existing instanceof import_obsidian.TFile) || await this.app.vault.read(existing) !== text) throw new Error("Phone checkpoint differs from its saved record. Neither version was overwritten.");
+      } else await this.create(path, text);
+      this.outbox = this.outbox.filter((row) => row !== item);
+      this.persist();
+    }
+  }
+  async archiveUnconfirmed() {
+    for (const item of [...this.outbox]) {
+      if (item.committed) continue;
+      await this.create(`${syncFolder(item.record.tracker)}/Unconfirmed/${item.record.id}-${uuid()}.md`, syncNote("phone-checkpoint", item.record));
+      this.outbox = this.outbox.filter((row) => row !== item);
+      this.persist();
+    }
+  }
+  async review(tracker) {
+    const file = this.app.vault.getAbstractFileByPath(tracker);
+    if (!(file instanceof import_obsidian.TFile)) throw new Error("Tracker note not found.");
+    const current = await this.app.vault.read(file);
+    parseBoard(current);
+    const errors = [];
+    if (this.unreadable.length) errors.push(`${this.unreadable.length} unreadable device-local recovery records retained for manual inspection.`);
+    try {
+      await this.flush();
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+    const files = this.app.vault.getMarkdownFiles().filter((file2) => file2.path.startsWith(syncFolder(tracker) + "/"));
+    const checkpoints = [], proposals = [];
+    for (const item of files) {
+      try {
+        if (item.path.startsWith(`${syncFolder(tracker)}/Phone/`)) {
+          const record2 = parseCheckpoint(await this.app.vault.read(item));
+          if (record2.tracker === tracker) checkpoints.push(record2);
+        }
+        if (item.path.startsWith(`${syncFolder(tracker)}/Proposals/`)) {
+          const raw = await this.app.vault.read(item), proposal = parseProposal(raw);
+          if (proposal.tracker !== tracker) continue;
+          const receipt = this.app.vault.getAbstractFileByPath(`${syncFolder(tracker)}/Applied/${proposal.id}.md`);
+          if (receipt instanceof import_obsidian.TFile) {
+            const saved = await this.app.vault.read(receipt);
+            if (saved !== this.receipt(proposal, raw)) errors.push(`${item.path}: proposal changed after it was applied; create a new proposal ID.`);
+            continue;
+          }
+          proposals.push({ path: item.path, raw, proposal, merge: mergePlan(proposal.base, current, proposal.proposed) });
+        }
+      } catch (error) {
+        errors.push(`${item.path}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    for (const item of this.outbox) if (item.record.tracker === tracker) {
+      if (item.committed && !checkpoints.some((record2) => record2.id === item.record.id)) checkpoints.push(item.record);
+      else if (!item.committed) errors.push(`Unconfirmed phone action ${item.record.id}: the app closed or a write failed. Review its device-local intent; not auto-restored.`);
+    }
+    return { current, proposals, recovery: recoverPhoneChecks(current, checkpoints), errors, checkpoints: checkpoints.length, outbox: this.outbox.length };
+  }
+  receipt(proposal, raw) {
+    return `# Processed Color Sprint proposal
+
+Proposal: ${proposal.id}
+
+Only reviewed safe planning fields were applied. Protected progress and any explicitly kept-current disagreements were not replaced. Recovery snapshots preserve the prior tracker.
+
+Exact source retained for idempotency:
+
+${raw}`;
+  }
+  async apply(tracker, review, expected, keepCurrentConflicts = false) {
+    const source = this.app.vault.getAbstractFileByPath(review.path), file = this.app.vault.getAbstractFileByPath(tracker);
+    if (!(source instanceof import_obsidian.TFile) || !(file instanceof import_obsidian.TFile) || await this.app.vault.read(source) !== review.raw) throw new Error("Proposal changed. Refresh Sync review first.");
+    const proposal = parseProposal(review.raw);
+    if (proposal.tracker !== tracker) throw new Error("Proposal belongs to another tracker.");
+    const result = mergePlan(proposal.base, expected, proposal.proposed);
+    if (result.conflicts.length && !keepCurrentConflicts) throw new Error("Resolve the listed planning disagreements in a revised proposal, or explicitly keep current conflicts.");
+    if (parseBoard(expected).timer) throw new Error("Pause is not enough: finish or cancel active focus before applying planning changes.");
+    await this.backup(tracker, expected, "before-plan");
+    await this.app.vault.process(file, (current) => {
+      if (current !== expected) throw new Error("Tracker changed since review. Nothing overwritten; refresh and try again.");
+      return result.text;
+    });
+    if (await this.app.vault.read(file) !== result.text) throw new Error("Tracker changed during verification. Backup and proposal retained; inspect Relay before continuing.");
+    const path = `${syncFolder(tracker)}/Applied/${proposal.id}.md`, receipt = this.receipt(proposal, review.raw), existing = this.app.vault.getAbstractFileByPath(path);
+    if (!existing) await this.create(path, receipt);
+    else if (!(existing instanceof import_obsidian.TFile) || await this.app.vault.read(existing) !== receipt) throw new Error("Receipt differs; neither record was overwritten.");
+  }
+  async backup(tracker, text, reason) {
+    await this.create(`${syncFolder(tracker)}/Recovery/${reason}-${uuid()}.md`, text);
+  }
+  async restore(tracker, expected, result) {
+    if (!result.changes.length) return;
+    if (parseBoard(expected).timer) throw new Error("Finish or cancel active focus before restoring checkboxes.");
+    await this.backup(tracker, expected, "before-phone-restore");
+    const file = this.app.vault.getAbstractFileByPath(tracker);
+    if (!(file instanceof import_obsidian.TFile)) throw new Error("Tracker not found.");
+    await this.app.vault.process(file, (current) => {
+      if (current !== expected) throw new Error("Tracker changed since review. Refresh before restoring.");
+      return result.text;
+    });
+    if (await this.app.vault.read(file) !== result.text) throw new Error("Restoration changed during verification. Keep the backup and inspect Relay.");
+  }
+};
+
+// src/sync-panel.ts
+function mountSyncPanel(root, options) {
+  let closed = false, pending = false;
+  const doc = root.ownerDocument;
+  root.classList.add("cs-sync-panel");
+  const el = (tag, parent, text = "", cls = "") => {
+    const node = doc.createElement(tag);
+    node.textContent = text;
+    node.className = cls;
+    parent.append(node);
+    return node;
+  };
+  const notice = el("p", root, "", "cs-form-error");
+  notice.setAttribute("role", "status");
+  const body = el("div", root);
+  const button = (parent, label, action) => {
+    const b = el("button", parent, label);
+    b.type = "button";
+    b.addEventListener("click", () => {
+      if (pending || closed) return;
+      pending = true;
+      root.querySelectorAll("button").forEach((b2) => b2.disabled = true);
+      notice.textContent = "";
+      void action().then(() => load()).catch((error) => {
+        if (!closed) notice.textContent = error instanceof Error ? error.message : String(error);
+      }).finally(() => {
+        pending = false;
+        if (!closed) root.querySelectorAll("button").forEach((b2) => b2.disabled = false);
+      });
+    });
+    return b;
+  };
+  const list = (parent, items) => {
+    const ul = el("ul", parent);
+    for (const item of items) el("li", ul, item);
+  };
+  const load = async () => {
+    const review = await options.load();
+    if (closed) return;
+    body.replaceChildren();
+    el("p", body, options.primary ? "This device protects phone checkbox actions with recovery checkpoints." : "Desktop planning never overrides checkbox state through proposals.");
+    el("p", body, options.relay, "cs-muted");
+    el("p", body, `${review.checkpoints} committed phone checkpoints \xB7 ${review.outbox} device-local recovery records. Local presence is not proof another device or Relay server has received them.`, "cs-muted");
+    button(body, "Refresh sync review", async () => {
+    });
+    if (review.errors.length) {
+      el("h3", body, "Needs attention");
+      list(body, review.errors);
+      if (review.outbox) button(body, "Archive unconfirmed attempts for manual review", options.archive);
+    }
+    el("h3", body, "Phone checkbox recovery");
+    el("p", body, "Only use this after the phone has synced its latest checkpoints. Review both checks and unchecks below. Nothing is restored automatically.");
+    if (options.primary && options.baseline) {
+      el("p", body, "First setup: confirm this phone currently shows the right checks and unchecks, then protect its existing state. This records what is already shown; it does not complete anything.");
+      button(body, "Protect this phone\u2019s current checkbox state", () => options.baseline(review.current));
+    }
+    if (review.recovery.changes.length) {
+      list(body, review.recovery.changes);
+      button(body, `Restore ${review.recovery.changes.length} phone checkbox states`, () => options.restore(review));
+    } else el("p", body, "No recoverable phone checkbox differences in the records available here.");
+    if (review.recovery.conflicts.length) list(body, review.recovery.conflicts);
+    if (review.recovery.protected.length) list(body, review.recovery.protected);
+    el("h3", body, "Planning proposals");
+    el("p", body, "Merges preserve current checkboxes, completion evidence, active focus and session/workout/count logs. Review changes first. Disagreements stay current unless you make a revised proposal.");
+    if (!review.proposals.length) el("p", body, "No pending proposals on this device.");
+    for (const proposal of review.proposals) {
+      const card = el("section", body, "", "cs-sync-proposal");
+      el("h4", card, proposal.proposal.id);
+      el("p", card, `${proposal.merge.changes.length} safe field changes \xB7 ${proposal.merge.conflicts.length} disagreements \xB7 ${proposal.merge.protected.length} protected progress changes ignored`);
+      const details = el("details", card);
+      el("summary", details, "Review changes");
+      list(details, [...proposal.merge.changes, ...proposal.merge.conflicts, ...proposal.merge.protected]);
+      button(card, "Open proposal Markdown", () => options.open(proposal.path));
+      if (!proposal.merge.conflicts.length) button(card, "Apply reviewed planning changes", () => options.apply(proposal, review.current));
+      else button(card, "Keep current conflicts; apply listed safe changes", () => options.apply(proposal, review.current, true));
+    }
+    el("p", body, "Relay conflict banners are separate from these semantic reviews. Do not use Keep Local/Remote for an entire conflicted tracker without comparing actual contents and keeping a backup. A sync or merge can still fail; this screen does not claim to clear Relay conflicts.", "cs-muted");
+  };
+  void load().catch((error) => {
+    if (!closed) notice.textContent = error instanceof Error ? error.message : String(error);
+  });
+  return () => {
+    closed = true;
+  };
+}
+
 // src/main.ts
 var VIEW = "color-sprint-view";
-var ColorSprint = class extends import_obsidian.Plugin {
+var ColorSprint = class extends import_obsidian2.Plugin {
   constructor() {
     super(...arguments);
     this.settings = { path: "Sync/Color Sprint.md", autoOpenDaily: true, dailyFolder: "Sync/Daily", dailyFormat: "MM-DD-YYYY", feedback: { ...DEFAULT_FEEDBACK }, voiceFolder: DEFAULT_VOICE_FOLDER };
@@ -2096,6 +2581,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
     this.reflectionQueue = Promise.resolve();
     this.reflectionModal = null;
     this.reflectionDrafts = /* @__PURE__ */ new Map();
+    this.primaryPhone = false;
     this.surfaces = /* @__PURE__ */ new Map();
     this.dailyRequest = 0;
     this.stopped = false;
@@ -2107,6 +2593,9 @@ var ColorSprint = class extends import_obsidian.Plugin {
     this.voicePoll = null;
   }
   async onload() {
+    const primary = this.app.loadLocalStorage?.("color-sprint.primary-phone");
+    this.primaryPhone = typeof primary === "boolean" ? primary : !!import_obsidian2.Platform?.isMobile;
+    this.syncStore = new SyncStore(this.app, (message) => new import_obsidian2.Notice(message, 1e4));
     try {
       const owner = this.app.loadLocalStorage?.("color-sprint.voice-capture");
       if (owner && typeof owner.path === "string" && typeof owner.seen === "boolean" && Number.isFinite(owner.requestedAt)) this.voiceOwner = { path: vaultPath(owner.path), seen: owner.seen, requestedAt: owner.requestedAt };
@@ -2136,6 +2625,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
     this.addCommand({ id: "open-digest", name: "Open daily digest / itinerary", callback: () => {
       void this.open({ tab: "Digest" }).catch((e) => this.error(e));
     } });
+    this.addCommand({ id: "sync-review", name: "Review sync and recover phone checkboxes", callback: () => this.openSyncReview() });
     this.addCommand({ id: "voice-reflection", name: "Capture a reflection (dictate or type)", callback: () => this.openVoiceReflection(localDay()) });
     this.addCommand({ id: "legacy-audio-reflection", name: "Open legacy audio reflections", callback: () => this.openLegacyVoiceReflection(localDay()) });
     this.addCommand({ id: "stop-voice-recording", name: "Stop and save audio recording", callback: () => {
@@ -2158,7 +2648,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       modal.save(() => this.createDaily(date), "Open day");
       modal.open();
     } });
-    const refresh = (0, import_obsidian.debounce)(() => this.refresh(), 120, true);
+    const refresh = (0, import_obsidian2.debounce)(() => this.refresh(), 120, true);
     const watched = (path) => path === this.settings.path || [...this.surfaces.values()].includes(path);
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (watched(file.path)) refresh();
@@ -2170,11 +2660,11 @@ var ColorSprint = class extends import_obsidian.Plugin {
       if (watched(file.path)) refresh();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, old) => {
-      if (this.voiceOwner?.path === old && file instanceof import_obsidian.TFile) this.rememberVoiceOwner({ ...this.voiceOwner, path: file.path });
-      if (old === this.settings.path && file instanceof import_obsidian.TFile) {
+      if (this.voiceOwner?.path === old && file instanceof import_obsidian2.TFile) this.rememberVoiceOwner({ ...this.voiceOwner, path: file.path });
+      if (old === this.settings.path && file instanceof import_obsidian2.TFile) {
         this.settings.path = file.path;
         void this.saveData(this.settings);
-        new import_obsidian.Notice("Tracker renamed. Update sprint-tracker properties in linked daily notes.");
+        new import_obsidian2.Notice("Tracker renamed. Update sprint-tracker properties in linked daily notes.");
         refresh();
       }
     }));
@@ -2211,7 +2701,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
   }
   file(path = this.settings.path) {
     const file = this.app.vault.getAbstractFileByPath(vaultPath(path));
-    if (!(file instanceof import_obsidian.TFile)) throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);
+    if (!(file instanceof import_obsidian2.TFile)) throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);
     return file;
   }
   async read(path = this.settings.path) {
@@ -2219,22 +2709,28 @@ var ColorSprint = class extends import_obsidian.Plugin {
   }
   change(transform, path = this.settings.path) {
     const operation = this.queue.then(async () => {
+      let checkpoint = null;
       await this.app.vault.process(this.file(path), (text) => {
         const next = transform(text);
         parseBoard(next);
+        if (this.primaryPhone) checkpoint = this.syncStore.prepare(path, text, next);
         return next;
       });
+      if (checkpoint) await this.syncStore.committed(checkpoint);
       this.refresh();
     });
     this.queue = operation.catch(() => {
     });
     return operation;
   }
+  openSyncReview(path = this.settings.path) {
+    new SyncReviewModal(this.app, this, path).open();
+  }
   refresh() {
     for (const surface of this.surfaces.keys()) void surface.refresh();
   }
   error(error) {
-    new import_obsidian.Notice(error instanceof Error ? error.message : String(error), 8e3);
+    new import_obsidian2.Notice(error instanceof Error ? error.message : String(error), 8e3);
   }
   attach(root, context = {}) {
     const path = vaultPath(context.tracker || this.settings.path);
@@ -2249,6 +2745,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
         this.refresh();
       },
       openVoiceReflection: (day) => this.openVoiceReflection(day),
+      openSyncReview: () => this.openSyncReview(path),
       editTask: (task) => new TaskModal(this.app, this, task, path).open(),
       editSubtask: (task, sub) => new SubtaskModal(this.app, this, task, sub, path).open(),
       editGoal: (goal) => new GoalModal(this.app, this, goal, path).open(),
@@ -2356,10 +2853,10 @@ var ColorSprint = class extends import_obsidian.Plugin {
         await waitForAudioEmbed(before, () => editor.getValue(), { cancelled: () => this.stopped });
         if (view?.file?.path === path && typeof view.save === "function") await view.save();
         this.rememberVoiceOwner(null);
-        new import_obsidian.Notice("Audio added to your journal. You can replay it from Voice reflections.");
+        new import_obsidian2.Notice("Audio added to your journal. You can replay it from Voice reflections.");
       } else {
         this.rememberVoiceOwner(null);
-        new import_obsidian.Notice("Stop requested. Obsidian is saving the audio as an attachment. Check the saved recording before starting another.");
+        new import_obsidian2.Notice("Stop requested. Obsidian is saving the audio as an attachment. Check the saved recording before starting another.");
       }
     } finally {
       this.voiceSaving = false;
@@ -2369,7 +2866,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
   openVoiceReflection(day) {
     if (this.reflectionModal) {
       this.reflectionModal.focusText();
-      new import_obsidian.Notice("A reflection draft is already open. Finish or close it before opening another day.");
+      new import_obsidian2.Notice("A reflection draft is already open. Finish or close it before opening another day.");
       return;
     }
     const path = voicePath(this.settings.voiceFolder, day);
@@ -2410,7 +2907,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
           if (!file) throw e;
         }
       }
-      if (!(file instanceof import_obsidian.TFile)) throw new Error("Reflection journal path is a folder, not a note.");
+      if (!(file instanceof import_obsidian2.TFile)) throw new Error("Reflection journal path is a folder, not a note.");
       await this.app.vault.process(file, (current) => appendReflection(current, draft));
       const latest = this.reflectionDrafts.get(path);
       if (latest?.id === draft.id && latest.text === draft.text) {
@@ -2420,7 +2917,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
         } catch {
         }
       }
-      new import_obsidian.Notice("Reflection saved as Markdown. Your vault sync can carry the text.");
+      new import_obsidian2.Notice("Reflection saved as Markdown. Your vault sync can carry the text.");
     });
     this.reflectionQueue = operation.catch(() => {
     });
@@ -2429,8 +2926,8 @@ var ColorSprint = class extends import_obsidian.Plugin {
   async readVoiceReflection(day) {
     const path = voicePath(this.settings.voiceFolder, day);
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (file && !(file instanceof import_obsidian.TFile)) throw new Error("Voice journal path is a folder, not a note.");
-    return { path, text: file instanceof import_obsidian.TFile ? await this.app.vault.read(file) : "" };
+    if (file && !(file instanceof import_obsidian2.TFile)) throw new Error("Voice journal path is a folder, not a note.");
+    return { path, text: file instanceof import_obsidian2.TFile ? await this.app.vault.read(file) : "" };
   }
   async openVoiceJournal(day, record2 = false) {
     if (this.voiceSaving) throw new Error("The previous recording is still saving. Keep its journal open until the audio player appears.");
@@ -2443,7 +2940,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       await this.ensureFolder(path);
       file = this.app.vault.getAbstractFileByPath(path) || await this.app.vault.create(path, record2 ? voiceScaffold(day) : reflectionScaffold(day));
     }
-    if (!(file instanceof import_obsidian.TFile)) throw new Error("Voice journal path is a folder, not a note.");
+    if (!(file instanceof import_obsidian2.TFile)) throw new Error("Voice journal path is a folder, not a note.");
     if (recorderState(bridge).recording === true && this.app.workspace.getActiveFile()?.path !== path) throw new Error("Stop and save the current recording before switching journals.");
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.openFile(file, { active: true, state: { mode: "source" } });
@@ -2460,7 +2957,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
       throw new Error("Journal opened, but the recorder could not start. Use Audio recorder: Start recording manually.");
     }
     this.syncVoiceControls();
-    new import_obsidian.Notice("Recorder requested. Allow microphone access if asked. Use the floating Stop & save button when finished.");
+    new import_obsidian2.Notice("Recorder requested. Allow microphone access if asked. Use the floating Stop & save button when finished.");
   }
   async openDailyMarkdown(path) {
     const file = this.file(path);
@@ -2483,21 +2980,21 @@ var ColorSprint = class extends import_obsidian.Plugin {
   async createNote(path = this.settings.path) {
     vaultPath(path);
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new import_obsidian.Notice("Note already exists. No content was replaced.");
+      new import_obsidian2.Notice("Note already exists. No content was replaced.");
       this.refresh();
       return;
     }
     await this.ensureFolder(path);
     await this.app.vault.create(path, starter());
     this.refresh();
-    new import_obsidian.Notice("Markdown starter created. Choose tasks in Pages to plan your first day.");
+    new import_obsidian2.Notice("Markdown starter created. Choose tasks in Pages to plan your first day.");
   }
   async frontmatter(path) {
     const source = this.app.vault.getAbstractFileByPath(path);
-    if (!(source instanceof import_obsidian.TFile)) return {};
+    if (!(source instanceof import_obsidian2.TFile)) return {};
     const text = await this.app.vault.read(source);
-    const info = (0, import_obsidian.getFrontMatterInfo)(text);
-    return info.exists ? (0, import_obsidian.parseYaml)(info.frontmatter) : {};
+    const info = (0, import_obsidian2.getFrontMatterInfo)(text);
+    return info.exists ? (0, import_obsidian2.parseYaml)(info.frontmatter) : {};
   }
   async openDailyFile(file) {
     const request = ++this.dailyRequest;
@@ -2514,9 +3011,9 @@ var ColorSprint = class extends import_obsidian.Plugin {
       await this.ensureFolder(path);
       file = await this.app.vault.create(path, dailyScaffold(date, this.settings.path, true));
     }
-    if (!(file instanceof import_obsidian.TFile)) throw new Error("Daily destination is a folder, not a note.");
+    if (!(file instanceof import_obsidian2.TFile)) throw new Error("Daily destination is a folder, not a note.");
     await this.app.workspace.getLeaf("tab").openFile(file);
-    new import_obsidian.Notice("Daily dashboard opened. Existing notes are preserved.");
+    new import_obsidian2.Notice("Daily dashboard opened. Existing notes are preserved.");
   }
   chooseNote() {
     const modal = new FormModal(this.app, "Choose your tracker note");
@@ -2530,7 +3027,7 @@ var ColorSprint = class extends import_obsidian.Plugin {
     modal.open();
   }
 };
-var SprintView = class extends import_obsidian.ItemView {
+var SprintView = class extends import_obsidian2.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -2565,7 +3062,7 @@ var SprintView = class extends import_obsidian.ItemView {
     if (this.surface) this.plugin.detach(this.surface);
   }
 };
-var SprintEmbed = class extends import_obsidian.MarkdownRenderChild {
+var SprintEmbed = class extends import_obsidian2.MarkdownRenderChild {
   constructor(el, plugin, source, sourcePath) {
     super(el);
     this.plugin = plugin;
@@ -2584,7 +3081,7 @@ var SprintEmbed = class extends import_obsidian.MarkdownRenderChild {
     const request = ++this.request;
     try {
       const fm = await this.plugin.frontmatter(this.sourcePath);
-      const config = this.source.trim() ? (0, import_obsidian.parseYaml)(this.source) : {};
+      const config = this.source.trim() ? (0, import_obsidian2.parseYaml)(this.source) : {};
       const link = embedLink(config, fm, this.plugin.settings.path);
       if (this.disposed || request !== this.request) return;
       if (this.surface) this.plugin.detach(this.surface);
@@ -2613,7 +3110,7 @@ var SprintEmbed = class extends import_obsidian.MarkdownRenderChild {
     if (this.surface) this.plugin.detach(this.surface);
   }
 };
-var SprintSettings = class extends import_obsidian.PluginSettingTab {
+var SprintSettings = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -2622,24 +3119,30 @@ var SprintSettings = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Daily dashboards" });
-    new import_obsidian.Setting(containerEl).setName("Open linked daily notes as a sprint").setDesc("Only notes with color-sprint: true and sprint-open: true auto-open. Set sprint-open: false to stay with the inline embed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenDaily).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("Open linked daily notes as a sprint").setDesc("Only notes with color-sprint: true and sprint-open: true auto-open. Set sprint-open: false to stay with the inline embed.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoOpenDaily).onChange(async (value) => {
       this.plugin.settings.autoOpenDaily = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian.Setting(containerEl).setName("Daily note folder").setDesc("Used by the daily dashboard creation commands.").addText((input) => input.setValue(this.plugin.settings.dailyFolder).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("Daily note folder").setDesc("Used by the daily dashboard creation commands.").addText((input) => input.setValue(this.plugin.settings.dailyFolder).onChange(async (value) => {
       try {
         this.plugin.settings.dailyFolder = vaultPath(value, true);
         await this.plugin.saveData(this.plugin.settings);
       } catch {
       }
     }));
-    new import_obsidian.Setting(containerEl).setName("Daily filename format").addDropdown((input) => input.addOptions({ "MM-DD-YYYY": "MM-DD-YYYY", "YYYY-MM-DD": "YYYY-MM-DD" }).setValue(this.plugin.settings.dailyFormat).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("Daily filename format").addDropdown((input) => input.addOptions({ "MM-DD-YYYY": "MM-DD-YYYY", "YYYY-MM-DD": "YYYY-MM-DD" }).setValue(this.plugin.settings.dailyFormat).onChange(async (value) => {
       this.plugin.settings.dailyFormat = value;
       await this.plugin.saveData(this.plugin.settings);
     }));
-    new import_obsidian.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
+    new import_obsidian2.Setting(containerEl).setName("Tracker note").setDesc(this.plugin.settings.path).addButton((button) => button.setButtonText("Choose note").onClick(() => this.plugin.chooseNote()));
+    containerEl.createEl("h2", { text: "Sync safety" });
+    new import_obsidian2.Setting(containerEl).setName("Primary phone checkpoints on this device").setDesc("Device-local preference. Enabled by default on mobile, off on desktop. Captures explicit checkbox actions, including unchecks. Use one primary phone; disagreements between primary devices need review.").addToggle((toggle) => toggle.setValue(this.plugin.primaryPhone).onChange((value) => {
+      this.plugin.app.saveLocalStorage("color-sprint.primary-phone", value);
+      this.plugin.primaryPhone = value;
+    }));
+    new import_obsidian2.Setting(containerEl).setName("Review sync and recovery").setDesc("Review pending planning proposals and restore phone checkbox states with a backup. Does not claim server synchronization.").addButton((button) => button.setButtonText("Sync review").onClick(() => this.plugin.openSyncReview()));
     containerEl.createEl("h2", { text: "Reflections \xB7 dictate or type" });
-    new import_obsidian.Setting(containerEl).setName("Reflection journal folder").setDesc("Dated Markdown text journals. The existing Voice folder is retained for compatibility; no audio recording is needed.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("Reflection journal folder").setDesc("Dated Markdown text journals. The existing Voice folder is retained for compatibility; no audio recording is needed.").addText((input) => input.setValue(this.plugin.settings.voiceFolder).onChange(async (value) => {
       try {
         const folder = vaultPath(value, true);
         await this.plugin.saveData({ ...this.plugin.settings, voiceFolder: folder });
@@ -2648,26 +3151,46 @@ var SprintSettings = class extends import_obsidian.PluginSettingTab {
       }
     }));
     containerEl.createEl("h2", { text: "Completion feedback" });
-    for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) new import_obsidian.Setting(containerEl).setName(label).setDesc(key === "motion" ? "Always respects system Reduce Motion." : key === "haptics" ? "Uses vibration only when the device exposes it." : "Quiet synthesized chimes after successful saves.").addToggle((toggle) => toggle.setValue(this.plugin.settings.feedback[key]).onChange(async (value) => {
+    for (const [key, label] of [["sound", "Completion sounds"], ["haptics", "Haptics when supported"], ["motion", "Completion animations"]]) new import_obsidian2.Setting(containerEl).setName(label).setDesc(key === "motion" ? "Always respects system Reduce Motion." : key === "haptics" ? "Uses vibration only when the device exposes it." : "Quiet synthesized chimes after successful saves.").addToggle((toggle) => toggle.setValue(this.plugin.settings.feedback[key]).onChange(async (value) => {
       this.plugin.settings.feedback[key] = value;
       await this.plugin.saveData(this.plugin.settings);
       this.plugin.refresh();
     }));
   }
 };
-var ReflectionModal = class extends import_obsidian.Modal {
+var SyncReviewModal = class extends import_obsidian2.Modal {
+  constructor(app, plugin, path) {
+    super(app);
+    this.setTitle("Color Sprint \xB7 Sync review");
+    const version = app.plugins?.plugins?.["system3-relay"]?.manifest?.version;
+    this.dispose = mountSyncPanel(this.contentEl, { primary: plugin.primaryPhone, relay: version ? `Relay ${version} detected locally. Check Relay's own Sync status for conflicts and transport state.` : "Relay status unavailable here. These are local recovery and planning checks, not server acknowledgments.", load: () => plugin.syncStore.review(path), baseline: (current) => plugin.syncStore.baseline(path, current), apply: async (proposal, current, keepCurrent) => {
+      await plugin.syncStore.apply(path, proposal, current, keepCurrent);
+      plugin.refresh();
+      new import_obsidian2.Notice("Planning proposal processed; current progress preserved. Relay delivery is not yet verified.");
+    }, restore: async (review) => {
+      await plugin.syncStore.restore(path, review.current, review.recovery);
+      plugin.refresh();
+      new import_obsidian2.Notice("Reviewed phone checkbox states restored. Backup kept; verify Relay on the other device.");
+    }, archive: () => plugin.syncStore.archiveUnconfirmed(), open: (target) => plugin.openNote(target) });
+  }
+  onClose() {
+    this.dispose();
+    this.contentEl.empty();
+  }
+};
+var ReflectionModal = class extends import_obsidian2.Modal {
   constructor(app, plugin, day, path, closed) {
     super(app);
     this.closed = closed;
     this.shouldRestoreSelection = false;
     this.setTitle(`Reflection \xB7 ${day}`);
-    this.component = new import_obsidian.Component();
+    this.component = new import_obsidian2.Component();
     this.component.load();
     this.dispose = mountReflectionPanel(this.contentEl, { draft: plugin.getReflectionDraft(path), draftChanged: (draft) => plugin.keepReflectionDraft(path, draft), save: (draft) => plugin.saveReflection(path, day, draft), read: async () => {
       const file = app.vault.getAbstractFileByPath(path);
-      if (file && !(file instanceof import_obsidian.TFile)) throw new Error("Reflection path is not a note.");
-      return { path, text: file instanceof import_obsidian.TFile ? await app.vault.read(file) : "" };
-    }, renderMarkdown: (note, body) => import_obsidian.MarkdownRenderer.render(app, note.text, body, note.path, this.component), open: async () => {
+      if (file && !(file instanceof import_obsidian2.TFile)) throw new Error("Reflection path is not a note.");
+      return { path, text: file instanceof import_obsidian2.TFile ? await app.vault.read(file) : "" };
+    }, renderMarkdown: (note, body) => import_obsidian2.MarkdownRenderer.render(app, note.text, body, note.path, this.component), open: async () => {
       await plugin.openVoiceJournal(day);
       this.close();
     }, saved: () => this.close() });
@@ -2682,7 +3205,7 @@ var ReflectionModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
-var VoiceReflectionModal = class extends import_obsidian.Modal {
+var VoiceReflectionModal = class extends import_obsidian2.Modal {
   constructor(app, plugin, day) {
     super(app);
     this.plugin = plugin;
@@ -2694,9 +3217,9 @@ var VoiceReflectionModal = class extends import_obsidian.Modal {
       this.close();
       await plugin.stopVoiceRecording();
     }, read: () => plugin.readVoiceReflection(day), renderMarkdown: async (note, body) => {
-      this.component = new import_obsidian.Component();
+      this.component = new import_obsidian2.Component();
       this.component.load();
-      await import_obsidian.MarkdownRenderer.render(app, note.text, body, note.path, this.component);
+      await import_obsidian2.MarkdownRenderer.render(app, note.text, body, note.path, this.component);
     }, open: async (record2) => {
       if (record2) requireRecorder(plugin.recorderBridge());
       this.close();
@@ -2710,7 +3233,7 @@ var VoiceReflectionModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
-var FormModal = class extends import_obsidian.Modal {
+var FormModal = class extends import_obsidian2.Modal {
   constructor(app, title) {
     super(app);
     this.setTitle(title);
@@ -2718,7 +3241,7 @@ var FormModal = class extends import_obsidian.Modal {
     this.errorEl = this.contentEl.createEl("p", { cls: "cs-form-error", attr: { role: "alert" } });
   }
   field(name, desc, value, change, type = "text") {
-    new import_obsidian.Setting(this.contentEl).setName(name).setDesc(desc).addText((input) => {
+    new import_obsidian2.Setting(this.contentEl).setName(name).setDesc(desc).addText((input) => {
       input.setValue(value);
       input.inputEl.type = type;
       input.inputEl.setAttribute("aria-label", name);
@@ -2726,17 +3249,17 @@ var FormModal = class extends import_obsidian.Modal {
     });
   }
   text(name, desc, value, change) {
-    new import_obsidian.Setting(this.contentEl).setName(name).setDesc(desc).addTextArea((input) => {
+    new import_obsidian2.Setting(this.contentEl).setName(name).setDesc(desc).addTextArea((input) => {
       input.setValue(value);
       input.inputEl.setAttribute("aria-label", name);
       input.onChange(change);
     });
   }
   select(name, desc, value, options, change) {
-    new import_obsidian.Setting(this.contentEl).setName(name).setDesc(desc).addDropdown((input) => input.addOptions(options).setValue(value).onChange(change));
+    new import_obsidian2.Setting(this.contentEl).setName(name).setDesc(desc).addDropdown((input) => input.addOptions(options).setValue(value).onChange(change));
   }
   save(action, label = "Save") {
-    new import_obsidian.Setting(this.contentEl).addButton((button) => button.setButtonText(label).setCta().onClick(async () => {
+    new import_obsidian2.Setting(this.contentEl).addButton((button) => button.setButtonText(label).setCta().onClick(async () => {
       button.setDisabled(true);
       this.errorEl.textContent = "";
       try {

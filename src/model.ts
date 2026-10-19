@@ -125,6 +125,11 @@ export function saveTimeBlock(text:string,block:TimeBlock):string{
   next=lineEdit(next,'Time Blocks',line=>{const p=splitCells(line);return p[0]===block.date&&p[1]===block.taskId;},()=>row,row);parseBoard(next);if(!entryFor(board,block.taskId,block.date))next=setEntry(next,block.date,block.taskId,false);return next;
 }
 export function clearTimeBlock(text:string,taskId:string,date:string):string{if(!parseBoard(text).timeBlocks.some(block=>block.taskId===taskId&&block.date===date))return text;return lineEdit(text,'Time Blocks',line=>{const p=splitCells(line);return p[0]===date&&p[1]===taskId;},()=>'', '');}
+export function saveFocusTarget(text:string,target:FocusTarget):string{return upsertPlanTable(text,'Focus Targets',FOCUS_TARGET_HEADER,3,[target.date,target.taskId,String(target.minutes)],p=>p[0]===target.date&&p[1]===target.taskId);}
+export function saveAvailability(text:string,block:Availability):string{return upsertPlanTable(text,'Availability',AVAILABILITY_HEADER,6,[block.id,block.label,block.days,block.start,block.end,block.timezone],p=>p[0]===block.id);}
+function upsertPlanTable(text:string,section:string,header:string,width:number,values:string[],matches:(parts:string[])=>boolean):string {
+  parseBoard(text);const nl=text.includes('\r\n')?'\r\n':'\n';let next=text;if(!ranges(text.split(/\r?\n/)).has(section))next+=`${nl}## ${section}${nl}${nl}${header}${nl}| ${Array(width).fill('---').join(' | ')} |${nl}`;const row=`| ${values.map(cell).join(' | ')} |`;next=lineEdit(next,section,line=>line.trim().startsWith('|')&&matches(splitCells(line)),()=>row,row);parseBoard(next);return next;
+}
 export function saveSubtask(text:string,sub:Subtask):string{
   let next=text;const nl=text.includes('\r\n')?'\r\n':'\n';if(!ranges(text.split(/\r?\n/)).has('Subtasks'))next+=`${nl}## Subtasks${nl}${nl}<!-- - [ ] ID | Task ID | Context or - | Minutes | Action | Done means | Completed date or - -->${nl}`;
   const row=`- [${sub.done?'x':' '}] ${[sub.id,sub.taskId,sub.context,String(sub.minutes),sub.title,sub.definition,sub.completed].map(cell).join(' | ')}`;

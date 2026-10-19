@@ -31,6 +31,7 @@ export interface Host {
   getFeedback?():FeedbackSettings;
   saveFeedback?(settings:FeedbackSettings):Promise<void>;
   openVoiceReflection?(day:string):void;
+  openSyncReview?():void;
 }
 type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History';
 export interface SurfaceOptions {day?:string;page?:string;tab?:Tab;embedded?:boolean}
@@ -56,7 +57,7 @@ export class Surface {
     if(!this.board)return;this.feedbackSettings=this.host.getFeedback?.()||this.feedbackSettings;const b=this.board;this.root.replaceChildren();this.timerDisplay=null;if(!b.timer)this.focusMode=false;this.root.classList.toggle('cs-focus-mode',!!b.timer&&this.focusMode);
     if(b.timer&&this.focusMode){this.renderFocusMode();this.tick();return;}if(this.roadmapSurface){this.renderRoadmap(this.roadmapSurface);return;}if(this.activitySurface){this.renderActivitySurface(this.activitySurface);return;}
     const head=this.el('header',this.root,'cs-header');const title=this.el('div',head);this.el('p',title,'cs-eyebrow','COLOR SPRINT · MARKDOWN FIRST');this.el('h1',title,'','A little more intentional.');
-    const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(tools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
+    const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');if(this.host.openSyncReview)this.button(tools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');this.button(tools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
     const nav=this.el('nav',this.root,'cs-tabs');nav.setAttribute('aria-label','Tracker views');
     if(this.host.openVoiceReflection)this.button(nav,'🎙',()=>this.host.openVoiceReflection!(this.day),'cs-voice-shortcut','Voice reflection');
     for(const tab of ['Today','Digest','Week','Pages','Goals','History'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}const sound=this.button(nav,this.feedbackSettings.sound?'♫':'♫̸',()=>this.setFeedback({sound:!this.feedbackSettings.sound}),'cs-sound-toggle',this.feedbackSettings.sound?'Mute completion sounds':'Enable completion sounds');sound.setAttribute('aria-pressed',String(this.feedbackSettings.sound));
@@ -68,7 +69,7 @@ export class Surface {
     if(this.effectsOpen)this.renderFeedbackSettings();
     if(b.timer)this.renderTimer();
     if(this.tab==='Today')this.renderToday();else if(this.tab==='Digest')this.renderDigest();else if(this.tab==='Week')this.renderWeek();else if(this.tab==='Pages')this.renderPages();else if(this.tab==='Goals')this.renderGoals();else this.renderHistory();
-    const mobileTools=this.el('footer',this.root,'cs-mobile-tools');this.button(mobileTools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(mobileTools,'Settings',()=>this.host.settings(),'cs-link');this.button(mobileTools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');if(this.host.openDaily)this.button(mobileTools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');
+    const mobileTools=this.el('footer',this.root,'cs-mobile-tools');this.button(mobileTools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(mobileTools,'Settings',()=>this.host.settings(),'cs-link');this.button(mobileTools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');if(this.host.openSyncReview)this.button(mobileTools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');if(this.host.openDaily)this.button(mobileTools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');
     this.tick();
   }
   private pages():string[]{return ['All',...new Set([...this.board!.tasks.map(t=>t.page),...this.board!.goals.map(g=>g.page)])];}

@@ -250,3 +250,7 @@
 .cs-reflection-help,.cs-reflection-existing { margin-top:14px; font-size:13px; }
 .cs-reflection summary { cursor:pointer; min-height:32px; }
 .cs-reflection .cs-voice-status,.cs-reflection .cs-voice-hint { font-size:12px; color:var(--text-muted); }
+.cs-sync-panel { font-size:14px; overflow-wrap:anywhere; }
+.cs-sync-panel button { min-height:44px; margin:4px 6px 4px 0; white-space:normal; }
+.cs-sync-proposal { padding:12px; margin:12px 0; border:1px solid var(--background-modifier-border); border-radius:12px; }
+.cs-sync-panel li { margin:6px 0; }

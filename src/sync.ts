@@ -1,0 +1,64 @@
+import { parseBoard, Board, setEntry, saveTask, saveSubtask, setGoal, saveTimeBlock, saveAvailability, saveFocusTarget, validDay } from './model';
+import { vaultPath } from './daily';
+
+export const SYNC_FOLDER='Color Sprint Sync';
+export function syncFolder(tracker:string):string {const parts=vaultPath(tracker).split('/');parts.pop();return [...parts,SYNC_FOLDER].join('/');}
+export interface PlanProposal {version:1;id:string;tracker:string;created:string;base:string;proposed:string}
+const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+export function syncNote(kind:'proposal'|'phone-checkpoint',value:unknown):string{return `# Color Sprint ${kind}\n\nKeep this record for recovery. Do not overwrite another device's record.\n\n\`\`\`json\n${JSON.stringify(value,null,2)}\n\`\`\`\n`;}
+function payload(text:string):unknown {if(text.length>4*1024*1024)throw new Error('Sync note exceeds the 4 MB safety limit.');const matches=[...text.matchAll(/^```json\r?\n([\s\S]*?)\r?\n```\s*$/gm)];if(matches.length!==1)throw new Error('Expected one JSON payload in the sync note.');return JSON.parse(matches[0][1]);}
+function validId(value:unknown):value is string{return typeof value==='string'&&/^[a-z0-9-]{6,100}$/.test(value);}
+export function parseProposal(text:string):PlanProposal {const p=payload(text) as PlanProposal;if(!p||p.version!==1||!validId(p.id)||typeof p.tracker!=='string'||typeof p.created!=='string'||!Number.isFinite(Date.parse(p.created))||typeof p.base!=='string'||typeof p.proposed!=='string')throw new Error('Invalid planning proposal.');vaultPath(p.tracker);parseBoard(p.base);parseBoard(p.proposed);return p;}
+export interface MergeResult {text:string;changes:string[];conflicts:string[];protected:string[]}
+// Only allowlisted planning fields may cross this boundary. A planner cannot
+// rewrite actual completion, evidence, session/workout/count history or timers.
+export function mergePlan(baseText:string,currentText:string,proposedText:string):MergeResult {
+  const base=parseBoard(baseText),proposed=parseBoard(proposedText);parseBoard(currentText);const result:MergeResult={text:currentText,changes:[],conflicts:[],protected:[]};
+  type Row=Record<string,unknown>;
+  const mergeRows=(name:keyof Board,fields:string[],key:(row:Row)=>string,save:(text:string,row:any)=>string,defaults:Row={})=>{
+    const before=base[name] as unknown as Row[],after=proposed[name] as unknown as Row[];
+    for(const old of before)if(!after.some(row=>key(row)===key(old)))result.conflicts.push(`${name}/${key(old)}: deletion requires review; retained.`);
+    for(const row of after){const id=key(row),old=before.find(item=>key(item)===id),now=(parseBoard(result.text)[name] as unknown as Row[]).find(item=>key(item)===id);const next:Row=now?{...now}:{...row,...defaults};const labels:string[]=[];
+      // Identity fields are carried from the proposed row, not arbitrary data.
+      if(old&&!now){if(fields.some(field=>!equal(old[field],row[field])))result.conflicts.push(`${name}/${id}: row was removed on this device; retained removal.`);continue;}
+      for(const field of Object.keys(row))if(!fields.includes(field)&&!['id','date','taskId'].includes(field)&&!equal(old?.[field],row[field])&&!(old===undefined&&equal(row[field],defaults[field])))result.protected.push(`${name}/${id}/${field}: actual progress preserved.`);
+      for(const field of fields){if(equal(old?.[field],row[field]))continue;if(now&&!equal(now[field],old?.[field])&&!equal(now[field],row[field])){result.conflicts.push(`${name}/${id}/${field}: changed on both sides. Current: ${JSON.stringify(now[field])}; proposed: ${JSON.stringify(row[field])}`);continue;}next[field]=row[field];if(!now||!equal(now[field],row[field]))labels.push(`${name}/${id}/${field}: ${JSON.stringify(now?.[field])??'(new)'} → ${JSON.stringify(row[field])}`);}
+      if(!now)labels.push(`${name}/${id}: new planned row`);if(!labels.length)continue;
+      try{const text=save(result.text,next);parseBoard(text);result.text=text;result.changes.push(...labels);}catch(error){result.conflicts.push(`${name}/${id}: ${error instanceof Error?error.message:String(error)}`);}
+    }
+  };
+  const id=(row:Row)=>String(row.id),dateId=(row:Row)=>`${row.date}/${row.taskId}`;
+  mergeRows('tasks',['title','color','page','kind','repeat','minutes','definition'],id,saveTask);
+  mergeRows('entries',['detail'],dateId,(text,row)=>setEntry(text,row.date,row.taskId,row.done,row.detail),{done:false});
+  mergeRows('goals',['due','page','title'],id,setGoal,{done:false,evidence:''});
+  mergeRows('subtasks',['taskId','context','minutes','title','definition'],id,saveSubtask,{done:false,completed:'-'});
+  // Time blocks are one unit: never splice a new start with an old end/event ID.
+  for(const old of base.timeBlocks)if(!proposed.timeBlocks.some(row=>dateId(row as unknown as Row)===dateId(old as unknown as Row)))result.conflicts.push(`timeBlocks/${old.date}/${old.taskId}: deletion requires review; retained.`);
+  for(const row of proposed.timeBlocks){const old=base.timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId),now=parseBoard(result.text).timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId);if(equal(old,row))continue;if(!equal(now,old)&&!equal(now,row)){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: changed on both sides.`);continue;}if(equal(now,row))continue;try{result.text=saveTimeBlock(result.text,row);result.changes.push(`timeBlocks/${row.date}/${row.taskId}`);}catch(error){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: ${error instanceof Error?error.message:String(error)}`);}}
+  mergeRows('availability',['label','days','start','end','timezone'],id,saveAvailability);
+  mergeRows('focusTargets',['minutes'],dateId,saveFocusTarget);
+  if(base.start!==proposed.start||base.end!==proposed.end)result.conflicts.push('Sprint date-range changes require review; current dates retained.');
+  for(const field of ['timer','sessions','workoutLogs','quickCounts','reflections'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
+  parseBoard(result.text);return result;
+}
+
+export type PhoneCheck={kind:'entry';date:string;id:string;done:boolean;detail?:string}|{kind:'subtask';id:string;done:boolean;completed:string}|{kind:'goal';id:string;done:boolean;evidence:string};
+export interface PhoneCheckpoint {version:1;id:string;tracker:string;device:string;sequence:number;created:string;checks:PhoneCheck[]}
+export function checkboxChanges(before:string,after:string):PhoneCheck[]{const b=parseBoard(before),a=parseBoard(after);const checks:PhoneCheck[]=[];
+  for(const row of a.entries){const old=b.entries.find(e=>e.date===row.date&&e.taskId===row.taskId);if((old&&old.done!==row.done)||(!old&&row.done))checks.push({kind:'entry',date:row.date,id:row.taskId,done:row.done,detail:row.detail});}
+  for(const row of a.subtasks){const old=b.subtasks.find(e=>e.id===row.id);if((old&&(old.done!==row.done||old.completed!==row.completed))||(!old&&row.done))checks.push({kind:'subtask',id:row.id,done:row.done,completed:row.completed});}
+  for(const row of a.goals){const old=b.goals.find(e=>e.id===row.id);if((old&&(old.done!==row.done||old.evidence!==row.evidence))||(!old&&row.done))checks.push({kind:'goal',id:row.id,done:row.done,evidence:row.evidence});}return checks;
+}
+export function parseCheckpoint(text:string):PhoneCheckpoint {return validateCheckpoint(payload(text));}
+export function validateCheckpoint(value:unknown):PhoneCheckpoint {const p=value as PhoneCheckpoint;if(!p||p.version!==1||!validId(p.id)||!validId(p.device)||typeof p.tracker!=='string'||!Number.isSafeInteger(p.sequence)||p.sequence<1||typeof p.created!=='string'||!Number.isFinite(Date.parse(p.created))||!Array.isArray(p.checks)||p.checks.length>1000)throw new Error('Invalid phone checkpoint.');vaultPath(p.tracker);for(const c of p.checks){if(!c||typeof c.id!=='string'||!/^[-a-z0-9]+$/.test(c.id)||typeof c.done!=='boolean'||!['entry','subtask','goal'].includes(c.kind)||(c.kind==='entry'&&(!validDay(c.date)||(c.detail!==undefined&&typeof c.detail!=='string')))||(c.kind==='subtask'&&c.completed!=='-'&&!validDay(c.completed))||(c.kind==='goal'&&typeof c.evidence!=='string'))throw new Error('Invalid phone checkpoint row.');}return p;}
+export function recoverPhoneChecks(current:string,records:PhoneCheckpoint[]):MergeResult {
+  const result:MergeResult={text:current,changes:[],conflicts:[],protected:[]};parseBoard(current);const latest=new Map<string,Map<string,{record:PhoneCheckpoint;check:PhoneCheck}>>();
+  for(const record of records){validateCheckpoint(record);for(const check of record.checks){const key=`${check.kind}/${check.kind==='entry'?check.date+'/':''}${check.id}`;let devices=latest.get(key);if(!devices){devices=new Map();latest.set(key,devices);}const old=devices.get(record.device);if(!old||old.record.sequence<record.sequence)devices.set(record.device,{record,check});else if(old.record.sequence===record.sequence&&!equal(old.check,check))result.conflicts.push(`${key}: duplicate phone sequence disagrees; requires review.`);}}
+  for(const [key,devices] of latest){const values=[...devices.values()];if(values.some(value=>!equal(value.check,values[0].check))||result.conflicts.some(issue=>issue.startsWith(key+':'))){result.conflicts.push(`${key}: primary mobile devices disagree; no automatic choice.`);continue;}const check=values[0].check,board=parseBoard(result.text);try{let next=result.text;
+      if(check.kind==='entry'){if(!board.tasks.some(t=>t.id===check.id))throw new Error('Task removed; restore its definition first.');const existing=board.entries.find(row=>row.date===check.date&&row.taskId===check.id);if(existing?.done===check.done)continue;next=setEntry(next,check.date,check.id,check.done,existing?.detail??check.detail);}
+      if(check.kind==='subtask'){const row=board.subtasks.find(s=>s.id===check.id);if(!row)throw new Error('Subtask removed; restore its definition first.');if(row.done===check.done&&row.completed===check.completed)continue;next=saveSubtask(next,{...row,done:check.done,completed:check.completed});}
+      if(check.kind==='goal'){const row=board.goals.find(g=>g.id===check.id);if(!row)throw new Error('Goal removed; restore its definition first.');if(row.evidence&&check.evidence&&row.evidence!==check.evidence)result.protected.push(`${key}: current evidence kept; alternate evidence remains in the phone checkpoint.`);const evidence=row.evidence||check.evidence;if(row.done===check.done&&row.evidence===evidence)continue;next=setGoal(next,{...row,done:check.done,evidence});}
+      if(next!==result.text){result.text=next;result.changes.push(`${key} → ${check.done?'checked':'unchecked'}`);}
+    }catch(error){result.conflicts.push(`${key}: ${error instanceof Error?error.message:String(error)}`);}}
+  return result;
+}

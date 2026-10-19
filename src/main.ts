@@ -1,4 +1,4 @@
-import { App, Component, ItemView, MarkdownRenderChild, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce } from 'obsidian';
+import { App, Component, ItemView, MarkdownRenderChild, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce, Platform } from 'obsidian';
 import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay, timeBlockFor, saveTimeBlock, clearTimeBlock } from './model';
 import { starter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
@@ -8,6 +8,9 @@ import { DEFAULT_VOICE_FOLDER, RecorderBridge, recorderState, requireRecorder, v
 import { requireRecording, waitForAudioEmbed, mountRecordingBar, VoiceState } from './voice';
 import type { MarkdownView } from 'obsidian';
 import { ReflectionDraft, newReflectionDraft, reflectionDraft, reflectionScaffold, appendReflection, mountReflectionPanel } from './reflection';
+import { SyncStore } from './sync-store';
+import { mountSyncPanel } from './sync-panel';
+import { PhoneCheckpoint } from './sync';
 
 const VIEW='color-sprint-view';
 interface Settings {path:string;autoOpenDaily:boolean;dailyFolder:string;dailyFormat:string;feedback:FeedbackSettings;voiceFolder:string}
@@ -17,6 +20,7 @@ export default class ColorSprint extends Plugin {
   private queue:Promise<void>=Promise.resolve();
   private reflectionQueue:Promise<void>=Promise.resolve();private reflectionModal:ReflectionModal|null=null;
   private reflectionDrafts=new Map<string,ReflectionDraft>();
+  syncStore!:SyncStore;primaryPhone=false;
   private surfaces=new Map<Surface,string>();
   private dailyRequest=0;
   private stopped=false;
@@ -25,6 +29,7 @@ export default class ColorSprint extends Plugin {
   private voiceSaving=false;private voiceStopPromise:Promise<void>|null=null;
   private voiceControls:ReturnType<typeof mountRecordingBar>|null=null;private voicePoll:ReturnType<typeof setInterval>|null=null;
   async onload():Promise<void>{
+    const primary=this.app.loadLocalStorage?.('color-sprint.primary-phone');this.primaryPhone=typeof primary==='boolean'?primary:!!Platform?.isMobile;this.syncStore=new SyncStore(this.app,message=>new Notice(message,10000));
     try{const owner=this.app.loadLocalStorage?.('color-sprint.voice-capture');if(owner&&typeof owner.path==='string'&&typeof owner.seen==='boolean'&&Number.isFinite(owner.requestedAt))this.voiceOwner={path:vaultPath(owner.path),seen:owner.seen,requestedAt:owner.requestedAt};}catch{}
     const saved=await this.loadData();if(saved&&typeof saved.path==='string')this.settings.path=saved.path;
     if(typeof saved?.autoOpenDaily==='boolean')this.settings.autoOpenDaily=saved.autoOpenDaily;
@@ -38,6 +43,7 @@ export default class ColorSprint extends Plugin {
     this.addRibbonIcon('calendar-check','Open Color Sprint',()=>{void this.open().catch(e=>this.error(e));});
     this.addCommand({id:'open',name:'Open tracker',callback:()=>{void this.open().catch(e=>this.error(e));}});
     this.addCommand({id:'open-digest',name:'Open daily digest / itinerary',callback:()=>{void this.open({tab:'Digest'}).catch(e=>this.error(e));}});
+    this.addCommand({id:'sync-review',name:'Review sync and recover phone checkboxes',callback:()=>this.openSyncReview()});
     this.addCommand({id:'voice-reflection',name:'Capture a reflection (dictate or type)',callback:()=>this.openVoiceReflection(localDay())});
     this.addCommand({id:'legacy-audio-reflection',name:'Open legacy audio reflections',callback:()=>this.openLegacyVoiceReflection(localDay())});
     this.addCommand({id:'stop-voice-recording',name:'Stop and save audio recording',callback:()=>{void this.stopVoiceRecording().catch(e=>this.error(e));}});
@@ -63,8 +69,9 @@ export default class ColorSprint extends Plugin {
   file(path=this.settings.path):TFile{const file=this.app.vault.getAbstractFileByPath(vaultPath(path));if(!(file instanceof TFile))throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);return file;}
   async read(path=this.settings.path):Promise<string>{return this.app.vault.read(this.file(path));}
   change(transform:(text:string)=>string,path=this.settings.path):Promise<void>{
-    const operation=this.queue.then(async()=>{await this.app.vault.process(this.file(path),text=>{const next=transform(text);parseBoard(next);return next;});this.refresh();});this.queue=operation.catch(()=>{});return operation;
+    const operation=this.queue.then(async()=>{let checkpoint:PhoneCheckpoint|null=null;await this.app.vault.process(this.file(path),text=>{const next=transform(text);parseBoard(next);if(this.primaryPhone)checkpoint=this.syncStore.prepare(path,text,next);return next;});if(checkpoint)await this.syncStore.committed(checkpoint);this.refresh();});this.queue=operation.catch(()=>{});return operation;
   }
+  openSyncReview(path=this.settings.path):void{new SyncReviewModal(this.app,this,path).open();}
   refresh():void{for(const surface of this.surfaces.keys())void surface.refresh();}
   error(error:unknown):void{new Notice(error instanceof Error?error.message:String(error),8000);}
   attach(root:HTMLElement,context:Context={}):Surface {
@@ -74,6 +81,7 @@ export default class ColorSprint extends Plugin {
       read:()=>this.read(path),change,
       getFeedback:()=>({...this.settings.feedback}),saveFeedback:async prefs=>{await this.saveData({...this.settings,feedback:prefs});this.settings.feedback={...prefs};this.refresh();},
       openVoiceReflection:day=>this.openVoiceReflection(day),
+      openSyncReview:()=>this.openSyncReview(path),
       editTask:task=>new TaskModal(this.app,this,task,path).open(),editSubtask:(task,sub)=>new SubtaskModal(this.app,this,task,sub,path).open(),editGoal:goal=>new GoalModal(this.app,this,goal,path).open(),
       editEntry:(task,day)=>{void this.read(path).then(text=>new EntryModal(this.app,this,task,day,text,path).open()).catch(e=>this.error(e));},
       schedule:(task,day,detail)=>change(text=>{const board=parseBoard(text);if(board.entries.some(e=>e.taskId===task.id&&e.date===day))throw new Error('Task already has an entry on this day.');return setEntry(text,day,task.id,false,detail);}),scheduleGroup:(group,day)=>change(text=>scheduleGroup(text,group,day)),
@@ -191,9 +199,15 @@ class SprintSettings extends PluginSettingTab {
     new Setting(containerEl).setName('Daily note folder').setDesc('Used by the daily dashboard creation commands.').addText(input=>input.setValue(this.plugin.settings.dailyFolder).onChange(async value=>{try{this.plugin.settings.dailyFolder=vaultPath(value,true);await this.plugin.saveData(this.plugin.settings);}catch{}}));
     new Setting(containerEl).setName('Daily filename format').addDropdown(input=>input.addOptions({'MM-DD-YYYY':'MM-DD-YYYY','YYYY-MM-DD':'YYYY-MM-DD'}).setValue(this.plugin.settings.dailyFormat).onChange(async value=>{this.plugin.settings.dailyFormat=value;await this.plugin.saveData(this.plugin.settings);}));
     new Setting(containerEl).setName('Tracker note').setDesc(this.plugin.settings.path).addButton(button=>button.setButtonText('Choose note').onClick(()=>this.plugin.chooseNote()));
+    containerEl.createEl('h2',{text:'Sync safety'});new Setting(containerEl).setName('Primary phone checkpoints on this device').setDesc('Device-local preference. Enabled by default on mobile, off on desktop. Captures explicit checkbox actions, including unchecks. Use one primary phone; disagreements between primary devices need review.').addToggle(toggle=>toggle.setValue(this.plugin.primaryPhone).onChange(value=>{this.plugin.app.saveLocalStorage('color-sprint.primary-phone',value);this.plugin.primaryPhone=value;}));new Setting(containerEl).setName('Review sync and recovery').setDesc('Review pending planning proposals and restore phone checkbox states with a backup. Does not claim server synchronization.').addButton(button=>button.setButtonText('Sync review').onClick(()=>this.plugin.openSyncReview()));
     containerEl.createEl('h2',{text:'Reflections · dictate or type'});new Setting(containerEl).setName('Reflection journal folder').setDesc('Dated Markdown text journals. The existing Voice folder is retained for compatibility; no audio recording is needed.').addText(input=>input.setValue(this.plugin.settings.voiceFolder).onChange(async value=>{try{const folder=vaultPath(value,true);await this.plugin.saveData({...this.plugin.settings,voiceFolder:folder});this.plugin.settings.voiceFolder=folder;}catch{}}));
     containerEl.createEl('h2',{text:'Completion feedback'});for(const [key,label] of [['sound','Completion sounds'],['haptics','Haptics when supported'],['motion','Completion animations']] as const)new Setting(containerEl).setName(label).setDesc(key==='motion'?'Always respects system Reduce Motion.':key==='haptics'?'Uses vibration only when the device exposes it.':'Quiet synthesized chimes after successful saves.').addToggle(toggle=>toggle.setValue(this.plugin.settings.feedback[key]).onChange(async value=>{this.plugin.settings.feedback[key]=value;await this.plugin.saveData(this.plugin.settings);this.plugin.refresh();}));
   }
+}
+class SyncReviewModal extends Modal {
+  private dispose:()=>void;
+  constructor(app:App,plugin:ColorSprint,path:string){super(app);this.setTitle('Color Sprint · Sync review');const version=(app as App&{plugins?:{plugins?:Record<string,{manifest?:{version?:string}}>}}).plugins?.plugins?.['system3-relay']?.manifest?.version;this.dispose=mountSyncPanel(this.contentEl,{primary:plugin.primaryPhone,relay:version?`Relay ${version} detected locally. Check Relay's own Sync status for conflicts and transport state.`:'Relay status unavailable here. These are local recovery and planning checks, not server acknowledgments.',load:()=>plugin.syncStore.review(path),baseline:current=>plugin.syncStore.baseline(path,current),apply:async(proposal,current,keepCurrent)=>{await plugin.syncStore.apply(path,proposal,current,keepCurrent);plugin.refresh();new Notice('Planning proposal processed; current progress preserved. Relay delivery is not yet verified.');},restore:async review=>{await plugin.syncStore.restore(path,review.current,review.recovery);plugin.refresh();new Notice('Reviewed phone checkbox states restored. Backup kept; verify Relay on the other device.');},archive:()=>plugin.syncStore.archiveUnconfirmed(),open:target=>plugin.openNote(target)});}
+  onClose():void{this.dispose();this.contentEl.empty();}
 }
 class ReflectionModal extends Modal {
   private component:Component;private dispose:()=>void;
