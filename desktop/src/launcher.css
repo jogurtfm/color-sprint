@@ -32,6 +32,19 @@
 .launcher-config-row button,.launcher-config-buttons button{font-size:8px;min-height:29px;border-radius:14px}
 .launcher-config-buttons{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
 .launcher-warning{font-size:11px;color:#f1b37c}
+/* Programs menu: flat controls, etched cyan frame, no perspective hit targets. */
+.programs-menu{width:min(540px,calc(100vw - 48px));max-height:calc(100dvh - 80px);padding:22px;border:1px solid #4e8497;border-radius:10px;background:#081925;color:#c4e2ec;box-shadow:0 18px 70px #0009;overflow:auto;font:13px 'Segoe UI',sans-serif;transform:none}
+.programs-menu::backdrop{background:#020b14ad;backdrop-filter:blur(4px)}
+.programs-menu{box-sizing:border-box}.programs-menu[open]{display:flex;flex-direction:column}.programs-menu>*{flex-shrink:0}.programs-menu .programs-list{flex-shrink:1;min-height:80px}.programs-menu input:focus-visible{outline:1px solid #8acfe5;outline-offset:2px}.programs-list>button{letter-spacing:0}
+.programs-menu header{display:flex;align-items:center;justify-content:space-between;gap:15px}.programs-menu h2{margin:0;font:13px Consolas,monospace;letter-spacing:3px;color:#a6dbe8}
+.programs-menu header button{min-width:40px;min-height:40px;padding:0;font-size:25px;border:0;background:transparent;color:#90b7c7}
+.programs-help{margin:4px 0 18px;color:#81a3b3;font-size:12px}.programs-menu input{width:100%;box-sizing:border-box;min-height:44px;background:#04111d;border:1px solid #345e71;border-radius:4px;color:#d2edf5;padding:10px 12px;font:14px 'Segoe UI',sans-serif}
+.programs-list{display:grid;gap:5px;margin-top:14px;max-height:44dvh;overflow:auto;scrollbar-width:thin}.programs-list>button{display:flex;align-items:center;gap:12px;min-height:52px;padding:7px 11px;border:1px solid #35586a66;border-radius:4px;background:#0e263455;color:#cee7ef;text-align:left;box-shadow:none;transform:none}
+.programs-list>button:hover,.programs-list>button:focus-visible{background:#193d50;border-color:#83cee2;outline:1px solid #83cee2;outline-offset:-1px}.programs-list strong{font-size:13px;font-weight:500;flex:1}.programs-list small{font:10px Consolas,monospace;color:#89afbf}
+.programs-icon{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;font:12px Consolas,monospace;color:#8cc5d7;border:1px solid #41687b66;border-radius:5px;background:#071521}.programs-icon img{width:24px;height:24px;object-fit:contain}
+.programs-status,.programs-empty{font-size:12px;color:#9eb5bf}.programs-status:empty{display:none}.programs-menu footer{display:flex;justify-content:space-between;gap:8px;margin-top:18px;padding-top:12px;border-top:1px solid #284756}
+.programs-menu footer button{min-height:40px;padding:6px 10px;color:#a9d2df;background:transparent;border:1px solid #42677b;border-radius:4px;font-size:11px}
+.programs-spotify{margin:12px 0 18px;padding:12px;border:1px solid #365b6b;border-radius:5px;background:#0c263044}.programs-spotify h3{font:9px Consolas,monospace;letter-spacing:1.5px;color:#86b9ac;margin:0 0 9px}.programs-spotify>strong{font-size:14px;font-weight:500}.programs-spotify>p{font-size:11px;color:#8db1bd;margin:5px 0 10px}.programs-transport{display:flex;gap:6px}.programs-transport button{min-width:42px;min-height:38px;font-size:16px;padding:3px 7px;border:1px solid #456c7f;background:#0b2330;color:#b6dfe9;border-radius:4px}.programs-transport button:disabled{opacity:.3}.programs-transport button:last-child{margin-left:auto}
 /* The full visor is a working view: preserve contrast even while idle. Only floating widgets fade. */
 body[data-mode="hud"] .panel{background:rgba(4,15,24,var(--visor-glass,.88));border-color:#538999a6}
 body[data-mode="hud"] .panel:hover,body[data-mode="hud"] .panel:focus-within{background:rgba(4,15,24,var(--visor-glass-hover,.95))}

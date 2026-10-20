@@ -16,6 +16,7 @@ await cp(path.join(root,'dist'),path.join(appDir,'dist'),{recursive:true});
 await writeFile(path.join(appDir,'package.json'),JSON.stringify({name:pkg.name,productName:pkg.productName,version:pkg.version,main:pkg.main},null,2));
 await copyFile(path.join(root,'README.md'),path.join(folder,'START HERE.md'));
 await copyFile(path.join(root,'VALIDATION.md'),path.join(folder,'VALIDATION.md'));
+await copyFile(path.join(root,'PROGRAMS.md'),path.join(folder,'PROGRAMS.md'));
 await copyFile(path.join(root,'WINDOWS-THEME.md'),path.join(folder,'WINDOWS-THEME.md'));
 await copyFile(path.join(root,'../QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE.md'));
 await copyFile(path.join(root,'../OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));await copyFile(path.join(root,'../EFFORT.md'),path.join(folder,'EFFORT.md'));await copyFile(path.join(root,'../REFLECTION-KEYBOARD.md'),path.join(folder,'REFLECTION-KEYBOARD.md'));

@@ -1,4 +1,9 @@
-# Color Sprint HUD · Windows preview 0.15.1
+# Color Sprint HUD · Windows preview 0.16.0
+
+Programs menu replaces the ChatGPT launcher; Discord, HandBrake, OBS Studio and
+Spotify are included. Spotify local playback controls live inside Programs.
+Rank/XP now has a distinct next-rank bar, separate from task-completion progress.
+See [Programs guide](PROGRAMS.md). Discord personal inbox remains deferred.
 
 Includes companion plugin 0.16.1. Today focus stays centered on the screen while
 scrolling; GPU bounds refresh correctly. A clean rank readout sits in daily progress,

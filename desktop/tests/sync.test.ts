@@ -7,7 +7,10 @@ import {VaultStore} from '../src/core';
 import {EdgeReveal} from '../src/reveal';
 import {rimBounds} from '../src/rim';
 import {starter} from '../../src/starter';
-import {setEntry} from '../../src/model';
+import {setEntry,setTaskCompletion} from '../../src/model';
+import {dailyScore} from '../../src/effort';
+
+test('atomic checkbox and rated-finish sync recalculate rank and XP from the latest Markdown without a second ledger',async()=>{const dir=await folder(),filename=path.join(dir,'Tracker.md'),day='2026-10-18',base=starter(day);await writeFile(filename,base);const store=new VaultStore(filename,path.join(dir,'backups'));await store.load();const seen:number[]=[],sync=new TrackerSync(()=>store,()=>seen.push(dailyScore(store.state.board!,day).points),10000,10);sync.start();try{const replacement=path.join(dir,'incoming.md');await writeFile(replacement,setTaskCompletion(base,day,'make-bed',true,'full'));await rename(replacement,filename);await until(()=>dailyScore(store.state.board!,day).points===15);assert.equal(dailyScore(store.state.board!,day).rank,'C');assert.equal(dailyScore(store.state.board!,day).remaining,25);await writeFile(replacement,base);await rename(replacement,filename);await until(()=>dailyScore(store.state.board!,day).points===0);assert.equal(dailyScore(store.state.board!,day).rank,'D');assert.ok(seen.includes(15));}finally{sync.stop();}});
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function folder(){await mkdir('test-results',{recursive:true});return mkdtemp(path.resolve('test-results','sync-'));}
 async function until(check:()=>boolean){const end=Date.now()+2500;while(!check()){if(Date.now()>end)throw new Error('Sync did not observe fixture update');await delay(15);}}

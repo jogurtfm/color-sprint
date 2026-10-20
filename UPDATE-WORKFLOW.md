@@ -41,8 +41,8 @@ For the existing version-scoped plugin release helper:
 That legacy publisher retains its 0.11.0 guard. The explicitly approved two-build
 workflow is `scripts/publish-queue-release.mjs` (Node 24+ with `--use-system-ca`).
 It requires a reviewed commit and validated `--plugin-zip` / `--hud-zip` paths;
-without `--publish` it is read-only. It never commits automatically. Tags are
-`0.16.1` for BRAT and `hud-0.15.1` for Windows. The desktop release is explicitly
+without `--publish` it is read-only. It never commits automatically. For this Windows-only update pass `--hud-only --hud-zip EXPLICIT_ZIP`.
+The Windows tag is `hud-0.16.0`; the existing BRAT release remains `0.16.1`. The desktop release is explicitly
 not marked Latest, so it cannot replace BRAT's three plugin assets.
 
 ## Updates from this chat
@@ -85,7 +85,7 @@ Deployment-only checks (Node 24+): `node --test tests/local-deploy.test.mjs`.
 5. Read back the remote commit/release and verify asset hashes before saying shipped.
 
 Previous baseline: plugin 0.11.0 at `f59aeb2`; local HUD 0.10.2.
-Approved current release scope: plugin 0.16.1 and HUD 0.15.1 with viewport anchoring, integrated typographic ranks, UI sounds and restrained rank-up feedback, retaining rated finishes and personal effort
+Approved current release scope: HUD 0.16.0 only; plugin remains 0.16.1. Programs, local Spotify controls and a shared-source XP bar retain rated finishes and personal effort
 profiles and daily arcade ranks, retaining obligations and date moves. Public release read-back, not this document, establishes
 shipping. Publishing does not install over a running app or modify a live vault.
 

@@ -1,7 +1,9 @@
 # Color Sprint
 
-Current source: plugin **0.16.1** / Windows HUD **0.15.1** uses restrained cyan rank
+Current source: plugin **0.16.1** / Windows HUD **0.16.0** uses restrained cyan rank
 typography, integrated daily progress, UI sound cues and viewport-centered HUD focus. See [Arcade guide](ARCADE.md).
+Windows adds Programs (Discord, HandBrake, OBS, Spotify), local Spotify transport
+controls and a separate XP-to-next-rank bar. See [Programs guide](desktop/PROGRAMS.md).
 Also includes red 😴, yellow 🙂
 and green 😤 rated finishes with point previews, retaining the reflection keyboard
 fix, effort profiles, ranks, Quick Queue and obligations. See [Rated finishes](RATED-FINISH.md)
