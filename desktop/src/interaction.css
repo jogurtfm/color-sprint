@@ -52,7 +52,3 @@ body[data-mode="hud"] .viewport-focus .core-readout{transform:none!important}
 @media(max-height:620px){body[data-mode="hud"] .viewport-focus{--focus-size:200px}body[data-mode="hud"] .viewport-focus .sector-caption{display:none}body[data-mode="hud"] .viewport-focus>.neural-panel{height:58px}}
 body[data-mode="hud"] .viewport-focus .ring-stage{transform-style:flat;isolation:isolate}
 body[data-mode="hud"] .viewport-focus .core-readout{z-index:3}
-body[data-mode="hud"] .viewport-focus .focus-rank{position:absolute;bottom:calc(50% + var(--focus-size)/2 + 30px);left:0;right:0;display:grid;justify-items:center;pointer-events:auto}
-body[data-mode="hud"] .focus-rank .cs-arcade{margin:0;padding:0;border:0;background:transparent;box-shadow:none}
-body[data-mode="hud"] .focus-rank .cs-rank-sprite{width:clamp(64px,calc((100dvh - var(--focus-size))/2 - 160px),128px);height:clamp(64px,calc((100dvh - var(--focus-size))/2 - 160px),128px);min-width:0}
-body[data-mode="hud"] .focus-rank .cs-rank-control small{font-size:13px;color:#ffe09b}

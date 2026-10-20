@@ -18,7 +18,7 @@ async function request(url,options={}){let r;try{r=await fetch(url,{...options,h
 const account=await request('https://api.github.com/user'),repo=await request(api);
 if(account.login!=='jogurtfm'||repo.private||!repo.permissions?.push)throw new Error('Expected public repository and authenticated account were not confirmed.');
 const plugin=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8')),hud=JSON.parse(await readFile(path.join(root,'desktop/package.json'),'utf8'));
-if(plugin.version!=='0.16.0'||hud.version!=='0.15.0')throw new Error('This reviewed publisher only covers plugin 0.16.0 and HUD 0.15.0.');
+if(plugin.version!=='0.16.1'||hud.version!=='0.15.1')throw new Error('This reviewed publisher only covers plugin 0.16.1 and HUD 0.15.1.');
 const commit=run(['rev-parse','HEAD']);
 const remote=run(['ls-remote','origin','refs/heads/main']).split(/\s/)[0];
 if(!process.argv.includes('--publish')){console.log(JSON.stringify({account:account.login,repository:repo.full_name,commit,remote,plugin:plugin.version,hud:hud.version,changesPublished:false}));process.exit(0);}
@@ -27,8 +27,8 @@ const releaseSources=['assets/arcade','esbuild.mjs','scripts/test.mjs','scripts/
 if(run(['diff','HEAD','--',...releaseSources]))throw new Error('Release sources differ from the reviewed commit.');
 const getArg=name=>process.argv[process.argv.indexOf(name)+1];
 async function zipArg(flag,folder,prefix){if(!process.argv.includes(flag))throw new Error(`Missing ${flag}.`);const file=path.resolve(root,getArg(flag)),base=path.resolve(root,folder);if(!file.startsWith(base+path.sep)||!path.basename(file).startsWith(prefix)||!file.endsWith('.zip'))throw new Error('Archive is outside its expected release directory.');const bytes=await readFile(file),hash=createHash('sha256').update(bytes).digest('hex');const sidecar=await readFile(file+'.sha256','utf8');if(!sidecar.startsWith(hash+'  '))throw new Error('Archive checksum mismatch.');return {bytes,hash};}
-const pluginZip=await zipArg('--plugin-zip','release','Color-Sprint-plugin-0.16.0-');
-const hudZip=await zipArg('--hud-zip','desktop/release','Color-Sprint-HUD-0.15.0-win-x64-');
+const pluginZip=await zipArg('--plugin-zip','release','Color-Sprint-plugin-0.16.1-');
+const hudZip=await zipArg('--hud-zip','desktop/release','Color-Sprint-HUD-0.15.1-win-x64-');
 // No force-push. A concurrent upstream edit fails normally.
 run(['push','origin','HEAD:main']);
 if(run(['ls-remote','origin','refs/heads/main']).split(/\s/)[0]!==commit)throw new Error('Remote commit read-back failed.');
@@ -45,11 +45,11 @@ async function release(tag,name,body,assets,latest){
   return {url:r.html_url,tag,verifiedAssets:verified.map(x=>({name:x.name,sha256:x.hash}))};
 }
 const pluginAssets=await Promise.all(['main.js','manifest.json','styles.css'].map(async name=>({name,bytes:await readFile(path.join(root,name))})));
-pluginAssets.push({name:'Color-Sprint-plugin-0.16.0.zip',bytes:pluginZip.bytes});
-const pluginRelease=await release('0.16.0','Color Sprint 0.16.0 · Arcade ranks and stable focus','Adds high-resolution D/C/B/A/S/SS/SSS rank medals, original replaceable hover/click/transition/fanfare WAV cues, and a bounded rank-up glow/shake/firework effect. Ordinary scoring and sync logic are unchanged; no celebration on initial load, repeat refresh or date navigation. Existing mute/volume and reduced-motion behavior apply. Assets are embedded in the usual three plugin files; no new service or permission. See ARCADE.md.',pluginAssets,true);
-const checksum=Buffer.from(`${hudZip.hash}  Color-Sprint-HUD-0.15.0-win-x64.zip\n`);
-const hudRelease=await release('hud-0.15.0','Color Sprint HUD 0.15.0 · Arcade ranks and stable focus','Anchors the Today focus ring at the viewport center outside perspective ancestors. Fixes stale GPU bounds on whole-window/nested scrolling, viewport/visibility changes, layout resizing and retired surfaces. Preserves curved panels and flat button hit areas. Adds prominent rank medals, replaceable UI sounds and rank-up effects; companion plugin 0.16.0 included. No Relay, task data or scoring-rule changes. Native device acceptance remains separate. See ARCADE.md.',[{name:'Color-Sprint-HUD-0.15.0-win-x64.zip',bytes:hudZip.bytes},{name:'SHA256SUMS.txt',bytes:checksum}],false);
-const latest=await request(api+'/releases/latest');if(latest.tag_name!=='0.16.0')throw new Error('BRAT latest must remain plugin 0.16.0.');
+pluginAssets.push({name:'Color-Sprint-plugin-0.16.1.zip',bytes:pluginZip.bytes});
+const pluginRelease=await release('0.16.1','Color Sprint 0.16.1 · Restrained rank styling','Replaces gold raster trophies with readable cyan rank typography. Compact rank and points retain accessible labels and Effort profile access. Rank-up uses a brief low-key cyan pulse, tiny shake and 12 fine particles rather than a large medal/fanfare screen. Existing sound cues, mute, reduced-motion and scoring behavior remain. No task, sync or progress changes. See ARCADE.md.',pluginAssets,true);
+const checksum=Buffer.from(`${hudZip.hash}  Color-Sprint-HUD-0.15.1-win-x64.zip\n`);
+const hudRelease=await release('hud-0.15.1','Color Sprint HUD 0.15.1 · Integrated rank readout','Moves the daily rank into Daily progress beside the win count, using clean cyan typography. Removes the floating gold badge and its overlap with navigation. Keeps the viewport-centered timer and scroll-refresh fix. Brief cyan rank-up feedback and replaceable interface sounds remain; companion plugin 0.16.1 included. No Relay, task data or scoring-rule changes. Native acceptance remains separate. See ARCADE.md.',[{name:'Color-Sprint-HUD-0.15.1-win-x64.zip',bytes:hudZip.bytes},{name:'SHA256SUMS.txt',bytes:checksum}],false);
+const latest=await request(api+'/releases/latest');if(latest.tag_name!=='0.16.1')throw new Error('BRAT latest must remain plugin 0.16.1.');
 // User-authorized three-target shipping. Local targets remain private, opt-in and backed up.
 let local={status:'not-configured'};
 const {localPaths}=await import('./deploy-local.mjs');

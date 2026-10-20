@@ -1,13 +1,13 @@
 import {Board,EffortProfile,localDay} from './model';
 import {FINISH_LEVELS,finishMultiplier,dailyScore,defaultEffort,effortFor,effortSignals,EFFORT_DIMENSIONS,EFFORT_LABELS} from './effort';
-import {rankSprite} from './arcade';
+import {rankMark} from './arcade';
 
 function el<K extends keyof HTMLElementTagNameMap>(root:HTMLElement,tag:K,text='',cls=''):HTMLElementTagNameMap[K]{const node=root.ownerDocument.createElement(tag);node.textContent=text;node.className=cls;root.append(node);return node;}
 export const newEffortEditorState=()=>({scope:'task' as EffortProfile['scope'],drafts:new Map<string,{profile:EffortProfile;expected:EffortProfile|undefined}>()});
 export function mountScore(root:HTMLElement,board:Board,day:string,open:()=>void,compact=false):void {
   const score=dailyScore(board,day),box=el(root,'div','','cs-arcade');box.setAttribute('aria-live','polite');
-  if(compact){box.classList.add('cs-arcade-compact');const button=el(box,'button','','cs-rank-control');button.type='button';button.setAttribute('aria-label',`Effort profile. Rank ${score.rank}, ${score.points} points${score.next?', '+score.remaining+' to '+score.next:''}`);button.title='Open effort profile · trial daily rank';rankSprite(el(button,'b',score.rank,'cs-rank'),score.rank);el(button,'small',`${score.points} pt`);button.onclick=open;return;}
-  rankSprite(el(box,'b',score.rank,'cs-rank'),score.rank);const line=el(box,'div');el(line,'strong',`${score.points} pt · effort score`);el(line,'small',score.next?`${score.remaining} to ${score.next} · trial ranks`:'SSS reached · no extra work required');
+  if(compact){box.classList.add('cs-arcade-compact');const button=el(box,'button','','cs-rank-control');button.type='button';button.setAttribute('aria-label',`Effort profile. Rank ${score.rank}, ${score.points} points${score.next?', '+score.remaining+' to '+score.next:''}`);button.title='Open effort profile · trial daily rank';rankMark(el(button,'b',score.rank,'cs-rank'),score.rank);const meta=el(button,'span','','cs-rank-meta');el(meta,'span','DAILY RANK','cs-rank-label');el(meta,'small',`${score.points} pt`);button.onclick=open;return;}
+  rankMark(el(box,'b',score.rank,'cs-rank'),score.rank);const line=el(box,'div');el(line,'strong',`${score.points} pt · effort score`);el(line,'small',score.next?`${score.remaining} to ${score.next} · trial ranks`:'SSS reached · no extra work required');
   const button=el(box,'button','Effort profile');button.type='button';button.onclick=open;
 }
 export function mountEffortEditor(root:HTMLElement,board:Board,day:string,locked:boolean,save:(profile:EffortProfile,expected:EffortProfile|undefined)=>Promise<void>,state=newEffortEditorState()):void {

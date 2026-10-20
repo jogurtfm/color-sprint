@@ -1,7 +1,7 @@
 # Color Sprint
 
-Current source: plugin **0.16.0** / Windows HUD **0.15.0** adds arcade rank sprites,
-UI sound cues, rank-up effects and viewport-centered HUD focus. See [Arcade guide](ARCADE.md).
+Current source: plugin **0.16.1** / Windows HUD **0.15.1** uses restrained cyan rank
+typography, integrated daily progress, UI sound cues and viewport-centered HUD focus. See [Arcade guide](ARCADE.md).
 Also includes red 😴, yellow 🙂
 and green 😤 rated finishes with point previews, retaining the reflection keyboard
 fix, effort profiles, ranks, Quick Queue and obligations. See [Rated finishes](RATED-FINISH.md)
