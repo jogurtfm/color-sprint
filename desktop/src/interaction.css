@@ -34,3 +34,25 @@ body[data-focus-phase="engaged"] .radial-primary{animation:radial-engaged 3s eas
 @keyframes radial-engaged{50%{box-shadow:0 0 17px #deb97f45,inset 0 0 10px #ecc67b17}}
 @keyframes control-feedback{35%{box-shadow:0 0 18px #8bdbf366,inset 0 0 14px #a1f1ff2b}}
 @media(prefers-reduced-motion:reduce){.radial-flow,.radial-primary,.control-feedback{animation:none!important}.radial-button{transition:none}}
+/* Today focus is a viewport instrument, not a row stretched by the task bank.
+   Its parent is #app, outside all perspective/animated panel ancestors. */
+body[data-mode="hud"] .viewport-focus{
+  --focus-width:min(38vw,620px);--focus-size:clamp(220px,min(34vw,calc(100dvh - 460px)),480px);
+  position:fixed;top:0;left:calc((100vw - var(--focus-width))/2);width:var(--focus-width);height:100dvh;
+  display:block;min-height:0;transform:none;perspective:none;transform-style:flat;z-index:2;pointer-events:none;
+}
+body[data-mode="hud"] .viewport-focus>.core{position:absolute;inset:0;display:block;pointer-events:none}
+body[data-mode="hud"] .viewport-focus .ring-stage{position:absolute;top:50%;left:50%;width:var(--focus-size);min-width:0;margin:0;transform:translate(-50%,-50%)}
+body[data-mode="hud"] .viewport-focus .core>.orbit-tag{position:absolute;top:calc(50% - var(--focus-size)/2 - 18px);left:0;right:0;margin:0}
+body[data-mode="hud"] .viewport-focus .sector-caption{position:absolute;top:128px;left:0;right:0}
+body[data-mode="hud"] .viewport-focus .focus-controls{position:absolute;top:calc(50% + var(--focus-size)/2 + 8px);left:0;right:0;max-height:max(56px,calc(50dvh - var(--focus-size)/2 - 94px));overflow:auto;scrollbar-width:thin;pointer-events:auto}
+body[data-mode="hud"] .viewport-focus .focus-actions{margin:0 4px}
+body[data-mode="hud"] .viewport-focus>.neural-panel{position:absolute;bottom:8px;left:0;right:0;height:72px;margin:0;pointer-events:auto;transform:none!important;transform-style:flat}
+body[data-mode="hud"] .viewport-focus .core-readout{transform:none!important}
+@media(max-height:620px){body[data-mode="hud"] .viewport-focus{--focus-size:200px}body[data-mode="hud"] .viewport-focus .sector-caption{display:none}body[data-mode="hud"] .viewport-focus>.neural-panel{height:58px}}
+body[data-mode="hud"] .viewport-focus .ring-stage{transform-style:flat;isolation:isolate}
+body[data-mode="hud"] .viewport-focus .core-readout{z-index:3}
+body[data-mode="hud"] .viewport-focus .focus-rank{position:absolute;bottom:calc(50% + var(--focus-size)/2 + 30px);left:0;right:0;display:grid;justify-items:center;pointer-events:auto}
+body[data-mode="hud"] .focus-rank .cs-arcade{margin:0;padding:0;border:0;background:transparent;box-shadow:none}
+body[data-mode="hud"] .focus-rank .cs-rank-sprite{width:clamp(64px,calc((100dvh - var(--focus-size))/2 - 160px),128px);height:clamp(64px,calc((100dvh - var(--focus-size))/2 - 160px),128px);min-width:0}
+body[data-mode="hud"] .focus-rank .cs-rank-control small{font-size:13px;color:#ffe09b}

@@ -5,6 +5,7 @@ export interface GPUState {quality:VisualState['quality'];motion:boolean;visible
 export interface RenderPort {autoClear:boolean;setClearColor(color:number,alpha:number):void;setPixelRatio(ratio:number):void;setSize(w:number,h:number,style?:boolean):void;setScissorTest(on:boolean):void;setViewport(x:number,y:number,w:number,h:number):void;setScissor(x:number,y:number,w:number,h:number):void;clear():void;clearDepth():void;render(scene:THREE.Scene,camera:THREE.Camera):void;dispose():void}
 type Surface={element:HTMLElement;visual:HudVisual;rect:DOMRect|null;clip:DOMRect|null};
 type Factory=(canvas:HTMLCanvasElement)=>RenderPort;
+const EXCLUSIONS='.panel,.topbar,.utility-bar,.core-readout,.focus-actions,.orbit-label,.holo-emblem,.rim-focus-copy,.rim-actions';
 const defaultFactory:Factory=canvas=>new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'low-power',premultipliedAlpha:true});
 
 /** One WebGL context per native window; DOM controls remain the input/accessibility layer. */
@@ -14,14 +15,19 @@ export class ThreeHUD {
   private width=0;private height=0;private ratio=0;private elapsed=0;private previous=0;private frame=0;private dirty=true;private layoutDirty=true;
   private hovered:HTMLElement|null=null;private lost=false;private failed=false;private disposed=false;private aim={x:0,y:0};
   private controller:AbortController;private observer:ResizeObserver|null=null;private media:MediaQueryList|null=null;
+  private observed=new Set<Element>();
   constructor(private root:HTMLElement,private factory:Factory=defaultFactory){
     const win=root.ownerDocument.defaultView!,doc=root.ownerDocument;
     this.controller=new win.AbortController();
     // Feature detection also avoids trying a canvas in environments with no WebGL implementation.
     if(factory===defaultFactory&&!('WebGL2RenderingContext' in win)){this.status('fallback');this.failed=true;return;}
     const signal=this.controller.signal;
-    doc.addEventListener('visibilitychange',()=>this.wake(),{signal});win.addEventListener('resize',()=>{this.layoutDirty=true;this.wake();},{signal});
-    root.addEventListener('scroll',()=>{this.layoutDirty=true;this.wake();},{capture:true,signal});
+    const invalidate=()=>{this.layoutDirty=true;this.dirty=true;this.wake();};
+    doc.addEventListener('visibilitychange',invalidate,{signal});win.addEventListener('resize',invalidate,{signal});
+    // Document/window scrolling is not captured by #app. Include nested scrollers
+    // too, and repaint even when animation/reduced-motion has stopped the loop.
+    doc.addEventListener('scroll',invalidate,{capture:true,signal});win.addEventListener('scroll',invalidate,{signal});
+    win.visualViewport?.addEventListener('resize',invalidate,{signal});win.visualViewport?.addEventListener('scroll',invalidate,{signal});
     root.addEventListener('transitionend',()=>{this.layoutDirty=true;this.dirty=true;this.wake();},{signal});
     root.addEventListener('pointerover',event=>{this.hovered=event.target instanceof win.HTMLElement?event.target:null;this.dirty=true;this.wake();},{signal});
     root.addEventListener('pointermove',event=>{if(event.pointerType==='touch'||!this.moving())return;this.aim={x:Math.max(-1,Math.min(1,event.clientX/win.innerWidth*2-1)),y:Math.max(-1,Math.min(1,event.clientY/win.innerHeight*2-1))};this.dirty=true;this.wake();},{signal});
@@ -33,6 +39,7 @@ export class ThreeHUD {
   private status(value:string){this.root.ownerDocument.body.dataset.gpu=value;const el=this.root.querySelector('.gpu-status');if(el){el.textContent=value==='ready'?'THREE.JS / WEBGL2':value==='lost'?'GPU RECOVERING · CSS FALLBACK':value==='quiet'?'QUIET / GPU IDLE':'CSS FALLBACK / WEBGL UNAVAILABLE';}}
   sync(state:GPUState){
     if(this.disposed)return;const changed=JSON.stringify(state)!==JSON.stringify(this.state);this.state={...state,progress:Math.max(0,Math.min(1,state.progress||0))};
+    if(changed)this.layoutDirty=true;
     this.addStatus();if(this.failed){this.status('fallback');return;}
     if(state.quality==='quiet'){if(this.canvas)this.canvas.hidden=true;this.status('quiet');this.cancel();return;}
     if(!this.renderer&&!this.lost&&!this.initialize())return;
@@ -54,16 +61,21 @@ export class ThreeHUD {
     add('.ring-stage,.rim-orbit','reactor');add('.program-hologram','program');
     if(this.state.quality==='cinematic')add('.gpu-globe-port','sphere');
     if(!this.root.querySelector('.launcher-dock'))add('#neural-field','terrain');
-    for(const surface of this.surfaces)if(!wanted.has(surface.element)){surface.visual.dispose();this.observer?.unobserve(surface.element);}
+    for(const surface of this.surfaces)if(!wanted.has(surface.element)){surface.visual.dispose();this.layoutDirty=true;this.dirty=true;}
     const old=new Map(this.surfaces.filter(s=>wanted.has(s.element)).map(s=>[s.element,s]));
-    this.surfaces=[...wanted].map(([element,kind],i)=>{const existing=old.get(element);if(existing)return existing;this.layoutDirty=true;this.observer?.observe(element);const appId=element.closest<HTMLElement>('[data-launcher-id]')?.dataset.launcherId;const seed=appId?Math.max(0,['chatgpt','blender','notepad','fl-studio','reaper'].indexOf(appId)):i;return {element,visual:new HudVisual(kind,seed),rect:null,clip:null};});
+    this.surfaces=[...wanted].map(([element,kind],i)=>{const existing=old.get(element);if(existing)return existing;this.layoutDirty=true;const appId=element.closest<HTMLElement>('[data-launcher-id]')?.dataset.launcherId;const seed=appId?Math.max(0,['chatgpt','blender','notepad','fl-studio','reaper'].indexOf(appId)):i;return {element,visual:new HudVisual(kind,seed),rect:null,clip:null};});
+    // Size changes in controls/ancestors can move a surface without resizing it.
+    const observed=new Set<Element>([this.root,this.root.ownerDocument.documentElement,...wanted.keys(),...this.root.querySelectorAll(EXCLUSIONS)]);
+    for(const el of this.observed)if(!observed.has(el))this.observer?.unobserve(el);
+    for(const el of observed)if(!this.observed.has(el))this.observer?.observe(el);
+    this.observed=observed;
   }
   private measure(){
     for(const surface of this.surfaces){surface.rect=surface.element.getBoundingClientRect();surface.clip=surface.element.closest('.launcher-apps')?.getBoundingClientRect()||null;}
     if(!this.canvas)return;
     // A compositor-level exclusion mask guarantees instruments cannot cover any working text.
     let holes='';
-    for(const el of this.root.querySelectorAll('.panel,.topbar,.utility-bar,.core-readout,.focus-actions,.orbit-label,.holo-emblem,.rim-focus-copy,.rim-actions')){const r=el.getBoundingClientRect();if(r.width>0&&r.height>0)holes+=`<rect x="${r.left-2}" y="${r.top-2}" width="${r.width+4}" height="${r.height+4}" fill="black"/>`;}
+    for(const el of this.root.querySelectorAll(EXCLUSIONS)){const r=el.getBoundingClientRect();if(r.width>0&&r.height>0)holes+=`<rect x="${r.left-2}" y="${r.top-2}" width="${r.width+4}" height="${r.height+4}" fill="black"/>`;}
     // Luminance-mask union: overlapping exclusions remain holes rather than XOR-revealing text.
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${this.width}" height="${this.height}"><defs><mask id="ui" maskUnits="userSpaceOnUse" x="0" y="0" width="${this.width}" height="${this.height}"><rect width="100%" height="100%" fill="white"/>${holes}</mask></defs><rect width="100%" height="100%" fill="white" mask="url(#ui)"/></svg>`;
     this.canvas.style.maskImage=`url("data:image/svg+xml,${encodeURIComponent(svg)}")`;

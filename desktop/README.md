@@ -1,6 +1,8 @@
-# Color Sprint HUD · Windows preview 0.14.0
+# Color Sprint HUD · Windows preview 0.15.0
 
-Includes companion plugin 0.15.0 with rated red 😴 / yellow 🙂 / green 😤 finishes.
+Includes companion plugin 0.16.0. Today focus stays centered on the screen while
+scrolling; GPU bounds refresh correctly. Prominent rank sprites, replaceable UI
+sounds and rank-up effects are included. See ARCADE.md. Also retains rated red 😴 / yellow 🙂 / green 😤 finishes.
 Task cards and focus controls preview points; the compact rim has emoji choices.
 All levels are one win. Update PC Obsidian to 0.15.0+ for rated bridge actions.
 See RATED-FINISH.md; physical iPhone/BRAT confirmation remains separate.

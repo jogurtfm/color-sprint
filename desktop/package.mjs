@@ -20,6 +20,7 @@ await copyFile(path.join(root,'WINDOWS-THEME.md'),path.join(folder,'WINDOWS-THEM
 await copyFile(path.join(root,'../QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE.md'));
 await copyFile(path.join(root,'../OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));await copyFile(path.join(root,'../EFFORT.md'),path.join(folder,'EFFORT.md'));await copyFile(path.join(root,'../REFLECTION-KEYBOARD.md'),path.join(folder,'REFLECTION-KEYBOARD.md'));
 await copyFile(path.join(root,'../RATED-FINISH.md'),path.join(folder,'RATED-FINISH.md'));
+await copyFile(path.join(root,'../ARCADE.md'),path.join(folder,'ARCADE.md'));
 const pluginBundle=path.join(appDir,'dist/obsidian-plugin');await mkdir(pluginBundle,{recursive:true});
 for(const file of ['main.js','manifest.json','styles.css'])await copyFile(path.join(root,'..',file),path.join(pluginBundle,file));
 const companion=JSON.parse(await readFile(path.join(pluginBundle,'manifest.json'),'utf8')),companionHashes={};for(const file of ['main.js','manifest.json','styles.css'])companionHashes[file]=createHash('sha256').update(await readFile(path.join(pluginBundle,file))).digest('hex');await writeFile(path.join(pluginBundle,'bundle.json'),JSON.stringify({version:companion.version,files:companionHashes},null,2));
