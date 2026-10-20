@@ -1,6 +1,13 @@
 import {App,Modal,Notice,Platform,TFile,Setting} from 'obsidian';
 import {processHudRequest} from './hud-protocol';
 const TRUST='color-sprint.hud-trust';
+/** Desktop Obsidian consumes `vault` while routing the URI. The handler already
+ * belongs to the selected vault. If another platform retains it, reject an
+ * explicit mismatch; absence is not a failed identity check. Signed local notes,
+ * device-local pairing and exact tracker compare-and-swap remain mandatory. */
+export function requireRoutedHudVault(params:Record<string,string>,name:string):void{
+  if(params.vault!==undefined&&params.vault.toLowerCase()!==name.toLowerCase())throw new Error('HUD request belongs to another vault.');
+}
 export class HudBridge {
   private tail:Promise<unknown>=Promise.resolve();private stopped=false;private pairing:PairHudModal|null=null;
   constructor(private app:App,private change:(fn:(text:string)=>string,tracker:string)=>Promise<void>,private runner?:()=>string){}
@@ -8,7 +15,7 @@ export class HudBridge {
   revoke(){if(!this.app.saveLocalStorage)throw new Error('Local pairing storage unavailable.');this.app.saveLocalStorage(TRUST,{});}
   handle(params:Record<string,string>):Promise<void>{const work=this.tail.catch(()=>{}).then(async()=>{
     if(this.stopped)return;if(Platform.isMobile)throw new Error('HUD controls must be handled by Obsidian on the same Windows computer.');
-    if(params.vault!==this.app.vault.getName())throw new Error('HUD request belongs to another vault.');
+    requireRoutedHudVault(params,this.app.vault.getName());
     const result=await processHudRequest({
       runner:this.runner,
       read:async path=>{const file=this.app.vault.getAbstractFileByPath(path);if(!file)return null;if(!(file instanceof TFile)||file.stat.size>4*1024*1024)throw new Error('HUD note is invalid or too large.');return this.app.vault.read(file);},

@@ -85,7 +85,13 @@ Deployment-only checks (Node 24+): `node --test tests/local-deploy.test.mjs`.
 5. Read back the remote commit/release and verify asset hashes before saying shipped.
 
 Previous baseline: plugin 0.11.0 at `f59aeb2`; local HUD 0.10.2.
-Approved current release scope: HUD 0.16.0 only; plugin remains 0.16.1. Programs, local Spotify controls and a shared-source XP bar retain rated finishes and personal effort
+Current bridge correction: plugin 0.16.2 fixes Windows URI routing after Obsidian
+consumes the vault parameter. Existing HUD 0.16.0 is compatible and unchanged;
+no HUD reinstall or restart is required. Use the version-guarded
+scripts/publish-bridge-fix.mjs for this plugin-only correction, not the previous
+HUD-only publisher. Verify PC plugin hashes and BRAT Latest independently.
+
+Previous release scope: HUD 0.16.0 only; plugin 0.16.1. Programs, local Spotify controls and a shared-source XP bar retain rated finishes and personal effort
 profiles and daily arcade ranks, retaining obligations and date moves. Public release read-back, not this document, establishes
 shipping. Publishing does not install over a running app or modify a live vault.
 

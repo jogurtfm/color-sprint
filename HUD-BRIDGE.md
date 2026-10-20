@@ -1,4 +1,17 @@
-# Desktop HUD bridge · plugin 0.11.0 / HUD 0.6.0
+# Desktop HUD bridge · plugin 0.16.2 / compatible HUD 0.6.0+
+
+## Windows routing correction · 0.16.2
+
+Windows Obsidian uses the URI's `vault` parameter to select the vault and removes
+it before calling the plugin handler. Earlier plugin builds incorrectly required
+that consumed parameter and rejected every Windows HUD action before creating a
+receipt. The handler now accepts the already-routed call. An explicitly supplied
+different vault is still rejected. This also fixes the HUD's planning-review link.
+Signature validation, local public-key pairing, expiry, exact tracker revision,
+serialized Vault.process writes and idempotent receipts are unchanged. The HUD
+still cannot write the protected tracker directly. No old requests are replayed.
+Update/reload the PC plugin; the existing HUD does not need replacement for this
+correction. First-time pairing still requires the user's explicit approval.
 
 The tracker is still **Markdown format version 1**. No migration, replacement
 tracker or second task database is introduced. The rules in [SYNC.md](SYNC.md)

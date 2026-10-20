@@ -129,6 +129,16 @@ test('paired HUD actions use the plugin queue once, retain phone checkoffs and k
   try{h.plugin.app.vault.getName=()=> 'Fixture';assert.ok(h.commands.has('protocol:color-sprint-hud'));await h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='brush-teeth')!.done);assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='japanese')!.done);assert.equal((hudPayload(h.files.get(`${hudFolder(r.tracker)}/Results/${r.id}.md`)!.text) as any).status,'done');const writes=h.writes;await h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});assert.equal(h.writes,writes);h.commands.get('revoke-hud-pairings').callback();assert.deepEqual(Object.keys(local.get('color-sprint.hud-trust')!),[]);assert.ok(![...h.files.keys()].some(p=>p.includes('/Phone/')||p.includes('/Proposals/')));
   }finally{await h.close();}
 });
+
+test('Windows-routed HUD URI works after Obsidian consumes the vault parameter',async()=>{
+  const base=setEntry(starter(),localDay(),'brush-teeth',true),r=hudRequest(base),local=new Map([['color-sprint.hud-trust',{[r.client+'/'+r.tracker]:r.publicKey}]]),h=await harness(base,{[`${hudFolder(r.tracker)}/Requests/${r.id}.md`]:hudNote(r)},{store:local});
+  try{h.plugin.app.vault.getName=()=> 'Fixture';h.commands.get('protocol:color-sprint-hud')({action:'color-sprint-hud',tracker:r.tracker,id:r.id});await settle(100);assert.equal(h.notices.length,0);assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='japanese')?.done);assert.ok(parseBoard(h.text).entries.find(e=>e.taskId==='brush-teeth')?.done);assert.equal((hudPayload(h.files.get(`${hudFolder(r.tracker)}/Results/${r.id}.md`)!.text) as any).status,'done');}
+  finally{await h.close();}
+});
+
+test('Windows-routed planning review opens without vault routing metadata and never applies it',async()=>{const h=await harness(starter());try{h.plugin.app.vault.getName=()=> 'Fixture';h.commands.get('protocol:color-sprint-hud')({action:'color-sprint-hud',tracker:'Sync/Color Sprint.md',review:'1'});await settle();assert.equal(h.notices.length,0);assert.equal(h.modals.length,1);assert.equal(h.writes,0);}finally{await h.close();}});
+
+test('explicit wrong-vault HUD routing remains rejected before any pairing or write',async()=>{const h=await harness(starter());try{h.plugin.app.vault.getName=()=> 'Fixture';await assert.rejects(h.plugin.hudBridge.handle({vault:'Another vault',tracker:'Sync/Color Sprint.md',id:'hud-'+randomUUID()}),/another vault/);assert.equal(h.modals.length,0);assert.equal(h.writes,0);}finally{await h.close();}});
 test('unpaired HUD key requires explicit pairing and rejects cancel without task changes',async()=>{
   const base=starter(),r=hudRequest(base),h=await harness(base,{[`${hudFolder(r.tracker)}/Requests/${r.id}.md`]:hudNote(r)});
   try{h.plugin.app.vault.getName=()=> 'Fixture';const work=h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});await settle();assert.equal(h.modals.length,1);const modal=h.modals[0];modal.onOpen();assert.match(modal.contentEl.textContent,/Pair this Color Sprint HUD/);assert.match(modal.contentEl.textContent,/fingerprint/);h.button('Cancel',modal.contentEl).click();await work;assert.equal(h.text,base);assert.equal((hudPayload(h.files.get(`${hudFolder(r.tracker)}/Results/${r.id}.md`)!.text) as any).status,'rejected');

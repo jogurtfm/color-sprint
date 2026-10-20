@@ -11,7 +11,7 @@ import { ReflectionDraft, newReflectionDraft, reflectionDraft, reflectionScaffol
 import { SyncStore } from './sync-store';
 import { mountSyncPanel } from './sync-panel';
 import { PhoneCheckpoint } from './sync';
-import { HudBridge } from './hud-store';
+import { HudBridge, requireRoutedHudVault } from './hud-store';
 import {advanceQuickQueue,queueNeedsAdvance} from './model';
 
 const VIEW='color-sprint-view';
@@ -34,7 +34,7 @@ export default class ColorSprint extends Plugin {
   private voiceControls:ReturnType<typeof mountRecordingBar>|null=null;private voicePoll:ReturnType<typeof setInterval>|null=null;
   async onload():Promise<void>{
     this.hudBridge=new HudBridge(this.app,(fn,path)=>this.change(fn,path),()=>this.queueDevice());
-    this.registerObsidianProtocolHandler('color-sprint-hud',params=>{if(params.review==='1'){try{if(params.vault!==this.app.vault.getName())throw new Error('Wrong vault.');this.file(params.tracker);this.openSyncReview(params.tracker);}catch(e){this.error(e);}return;}void this.hudBridge.handle(params).catch(e=>this.error(e));});
+    this.registerObsidianProtocolHandler('color-sprint-hud',params=>{if(params.review==='1'){try{requireRoutedHudVault(params,this.app.vault.getName());this.file(params.tracker);this.openSyncReview(params.tracker);}catch(e){this.error(e);}return;}void this.hudBridge.handle(params).catch(e=>this.error(e));});
     this.addCommand({id:'revoke-hud-pairings',name:'Revoke desktop HUD pairings on this device',callback:()=>{try{this.hudBridge.revoke();new Notice('HUD pairings revoked on this device.');}catch(e){this.error(e);}}});
     const primary=this.app.loadLocalStorage?.('color-sprint.primary-phone');this.primaryPhone=typeof primary==='boolean'?primary:!!Platform?.isMobile;this.syncStore=new SyncStore(this.app,message=>new Notice(message,10000));
     try{const owner=this.app.loadLocalStorage?.('color-sprint.voice-capture');if(owner&&typeof owner.path==='string'&&typeof owner.seen==='boolean'&&Number.isFinite(owner.requestedAt))this.voiceOwner={path:vaultPath(owner.path),seen:owner.seen,requestedAt:owner.requestedAt};}catch{}
