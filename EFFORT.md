@@ -1,6 +1,6 @@
 # Effort profiles and arcade ranks
 
-Plugin 0.14.0 / HUD 0.13.0. Open **Effort**, or **Effort profile** beside the daily rank. Works in mobile Obsidian, PC Obsidian and the desktop HUD. This is a transparent trial, not CHUNITHM's scoring algorithm or a clinical assessment.
+Plugin 0.14.1 / HUD 0.13.1. Open **Effort**, or **Effort profile** beside the daily rank. Works in mobile Obsidian, PC Obsidian and the desktop HUD. This is a transparent trial, not CHUNITHM's scoring algorithm or a clinical assessment.
 
 ## A personal profile, not an avoidance counter
 
@@ -33,7 +33,7 @@ Optional section; existing trackers need no migration. Add rows directly or save
 | effort-practice | kind | practice | - | 2 | - | - | - | auto | proposed | - | Example only: confirm whether this fits your practice tasks. |
 ```
 
-UI saves reject stale concurrent profile changes. HUD edits use the signed, exact-base Obsidian bridge in a vault, not an independent tracker writer. Update Windows Obsidian to 0.14.0+ before using HUD effort editing. Relay delivery and phone installation are not inferred from a local save. Older clients ignore this optional section, so do not use them to review effort proposals.
+UI saves reject stale concurrent profile changes. HUD edits use the signed, exact-base Obsidian bridge in a vault, not an independent tracker writer. Update Windows Obsidian to 0.14.1+ before using HUD effort editing. Relay delivery and phone installation are not inferred from a local save. Older clients ignore this optional section, so do not use them to review effort proposals.
 
 ## Daily reflection-based review
 
@@ -43,4 +43,4 @@ Use reflection context to distinguish initiation friction, sustained attention, 
 
 Propose a small, specific adjustment with the private reflection file/date, a short rationale, confidence and any uncertainty in Notes. Keep inferred new profiles `proposed` until confirmed. Do not overwrite an existing confirmed profile with an unconfirmed guess: describe the suggested delta in a private decision note or ask the user. Never copy personal reflection text into public code, release notes or notifications.
 
-Use exact base/proposed copies outside Relay and a unique planning proposal per SYNC.md; the daily assistant must not rewrite the live tracker or manufacture points. The user reviews and applies changes. Concurrent user ratings are retained as conflicts. Repeated pushes alone flag a question, not an automatic increase. Verify a 0.14.0+ runtime before applying effort proposals; on an older runtime leave the recommendation pending rather than processing it as a no-op.
+Use exact base/proposed copies outside Relay and a unique planning proposal per SYNC.md; the daily assistant must not rewrite the live tracker or manufacture points. The user reviews and applies changes. Concurrent user ratings are retained as conflicts. Repeated pushes alone flag a question, not an automatic increase. Verify a 0.14.1+ runtime before applying effort proposals; on an older runtime leave the recommendation pending rather than processing it as a no-op.

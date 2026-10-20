@@ -1,4 +1,4 @@
-# Color Sprint HUD · Windows preview 0.13.0
+# Color Sprint HUD · Windows preview 0.13.1
 
 ## Personal effort and arcade ranks
 
@@ -7,7 +7,7 @@ emotional weight and uncertainty per task, page or task type. Today shows points
 and a trial daily letter rank. Repeated pushes flag review, not automatic increases.
 Weights live in optional Markdown, with reviewed sync proposals and stale-edit
 checks. Only explicit task checks earn points; logs, timers and subtasks do not
-double-award. See EFFORT.md. Requires plugin **0.14.0+** for protected vault edits.
+double-award. See EFFORT.md. Requires plugin **0.14.1+** for protected vault edits.
 
 ## Persistent obligations
 
@@ -15,7 +15,7 @@ Open **Obligations** for unfinished one-off admin/hard tasks across dates.
 Use **Tomorrow / Pick date** to move the next plan while preserving original
 history, source colors, roadmap context and progress. Distinct taxes/letters
 remain separate. An earlier date is not automatically a miss; moves are not wins.
-Requires plugin **0.13.0+** for these actions on a protected vault. Old calendar
+Requires plugin **0.13.1+** for these actions on a protected vault. Old calendar
 events/times are retained as needs-review, not silently moved. See OBLIGATIONS.md.
 
 ## Quick Queue and workspace tabs

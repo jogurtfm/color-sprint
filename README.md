@@ -1,6 +1,6 @@
 # Color Sprint
 
-Current source: plugin **0.14.0** / Windows HUD **0.13.0** adds personal effort
+Current source: plugin **0.14.1** / Windows HUD **0.13.1** adds personal effort
 profiles and daily arcade ranks, retaining Quick Queue and persistent obligations.
 See [Effort guide](EFFORT.md). Release asset read-back, not this source version,
 establishes publishing or installation on a device.
@@ -120,7 +120,7 @@ npm run preview
 Preview serves the same surface at `http://127.0.0.1:8776` with generic browser-local demo data. It is a developer preview, not a hosted replacement for Obsidian. Release files are checked into the repo and attached to versioned GitHub releases for BRAT.
 
 License: [MIT](LICENSE).
-# New in 0.13.0: persistent obligations
+# New in 0.13.1: persistent obligations
 
 **Obligations** keeps unfinished nonrepeating admin/hard tasks visible until
 explicit completion. Use **Tomorrow / Pick date** on a planned one-off card;
