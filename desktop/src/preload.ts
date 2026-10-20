@@ -1,5 +1,6 @@
 import {contextBridge,ipcRenderer} from 'electron';
 contextBridge.exposeInMainWorld('hud',{
+  studyLoad:(key:string)=>ipcRenderer.invoke('hud:study-load',key),
   spotify:(action:unknown)=>ipcRenderer.invoke('hud:spotify',action),
   onOpenPrograms:(fn:()=>void)=>{const listener=()=>fn();ipcRenderer.on('hud:open-programs',listener);return ()=>ipcRenderer.removeListener('hud:open-programs',listener);},
   onOpenSettings:(fn:()=>void)=>{const listener=()=>fn();ipcRenderer.on('hud:open-settings',listener);return ()=>ipcRenderer.removeListener('hud:open-settings',listener);},

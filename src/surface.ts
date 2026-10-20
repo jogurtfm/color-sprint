@@ -12,8 +12,11 @@ import {mountScore,mountEffortEditor,newEffortEditorState} from './effort-ui';
 import {FinishLevel,setTaskCompletion} from './model';
 import {mountFinishChoices} from './finish-ui';
 import {Arcade} from './arcade';
+import {StudyWorkspace} from './modules/workspace';
+import type {StudyPort} from './modules/data';
 
 export interface Host {
+  study?:StudyPort;
   queueOwner?():string;
   read():Promise<string>;
   change(transform:(text:string)=>string):Promise<void>;
@@ -46,6 +49,7 @@ type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'|'Queue'|'Obligations'
 export interface SurfaceOptions {day?:string;page?:string;tab?:Tab;embedded?:boolean}
 export class Surface {
   private board:Board|null=null;
+  private study:StudyWorkspace|null=null;
   private day=localDay();private tab:Tab='Today';private page='All';private filter='';
   private request=0;private destroyed=false;private pending=false;private focusMode=false;private activitySurface:'workout'|'treadmill'|null=null;private roadmapSurface:string|null=null;private cuedTimerId='';
   private ticker:ReturnType<typeof setInterval>;private timerDisplay:HTMLElement|null=null;
@@ -54,7 +58,7 @@ export class Surface {
   private arcade:Arcade;private feedback:Feedback;private feedbackSettings:FeedbackSettings;private effectsOpen=false;private returnTab:Tab='Today';
   constructor(private root:HTMLElement,private host:Host,options:SurfaceOptions={}){this.day=options.day||this.day;this.page=options.page||'All';this.tab=options.tab||'Today';this.feedbackSettings={...DEFAULT_FEEDBACK,...host.getFeedback?.()};this.feedback=new Feedback(root,()=>this.host.getFeedback?.()||this.feedbackSettings);this.arcade=new Arcade(root,()=>this.host.getFeedback?.()||this.feedbackSettings);root.classList.add('cs-root');if(options.embedded)root.classList.add('cs-embedded');this.ticker=setInterval(()=>this.tick(),1000);}
   get context():{day:string;page:string;tab:Tab}{return {day:this.day,page:this.page,tab:this.tab};}
-  destroy():void {this.destroyed=true;clearInterval(this.ticker);this.feedback.destroy();this.arcade.destroy();this.root.replaceChildren();}
+  destroy():void {this.destroyed=true;this.study?.destroy();clearInterval(this.ticker);this.feedback.destroy();this.arcade.destroy();this.root.replaceChildren();}
   async refresh():Promise<void>{const seq=++this.request;try{const board=parseBoard(await this.host.read());if(this.destroyed||seq!==this.request)return;this.board=board;this.render();}catch(error){if(!this.destroyed&&seq===this.request)this.renderError(error);}}
   private el<K extends keyof HTMLElementTagNameMap>(tag:K,parent:HTMLElement,className='',text=''):HTMLElementTagNameMap[K]{const e=parent.ownerDocument.createElement(tag);e.className=className;e.textContent=text;parent.append(e);return e;}
   private button(parent:HTMLElement,text:string,action:()=>void|Promise<void>,className='',label?:string):HTMLButtonElement{
@@ -62,10 +66,11 @@ export class Surface {
     b.addEventListener('click',()=>{this.feedback.prepare();void this.run(action);});return b;
   }
   private async run(action:()=>void|Promise<void>):Promise<void>{if(this.pending)return;this.pending=true;this.root.classList.add('cs-busy');try{await action();}catch(error){this.host.error(error);}finally{this.pending=false;this.root.classList.remove('cs-busy');}}
-  private renderError(error:unknown):void {this.root.replaceChildren();this.el('p',this.root,'cs-eyebrow','COLOR SPRINT');this.el('h2',this.root,'','Your Markdown is the starting point.');this.el('p',this.root,'cs-muted',error instanceof Error?error.message:String(error));this.button(this.root,'Create starter note',()=>this.host.createNote(),'cs-primary');this.button(this.root,'Choose tracker note',()=>this.host.settings());this.button(this.root,'Open Markdown',()=>this.host.openNote());}
+  private renderError(error:unknown):void {void this.study?.sync(null,null);this.root.replaceChildren();this.el('p',this.root,'cs-eyebrow','COLOR SPRINT');this.el('h2',this.root,'','Your Markdown is the starting point.');this.el('p',this.root,'cs-muted',error instanceof Error?error.message:String(error));this.button(this.root,'Create starter note',()=>this.host.createNote(),'cs-primary');this.button(this.root,'Choose tracker note',()=>this.host.settings());this.button(this.root,'Open Markdown',()=>this.host.openNote());}
   private render():void {
+    if(!this.host.study)this.study?.destroy();
     if(!this.board)return;this.feedbackSettings=this.host.getFeedback?.()||this.feedbackSettings;const b=this.board;this.arcade.update(b,this.day);this.root.replaceChildren();this.timerDisplay=null;if(!b.timer)this.focusMode=false;this.root.classList.toggle('cs-focus-mode',!!b.timer&&this.focusMode);
-    if(b.timer&&this.focusMode){this.renderFocusMode();this.tick();return;}if(this.roadmapSurface){this.renderRoadmap(this.roadmapSurface);return;}if(this.activitySurface){this.renderActivitySurface(this.activitySurface);return;}
+    if(b.timer&&this.focusMode){this.renderFocusMode();this.tick();return;}void this.study?.sync(null,null);if(this.roadmapSurface){this.renderRoadmap(this.roadmapSurface);return;}if(this.activitySurface){this.renderActivitySurface(this.activitySurface);return;}
     const head=this.el('header',this.root,'cs-header');const title=this.el('div',head);this.el('p',title,'cs-eyebrow','COLOR SPRINT · MARKDOWN FIRST');this.el('h1',title,'','A little more intentional.');
     const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');if(this.host.openSyncReview)this.button(tools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');this.button(tools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
     const nav=this.el('nav',this.root,'cs-tabs');nav.setAttribute('aria-label','Tracker views');
@@ -206,6 +211,7 @@ export class Surface {
     const top=this.el('header',this.root,'cs-focus-header');this.el('p',top,'cs-eyebrow',timer.started==='-'?'FOCUS PAUSED':meditation?'MEDITATION':'FOCUS NOW');this.button(top,'Back to plan',()=>{this.focusMode=false;this.render();},'cs-link');
     const card=this.el('main',this.root,'cs-focus-card');if(task)this.taskColor(task,card);this.el('p',card,'cs-eyebrow',`${group?this.groupTitle(group):task?.title||'Focus'}${queue.length>1?` · ${cursor+1}/${queue.length}`:''}`);this.el('h1',card,'',step?.title||'Queue is empty');this.el('p',card,'cs-definition',step?.definition||'Save this session and choose an available task.');
     this.timerDisplay=this.el('div',card,'cs-time');this.timerDisplay.setAttribute('role','timer');this.timerDisplay.setAttribute('aria-label',step?.minutes?'Remaining step time':'Elapsed step time');
+    if(this.host.study){this.study??=new StudyWorkspace(this.host.study);const workspace=this.el('section',card,'cs-study-workspace');void this.study.sync(workspace,board);}
     if(step&&cursor<queue.length-1&&!isQuickQueue(timer.taskId)){this.button(card,step.done?'Next completed step ✓':'Done & next',async()=>{if(step.done)await this.host.moveGroup(timer.id,1);else{await this.host.change(text=>completeFocusStep(text,timer.id,timer.cursor));this.feedback.show(`${step.title} ✓`,task?this.colorHex(task):'#8a59ed');}},step.done?'cs-small':'cs-primary');}
     const noteDetails=this.el('details',card,'cs-focus-note');this.el('summary',noteDetails,'','Add a result note (optional)');const note=this.el('textarea',noteDetails);note.value=this.focusNotes.get(timer.id)||'';note.setAttribute('aria-label','Focus result note');note.placeholder='What changed?';note.addEventListener('input',()=>this.focusNotes.set(timer.id,note.value));
     const actions=this.el('div',card,'cs-actions');if(cursor>0)this.button(actions,'Back',()=>this.host.moveGroup(timer.id,-1),'cs-small');if(isQuickQueue(timer.taskId)||cursor<queue.length-1)this.button(actions,'Skip / next',()=>isQuickQueue(timer.taskId)?this.host.change(text=>skipQuickQueue(text,timer.id)):this.host.moveGroup(timer.id,1),'cs-small');this.button(actions,timer.started==='-'?'Resume':'Pause',()=>timer.started==='-'?this.host.resume(timer.id):this.host.pause(timer.id),'cs-small');this.button(actions,'Refresh timer',async()=>{await this.host.refresh(timer.id);this.prepareFocusCues();},'cs-small');this.button(actions,'Cancel',()=>this.endFocus(false),'cs-small');if(step)this.button(actions,isQuickQueue(timer.taskId)&&cursor<queue.length-1?'Finish & next':'Finish',()=>this.endFocus(true),'cs-primary');

@@ -5,7 +5,7 @@ export interface GPUState {quality:VisualState['quality'];motion:boolean;visible
 export interface RenderPort {autoClear:boolean;setClearColor(color:number,alpha:number):void;setPixelRatio(ratio:number):void;setSize(w:number,h:number,style?:boolean):void;setScissorTest(on:boolean):void;setViewport(x:number,y:number,w:number,h:number):void;setScissor(x:number,y:number,w:number,h:number):void;clear():void;clearDepth():void;render(scene:THREE.Scene,camera:THREE.Camera):void;dispose():void}
 type Surface={element:HTMLElement;visual:HudVisual;rect:DOMRect|null;clip:DOMRect|null};
 type Factory=(canvas:HTMLCanvasElement)=>RenderPort;
-const EXCLUSIONS='.panel,.topbar,.utility-bar,.core-readout,.focus-actions,.orbit-label,.holo-emblem,.rim-focus-copy,.rim-actions';
+const EXCLUSIONS='.panel,.topbar,.utility-bar,.core-readout,.focus-actions,.orbit-label,.holo-emblem,.rim-focus-copy,.rim-actions,.cs-study-workspace,.study-focus-clock';
 const defaultFactory:Factory=canvas=>new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'low-power',premultipliedAlpha:true});
 
 /** One WebGL context per native window; DOM controls remain the input/accessibility layer. */

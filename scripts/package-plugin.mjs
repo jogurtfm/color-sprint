@@ -15,6 +15,7 @@ await copyFile(path.join(root,'OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md
 await copyFile(path.join(root,'RATED-FINISH.md'),path.join(folder,'RATED-FINISH.md'));
 await copyFile(path.join(root,'ARCADE.md'),path.join(folder,'ARCADE.md'));
 await copyFile(path.join(root,'HUD-BRIDGE.md'),path.join(folder,'HUD-BRIDGE.md'));
+await copyFile(path.join(root,'MODULES.md'),path.join(folder,'MODULES.md'));
 const zip=folder+'.zip',quote=value=>`'${value.replaceAll("'","''")}'`;
 const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Compress-Archive -LiteralPath ${quote(folder)} -DestinationPath ${quote(zip)} -CompressionLevel Optimal`],{windowsHide:true,encoding:'utf8'});
 if(result.status!==0)throw new Error('Plugin ZIP packaging failed; source files remain intact.');

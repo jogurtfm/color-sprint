@@ -13,6 +13,9 @@ import { mountSyncPanel } from './sync-panel';
 import { PhoneCheckpoint } from './sync';
 import { HudBridge, requireRoutedHudVault } from './hud-store';
 import {advanceQuickQueue,queueNeedsAdvance} from './model';
+import {loadStudy,appendStudy} from './modules/data';
+import {obsidianStudyIO} from './modules/obsidian-store';
+import {activeModuleFocus,ModuleFocus,ReviewRecord} from './modules/contracts';
 
 const VIEW='color-sprint-view';
 interface Settings {path:string;autoOpenDaily:boolean;dailyFolder:string;dailyFormat:string;feedback:FeedbackSettings;voiceFolder:string}
@@ -33,7 +36,7 @@ export default class ColorSprint extends Plugin {
   private voiceSaving=false;private voiceStopPromise:Promise<void>|null=null;
   private voiceControls:ReturnType<typeof mountRecordingBar>|null=null;private voicePoll:ReturnType<typeof setInterval>|null=null;
   async onload():Promise<void>{
-    this.hudBridge=new HudBridge(this.app,(fn,path)=>this.change(fn,path),()=>this.queueDevice());
+    this.hudBridge=new HudBridge(this.app,(fn,path)=>this.change(fn,path),()=>this.queueDevice(),async(path,action,base)=>{const focus=activeModuleFocus(parseBoard(base));if(!focus||focus.stepId!==action.stepId)throw new Error('Study focus changed.');await this.saveStudy(path,JSON.parse(action.details||''),focus,base);});
     this.registerObsidianProtocolHandler('color-sprint-hud',params=>{if(params.review==='1'){try{requireRoutedHudVault(params,this.app.vault.getName());this.file(params.tracker);this.openSyncReview(params.tracker);}catch(e){this.error(e);}return;}void this.hudBridge.handle(params).catch(e=>this.error(e));});
     this.addCommand({id:'revoke-hud-pairings',name:'Revoke desktop HUD pairings on this device',callback:()=>{try{this.hudBridge.revoke();new Notice('HUD pairings revoked on this device.');}catch(e){this.error(e);}}});
     const primary=this.app.loadLocalStorage?.('color-sprint.primary-phone');this.primaryPhone=typeof primary==='boolean'?primary:!!Platform?.isMobile;this.syncStore=new SyncStore(this.app,message=>new Notice(message,10000));
@@ -83,6 +86,7 @@ export default class ColorSprint extends Plugin {
   private queueDevice():string{const stored=this.app.loadLocalStorage?.('color-sprint.queue-device');if(typeof stored==='string'&&/^[-a-z0-9]{1,100}$/.test(stored))return stored;if(!this.app.saveLocalStorage)throw new Error('Device-local queue ownership is unavailable. Update Obsidian first.');const device='runner-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);this.app.saveLocalStorage('color-sprint.queue-device',device);return device;}
   file(path=this.settings.path):TFile{const file=this.app.vault.getAbstractFileByPath(vaultPath(path));if(!(file instanceof TFile))throw new Error(`Tracker note not found: ${path}. Create it or choose an existing tracker note.`);return file;}
   async read(path=this.settings.path):Promise<string>{return this.app.vault.read(this.file(path));}
+private saveStudy(path:string,record:ReviewRecord,focus:ModuleFocus,base?:string):Promise<void>{const operation=this.queue.then(async()=>{if(this.stopped)throw new Error('Plugin stopped.');if(base!==undefined&&await this.read(path)!==base)throw new Error('Tracker changed before the study review. Refresh first.');await appendStudy(obsidianStudyIO(this.app),path,record,focus,()=>this.read(path));});this.queue=operation.catch(()=>{});return operation;}
   change(transform:(text:string)=>string,path=this.settings.path):Promise<void>{
     const operation=this.queue.then(async()=>{let checkpoint:PhoneCheckpoint|null=null;await this.app.vault.process(this.file(path),text=>{const next=transform(text);parseBoard(next);if(this.primaryPhone)checkpoint=this.syncStore.prepare(path,text,next);return next;});if(checkpoint)await this.syncStore.committed(checkpoint);this.refresh();});this.queue=operation.catch(()=>{});return operation;
   }
@@ -93,6 +97,7 @@ export default class ColorSprint extends Plugin {
     const path=vaultPath(context.tracker||this.settings.path);
     const change=(fn:(text:string)=>string)=>this.change(fn,path);
     const host:Host={
+      study:{load:focus=>loadStudy(obsidianStudyIO(this.app),path,focus.taskId,this.queueDevice()),append:(record,focus)=>this.saveStudy(path,record,focus)},
       queueOwner:()=>this.queueDevice(),
       read:()=>this.read(path),change,
       getFeedback:()=>({...this.settings.feedback}),saveFeedback:async prefs=>{await this.saveData({...this.settings,feedback:prefs});this.settings.feedback={...prefs};this.refresh();},

@@ -1,6 +1,8 @@
 import {parseBoard,setEntry,startTimer,pauseTimer,resumeTimer,refreshTimer,cancelTimer,finishFocus,completeFocusStep,validDay,setTaskCompletion,validFinishLevel} from './model';
 import {vaultPath} from './daily';
 import {syncFolder} from './sync';
+import {validateReview} from './modules/markdown';
+import {activeModuleFocus} from './modules/contracts';
 import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation,reviewEffortProfile} from './model';
 
 export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string;toDate?:string};
@@ -8,6 +10,7 @@ const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
+  if(action.kind==='study-review'){if(typeof action.details!=='string'||action.details.length>16384)throw new Error('Invalid study review.');const r=validateReview(JSON.parse(action.details)),focus=activeModuleFocus(b);if(!focus||focus.paused||focus.stepId!==action.stepId||focus.sessionId!==r.sessionId||focus.date!==r.date)throw new Error('Study focus changed or paused.');return text;}
   if(action.kind==='complete-rated'){if(!validFinishLevel(action.operation))throw new Error('Choose a completion level.');return setTaskCompletion(text,action.date||'',action.taskId||'',true,action.operation);}if(action.kind==='finish-rated'||action.kind==='next-rated'){if(!validFinishLevel(action.operation)||!Number.isSafeInteger(action.cursor))throw new Error('Choose a completion level and current focus cursor.');if(b.timer?.id!==action.timerId||b.timer?.cursor!==action.cursor)throw new Error('Focus queue changed. Refresh first.');return action.kind==='finish-rated'?finishFocus(text,action.timerId!,action.stepId||'',action.note||'',now,action.operation,action.cursor):completeFocusStep(text,action.timerId!,action.cursor!,now,action.operation);}if(action.kind==='effort-profile'){if(typeof action.details!=='string'||action.details.length>8000)throw new Error('Invalid effort review.');const value=JSON.parse(action.details);if(!value||Object.keys(value).some(k=>!['profile','expected'].includes(k)))throw new Error('Invalid effort review.');return reviewEffortProfile(text,value.profile,value.expected);}if(action.kind==='move-task')return moveTask(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='obligation-done')return finishObligation(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='queue-add')return enqueueTask(text,action.taskId||'',action.date||'');
@@ -46,6 +49,7 @@ export function parseHudRequest(text:string,now=Date.now()):HudRequest {
 const bytes=(base64:string)=>Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
 export async function verifyHudRequest(r:HudRequest):Promise<boolean>{const key=await crypto.subtle.importKey('spki',bytes(r.publicKey),{name:'ECDSA',namedCurve:'P-256'},false,['verify']);return crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},key,bytes(r.signature),new TextEncoder().encode(signedHudBody(r)));}
 export interface HudHost {
+  study?(tracker:string,action:HudAction,base:string):Promise<void>;
   runner?():string;
   read(path:string):Promise<string|null>;create(path:string,text:string):Promise<void>;replace(path:string,before:string,after:string):Promise<void>;
   change(tracker:string,transform:(text:string)=>string):Promise<void>;
@@ -62,8 +66,10 @@ export async function processHudRequest(host:HudHost,tracker:string,id:string,no
   const prior=await host.read(resultPath);if(prior){const result=hudPayload(prior) as HudResult;if(result.id!==id||result.version!==1||result.requestSignature!==r.signature||!['processing','done','rejected','unconfirmed'].includes(result.status)||typeof result.message!=='string')throw new Error('HUD receipt differs; inspect it before continuing.');return result;}
   const pending:HudResult={version:1,id,requestSignature:r.signature,status:'processing',message:'Outcome pending. Never replay this request.'},pendingText=hudNote(pending);await host.create(resultPath,pendingText);
   let wrote=false,result:HudResult;
-  try{if(!await host.approve(r.client,r.publicKey,tracker))throw new Error('HUD pairing declined. Nothing changed.');parseHudRequest(raw,now());if(await host.read(requestPath)!==raw)throw new Error('HUD request changed after review.');let next='';await host.change(tracker,current=>{parseHudRequest(raw,now());if(current!==r.base)throw new Error('Tracker changed in Obsidian. Nothing overwritten. Refresh and try again.');next=applyHudAction(current,r.action,now(),r.action.kind==='queue-start'||r.action.kind==='queue-takeover'?host.runner?.()||'standalone':'standalone');return next;});wrote=true;
-    if(await host.read(tracker)!==next)throw new Error('Tracker changed during verification. Inspect Obsidian before retrying.');
+  try{if(!await host.approve(r.client,r.publicKey,tracker))throw new Error('HUD pairing declined. Nothing changed.');parseHudRequest(raw,now());if(await host.read(requestPath)!==raw)throw new Error('HUD request changed after review.');let next='';
+    if(r.action.kind==='study-review'){if(!host.study)throw new Error('Update Windows Obsidian Color Sprint for study reviews.');if(await host.read(tracker)!==r.base)throw new Error('Tracker changed before review.');wrote=true;await host.study(tracker,r.action,r.base);}
+    else {await host.change(tracker,current=>{parseHudRequest(raw,now());if(current!==r.base)throw new Error('Tracker changed in Obsidian. Nothing overwritten. Refresh and try again.');next=applyHudAction(current,r.action,now(),r.action.kind==='queue-start'||r.action.kind==='queue-takeover'?host.runner?.()||'standalone':'standalone');return next;});wrote=true;
+    if(await host.read(tracker)!==next)throw new Error('Tracker changed during verification. Inspect Obsidian before retrying.');}
     result={version:1,id,requestSignature:r.signature,status:'done',message:'Applied and read back through Obsidian.'};
   }catch(error){let unchanged=false;try{unchanged=await host.read(tracker)===r.base;}catch{}result={version:1,id,requestSignature:r.signature,status:wrote||!unchanged?'unconfirmed':'rejected',message:error instanceof Error?error.message:String(error)};}
   await host.replace(resultPath,pendingText,hudNote(result));return result;

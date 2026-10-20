@@ -85,7 +85,12 @@ Deployment-only checks (Node 24+): `node --test tests/local-deploy.test.mjs`.
 5. Read back the remote commit/release and verify asset hashes before saying shipped.
 
 Previous baseline: plugin 0.11.0 at `f59aeb2`; local HUD 0.10.2.
-Current bridge correction: plugin 0.16.2 fixes Windows URI routing after Obsidian
+Current study integration: plugin and HUD 0.17.0 connect the shared learner to
+real Japanese focus. Use scripts/publish-study-release.mjs with reviewed exact
+--plugin-zip and --hud-zip archives. Keep the plugin release Latest for BRAT;
+the hud-prefixed release must not replace it. See MODULES.md for storage limits.
+
+Previous bridge correction: plugin 0.16.2 fixes Windows URI routing after Obsidian
 consumes the vault parameter. Existing HUD 0.16.0 is compatible and unchanged;
 no HUD reinstall or restart is required. Use the version-guarded
 scripts/publish-bridge-fix.mjs for this plugin-only correction, not the previous

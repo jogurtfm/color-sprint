@@ -25,7 +25,7 @@ export async function integrationFor(filename:string):Promise<Integration>{
   return result;
 }
 // Reject links/junctions in bridge destinations rather than escaping the vault.
-async function ordinaryPath(vault:string,relative:string,create=false):Promise<string>{
+export async function ordinaryPath(vault:string,relative:string,create=false):Promise<string>{
   if(path.isAbsolute(relative)||relative.split('/').some(p=>!p||p==='.'||p==='..'||/[\\:]/.test(p)))throw new Error('Invalid bridge path.');
   const root=await realpath(vault);let folder=root;const parts=relative.split('/');const leaf=parts.pop()!;
   for(const part of parts){folder=path.join(folder,part);let s=await exists(folder);if(!s&&create){try{await mkdir(folder);}catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;}s=await lstat(folder);}if(!s)throw Object.assign(new Error('Bridge folder not found.'),{code:'ENOENT'});if(!s.isDirectory()||s.isSymbolicLink()||await realpath(folder)!==folder)throw new Error('Bridge directories must be ordinary vault folders, not links.');}
@@ -36,6 +36,7 @@ export class ObsidianBridge {
   private client:Client|null=null;
   constructor(private profile:string,private open:(url:string)=>Promise<unknown>,private timeout=90000){}
   get fingerprint(){return this.client?createHash('sha256').update(this.client.publicKey).digest('hex').slice(0,24):'';}
+  get deviceId(){return this.client?.id||'hud-study';}
   async load():Promise<void>{
     if(this.client)return;const file=path.join(this.profile,'hud-client.json');
     try{const c=JSON.parse(await readFile(file,'utf8')) as Client;if(!bridgeId(c.id)||typeof c.privateKey!=='string'||typeof c.publicKey!=='string'||createPublicKey(c.privateKey).export({type:'spki',format:'der'}).toString('base64')!==c.publicKey)throw new Error('HUD pairing key is corrupt; keep it for recovery and choose a fresh profile to re-pair.');this.client=c;}

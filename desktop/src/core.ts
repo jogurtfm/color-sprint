@@ -18,12 +18,13 @@ export class VaultStore {
     if(!writable)throw new Error('Read-only link. Enable task edits in Settings after reviewing the source path.');
     await this.load();if(this.state.error)throw new Error(this.state.error);if(expected!==this.state.revision)throw new Error('Vault changed since this screen loaded. Nothing was overwritten. Refresh and try again.');
     const text=await readFile(this.canonical,'utf8');if(revision(text)!==expected)throw new Error('Vault changed. Nothing written.');const next=applyAction(text,action);parseBoard(next);
-    if(next===text)return this.state;
+    if(next===text&&action.kind!=='study-review')return this.state;
     const context=this.state.integration!;
     if(context.mode==='obsidian'){
       if(!this.bridge)throw new Error('Protected Obsidian tracker: use the Obsidian bridge, never a direct HUD write.');
       await this.bridge(text,action,context);await this.load();if(this.state.error)throw new Error(this.state.error);return this.state;
     }
+    if(action.kind==='study-review')throw new Error('Study reviews require the Obsidian bridge. No direct HUD write was made.');
     await mkdir(this.backupDir,{recursive:true});await writeFile(path.join(this.backupDir,`${Date.now()}-${randomUUID()}.md`),text,{flag:'wx'});
     const temp=path.join(path.dirname(this.canonical),`.${path.basename(this.canonical)}.hud-${randomUUID()}.tmp`);
     try{await writeFile(temp,next,{flag:'wx'});if(await realpath(this.filename)!==this.canonical||revision(await readFile(this.canonical,'utf8'))!==expected)throw new Error('Another app changed this tracker. Saved your original backup; no replacement made.');await rename(temp,this.canonical);}finally{await unlink(temp).catch(()=>{});}

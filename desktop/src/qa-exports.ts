@@ -4,3 +4,5 @@ export * from './core';
 export * from './settings';
 export * from './launcher';
 export * from './spotify';
+export {loadStudy,appendStudy} from '../../src/modules/data';
+export {activeModuleFocus} from '../../src/modules/contracts';
