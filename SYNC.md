@@ -12,6 +12,8 @@ This is a safety layer around normal Markdown, not a replacement sync engine or 
 | Effort Profile | Optional personal task/page/kind ratings; planning changes go through reviewed proposals and concurrent user ratings are retained. Reflection-based guesses remain proposed; see EFFORT.md. |
 | Reflection capture | Separate dated journal files; not treated as commands or task-completion evidence. |
 | Task Moves / persistent obligations | Explicit user schedule moves; planning proposals retain current history and flag stale edits to moved-away dates. Checkbox recovery preserves real completion without manufacturing a second completion on the new day. |
+| Completion Ratings | Actual per-completion user choices, protected from planning rewrites. Primary phone checkpoints include rating-only changes and explicit clearing with checks/unchecks. Old checkpoints without a level retain current ratings. |
+| Finish Multipliers | Optional scoring rules; reviewed planning merges use three-way conflicts. Changing rules recalculates historical points, not completion. See RATED-FINISH.md. |
 
 The user's phone is the primary checkbox device. Under Settings → Color Sprint, **Primary phone checkpoints on this device** defaults on for mobile and off for desktop. This preference is device-local, not synchronized in plugin settings. Leave it on for one primary phone. If multiple primary devices disagree, recovery flags the disagreement rather than guessing based on a wall clock.
 

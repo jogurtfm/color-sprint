@@ -3,6 +3,8 @@ button,input,select,summary,[data-radial-id],.date-controls,.topbar nav,.rim-top
 .topbar.drag{-webkit-app-region:no-drag}.topbar .brand{-webkit-app-region:drag}
 /* Chromium's native drag hit map must not include a perspective-transformed toolbar. */
 body[data-mode="hud"] .topbar,body[data-mode="hud"] .utility-bar{transform:none!important;transform-style:flat!important}
+/* Keep timer hit regions on the visible plane, just like the header controls. */
+body[data-mode="hud"] .focus-actions{transform:none!important;transform-style:flat!important;isolation:isolate}
 .workspace-tabs{position:relative;z-index:8}.workspace-tabs,.workspace-tabs *{-webkit-app-region:no-drag!important}
 .topbar nav,.rim-top nav,.widget-drag>div{isolation:isolate;-webkit-app-region:no-drag!important}
 .topbar nav *,.rim-top nav *,.widget-drag>div *{ -webkit-app-region:no-drag!important }

@@ -1,8 +1,9 @@
-# Color Sprint HUD · Windows preview 0.13.2
+# Color Sprint HUD · Windows preview 0.14.0
 
-Includes companion plugin 0.14.2 with keyboard-aware reflection controls and a
-draft-preserving Hide keyboard button. HUD behavior is otherwise unchanged.
-See REFLECTION-KEYBOARD.md; physical iPhone confirmation remains separate.
+Includes companion plugin 0.15.0 with rated red 😴 / yellow 🙂 / green 😤 finishes.
+Task cards and focus controls preview points; the compact rim has emoji choices.
+All levels are one win. Update PC Obsidian to 0.15.0+ for rated bridge actions.
+See RATED-FINISH.md; physical iPhone/BRAT confirmation remains separate.
 
 ## Personal effort and arcade ranks
 

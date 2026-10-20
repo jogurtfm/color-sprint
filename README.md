@@ -1,8 +1,9 @@
 # Color Sprint
 
-Current source: plugin **0.14.2** / Windows HUD **0.13.2** fixes reflection controls
-being obscured by the iPhone keyboard, retaining effort profiles, arcade ranks,
-Quick Queue and obligations. See [Keyboard fix](REFLECTION-KEYBOARD.md) and [Effort guide](EFFORT.md). Release asset read-back, not this source version,
+Current source: plugin **0.15.0** / Windows HUD **0.14.0** adds red 😴, yellow 🙂
+and green 😤 rated finishes with point previews, retaining the reflection keyboard
+fix, effort profiles, ranks, Quick Queue and obligations. See [Rated finishes](RATED-FINISH.md)
+and [Effort guide](EFFORT.md). Release asset read-back, not this source version,
 establishes publishing or installation on a device.
 
 A calm, color-coded surface for habits, tasks, goals, and focus sessions in **Obsidian on iPhone, iPad, and desktop**. Your tracker is an ordinary Markdown note: edit it in Obsidian or tap through the interface. Both use the same data.

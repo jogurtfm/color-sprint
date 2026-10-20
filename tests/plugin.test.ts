@@ -13,10 +13,28 @@ import { syncNote, parseCheckpoint, PlanProposal } from '../src/sync';
 import {generateKeyPairSync,randomUUID,sign} from 'node:crypto';
 import {HudRequest,hudNote,hudFolder,signedHudBody,hudPayload} from '../src/hud-protocol';
 import {enqueueTask,startQuickQueue,queueItemsFor,focusQueue} from '../src/model';
-import {defaultEffort} from '../src/effort';
+import {defaultEffort,dailyScore} from '../src/effort';
+import {completionLevel} from '../src/model';
 const require=createRequire(import.meta.url);
 const {JSDOM}=require('jsdom');
 const settle=(ms=20)=>new Promise(resolve=>setTimeout(resolve,ms));
+
+test('mobile colored finishes keep cards visible, rerate one win and clear on intentional uncheck',async()=>{
+  const day=localDay(),h=await harness(setEntry(starter(day),day,'make-bed',false),{}, {mobile:true});try{
+    const card=()=>[...h.document.querySelectorAll('.cs-card')].find((el:any)=>el.querySelector('h3')?.textContent==='Make Bed') as any;
+    const pick=(level:string)=>card().querySelector(`[data-finish-level="${level}"]`).click();
+    pick('light');await settle();assert.equal(dailyScore(parseBoard(h.text),day).points,5);assert.ok(card().querySelector('input[type=checkbox]').checked);assert.match(h.document.querySelector('.cs-wins').textContent,/1 task done/);assert.match(card().querySelector('.cs-finish-choices summary').textContent,/Bare minimum/);
+    pick('full');await settle();assert.equal(dailyScore(parseBoard(h.text),day).points,15);assert.equal(parseBoard(h.text).entries.filter(e=>e.done).length,1);assert.match(card().querySelector('.cs-finish-choices summary').textContent,/Full effort/);card().querySelector('input[type=checkbox]').click();await settle();assert.equal(parseBoard(h.text).completionRatings.length,0);assert.equal(h.notices.length,0);
+  }finally{await h.close();}
+});
+
+test('mobile group graded finishes advance only current task then finish the last item',async()=>{
+  const h=await harness(starter(),{}, {mobile:true});try{h.button('Schedule group').click();await settle();h.button('Focus group').click();await settle();h.document.querySelector('.cs-focus-mode [data-finish-level="light"]').click();await settle();let b=parseBoard(h.text);assert.equal(b.timer!.cursor,1);assert.equal(b.completionRatings[0].id,'make-bed');assert.equal(b.entries.filter(e=>e.done).length,1);h.document.querySelector('.cs-focus-mode [data-finish-level="solid"]').click();await settle();h.document.querySelector('.cs-focus-mode [data-finish-level="full"]').click();await settle();b=parseBoard(h.text);assert.equal(b.timer,null);assert.equal(b.completionRatings.length,3);assert.equal(b.sessions.length,1);assert.equal(h.notices.length,0);}finally{await h.close();}
+});
+
+test('real signed HUD rated finish passes verification and replay cannot add a win',async()=>{
+  const base=setEntry(starter(),localDay(),'make-bed',false),r=hudRequest(base,{kind:'complete-rated',date:localDay(),taskId:'make-bed',operation:'light'}),local=new Map([['color-sprint.hud-trust',{[r.client+'/'+r.tracker]:r.publicKey}]]),h=await harness(base,{[`${hudFolder(r.tracker)}/Requests/${r.id}.md`]:hudNote(r)},{store:local});try{h.plugin.app.vault.getName=()=> 'Fixture';await h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});assert.equal(completionLevel(parseBoard(h.text),localDay(),'task','make-bed'),'light');assert.equal(dailyScore(parseBoard(h.text),localDay()).points,5);const writes=h.writes;await h.plugin.hudBridge.handle({vault:'Fixture',tracker:r.tracker,id:r.id});assert.equal(h.writes,writes);assert.equal(parseBoard(h.text).entries.filter(e=>e.done).length,1);}finally{await h.close();}
+});
 
 test('mobile reflection controls stay above input and Hide keyboard retains text without journal or tracker writes',async()=>{const h=await harness(starter(),{}, {mobile:true});try{h.button('🎙').click();await settle();const modal=h.modals[0],input=modal.contentEl.querySelector('textarea');assert.ok(modal.modalEl.classList.contains('cs-reflection-modal'));const toolbar=modal.contentEl.querySelector('[role="toolbar"]');assert.equal(modal.contentEl.firstElementChild,toolbar);assert.equal(toolbar.firstElementChild.textContent,'Save reflection');input.value='My draft stays here.';input.dispatchEvent(new h.dom.window.Event('input'));input.focus();h.button('Hide keyboard',modal.contentEl).click();assert.notEqual(h.document.activeElement,input);assert.equal(input.value,'My draft stays here.');assert.equal(h.files.size,0);assert.equal(h.writes,0);h.button('Save reflection',modal.contentEl).click();await settle();assert.equal(h.modals.length,0);assert.equal(h.files.get(`Sync/Reflection/Voice/${localDay()}.md`)!.text.includes('My draft stays here.'),true);assert.equal(parseBoard(h.text).entries.length,0);}finally{await h.close();}});
 

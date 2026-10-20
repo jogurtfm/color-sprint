@@ -9,6 +9,10 @@ export const COLORS: {id: ColorId; name: string; hex: string}[] = [
 ];
 export interface Task {id:string; title:string; color:ColorId; page:string; kind:string; repeat:string; minutes:number; definition:string}
 export interface Entry {date:string; taskId:string; detail:string; done:boolean}
+export type FinishLevel='light'|'solid'|'full';
+export interface CompletionRating {date:string;target:'task'|'subtask';id:string;level:FinishLevel}
+export interface FinishMultiplier {level:FinishLevel;multiplier:number}
+export const validFinishLevel=(value:unknown):value is FinishLevel=>['light','solid','full'].includes(value as string);
 export interface Goal {id:string; due:string; page:string; title:string; evidence:string; done:boolean}
 export interface Session {id:string; date:string; taskId:string; seconds:number; note:string}
 export interface Timer {id:string; taskId:string; date:string; started:string; elapsed:number; target:number; cursor:number; stepOffset:number; itemIds?:string[];owner?:string}
@@ -24,7 +28,7 @@ export interface FocusTarget {date:string;taskId:string;minutes:number}
 export interface TaskMove {id:string;taskId:string;origin:string;from:string;to:string;created:string}
 export interface Obligation {task:Task;origin:string;date:string;dates:string[];detail:string;done:boolean}
 export interface EffortProfile {id:string;scope:'task'|'page'|'kind';match:string;friction:number|null;attention:number|null;physical:number|null;emotional:number|null;uncertainty:number|null;points:number|null;status:'confirmed'|'proposed';reviewed:string;notes:string}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; effortProfiles:EffortProfile[]; start:string; end:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; effortProfiles:EffortProfile[]; completionRatings:CompletionRating[]; finishMultipliers:FinishMultiplier[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
@@ -40,7 +44,9 @@ export const AVAILABILITY_HEADER='| ID | Label | Days | Start | End | Time zone 
 export const FOCUS_TARGET_HEADER='| Date | Task ID | Minutes |';
 export const TASK_MOVE_HEADER='| ID | Task ID | Original date | From date | To date | Moved ISO |';
 export const EFFORT_HEADER='| ID | Scope | Match | Start friction | Attention | Physical | Emotional | Uncertainty | Points or auto | Status | Reviewed | Notes |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves','Effort Profile'];
+export const COMPLETION_RATING_HEADER='| Date | Target | ID | Level |';
+export const FINISH_MULTIPLIER_HEADER='| Level | Multiplier |';
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves','Effort Profile','Completion Ratings','Finish Multipliers'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -108,7 +114,12 @@ export function parseBoard(text:string):Board {
   const effortProfiles:EffortProfile[]=effortRange?table(lines,effortRange,EFFORT_HEADER).map(p=>({id:p[0],scope:p[1] as EffortProfile['scope'],match:p[2],friction:rating(p[3]),attention:rating(p[4]),physical:rating(p[5]),emotional:rating(p[6]),uncertainty:rating(p[7]),points:p[8]==='auto'?null:integer(p[8]),status:p[9] as EffortProfile['status'],reviewed:p[10],notes:p[11]})):[];unique(effortProfiles.map(p=>p.id),'effort profile');
   for(const p of effortProfiles)if(!['task','page','kind'].includes(p.scope)||!tasks.some(t=>p.match===(p.scope==='task'?t.id:p.scope==='page'?t.page:t.kind))||[p.friction,p.attention,p.physical,p.emotional,p.uncertainty].some(n=>n!==null&&(n<0||n>3))||(p.points!==null&&(p.points<0||p.points>200))||!['confirmed','proposed'].includes(p.status)||(p.reviewed!=='-'&&!validDay(p.reviewed)))throw new Error('Effort Profile needs a known task/page/kind, ratings 0–3 or -, points 0–200 or auto, status and reviewed date.');
   if(new Set(effortProfiles.map(p=>p.scope+'/'+p.match)).size!==effortProfiles.length)throw new Error('Only one effort profile per task/page/kind.');
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,effortProfiles,start,end};
+  const ratingRange=rs.get('Completion Ratings');const completionRatings:CompletionRating[]=ratingRange?table(lines,ratingRange,COMPLETION_RATING_HEADER).map(p=>({date:p[0],target:p[1] as CompletionRating['target'],id:p[2],level:p[3] as FinishLevel})):[];
+  for(const r of completionRatings)if(!validDay(r.date)||!['task','subtask'].includes(r.target)||!(r.target==='task'?taskIds.has(r.id):subtasks.some(s=>s.id===r.id))||!validFinishLevel(r.level))throw new Error('Completion Ratings need a valid date, task/subtask, known ID and light/solid/full level.');
+  if(new Set(completionRatings.map(r=>`${r.date}/${r.target}/${r.id}`)).size!==completionRatings.length)throw new Error('Duplicate completion rating.');
+  const multiplierRange=rs.get('Finish Multipliers');const finishMultipliers:FinishMultiplier[]=multiplierRange?table(lines,multiplierRange,FINISH_MULTIPLIER_HEADER).map(p=>({level:p[0] as FinishLevel,multiplier:number(p[1])})):[];
+  if(finishMultipliers.some(r=>!validFinishLevel(r.level)||r.multiplier>3)||new Set(finishMultipliers.map(r=>r.level)).size!==finishMultipliers.length)throw new Error('Finish Multipliers need unique light/solid/full levels and 0–3 values.');
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,effortProfiles,completionRatings,finishMultipliers,start,end};
 }
 export function validTime(value:string):boolean{return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);}
 function validTimezone(value:string):boolean{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}}
@@ -149,7 +160,7 @@ export function moveTask(text:string,taskId:string,from:string,to:string,now=Dat
   const id=`move-${now}-${board.taskMoves.length+1}-${taskId}`;return upsertPlanTable(next,'Task Moves',TASK_MOVE_HEADER,6,[id,taskId,group.origin,from,to,new Date(now).toISOString()],p=>p[0]===id);
 }
 export function planned(board:Board,task:Task,day:string):boolean{if((movedTo(board,task.id,day)||resolvedElsewhere(board,task.id,day))&&!entryFor(board,task.id,day)?.done)return false;return !!entryFor(board,task.id,day)||board.sessions.some(session=>session.date===day&&session.taskId===task.id)||board.subtasks.some(sub=>sub.taskId===task.id&&sub.done&&sub.completed===day)||(day>=board.start&&day<=board.end&&scheduled(task,day));}
-export function finishObligation(text:string,taskId:string,from:string,today:string,now=Date.now()):string{const board=parseBoard(text),task=board.tasks.find(t=>t.id===taskId);if(!task||!isObligation(task))throw new Error('Choose an existing one-off obligation.');const next=from===today?text:moveTask(text,taskId,from,today,now);return setEntry(next,today,taskId,true);}
+export function finishObligation(text:string,taskId:string,from:string,today:string,now=Date.now()):string{const board=parseBoard(text),task=board.tasks.find(t=>t.id===taskId);if(!task||!isObligation(task))throw new Error('Choose an existing one-off obligation.');const next=from===today?text:moveTask(text,taskId,from,today,now);return setTaskCompletion(next,today,taskId,true);}
 export function groupTimerId(group:GroupRef):string{return `group:${group.kind}:${encodeURIComponent(group.value)}`;}
 export function parseGroupTimerId(id:string):GroupRef|null {const match=id.match(/^group:(page|color):(.+)$/);if(!match)return null;try{return {kind:match[1] as GroupRef['kind'],value:decodeURIComponent(match[2])};}catch{return null;}}
 function lineEdit(text:string,section:string,find:(line:string)=>boolean,transform:(line:string)=>string,append:string):string{
@@ -178,6 +189,15 @@ export function saveEffortProfile(text:string,p:EffortProfile):string {
   return upsertPlanTable(text,'Effort Profile',EFFORT_HEADER,12,[p.id,p.scope,p.match,...[p.friction,p.attention,p.physical,p.emotional,p.uncertainty].map(n=>n===null?'-':String(n)),p.points===null?'auto':String(p.points),p.status,p.reviewed,p.notes],row=>row[0]===p.id);
 }
 export function reviewEffortProfile(text:string,p:EffortProfile,expected:EffortProfile|undefined):string {const current=parseBoard(text).effortProfiles.find(row=>row.scope===p.scope&&row.match===p.match);if(JSON.stringify(current)!==JSON.stringify(expected))throw new Error('Effort rating changed on another device. Refresh before saving.');return saveEffortProfile(text,p);}
+export function completionLevel(board:Board,date:string,target:CompletionRating['target'],id:string):FinishLevel|null{return board.completionRatings.find(r=>r.date===date&&r.target===target&&r.id===id)?.level??null;}
+export function saveCompletionRating(text:string,r:Omit<CompletionRating,'level'> & {level:FinishLevel|null}):string {
+  const board=parseBoard(text);if(!validDay(r.date)||!['task','subtask'].includes(r.target)||!(r.target==='task'?board.tasks.some(t=>t.id===r.id):board.subtasks.some(s=>s.id===r.id))||(r.level!==null&&!validFinishLevel(r.level)))throw new Error('Invalid completion rating.');
+  const matches=(p:string[])=>p[0]===r.date&&p[1]===r.target&&p[2]===r.id;
+  if(r.level===null)return board.completionRatings.some(row=>matches([row.date,row.target,row.id]))?lineEdit(text,'Completion Ratings',line=>matches(splitCells(line)),()=>'', ''):text;
+  return upsertPlanTable(text,'Completion Ratings',COMPLETION_RATING_HEADER,4,[r.date,r.target,r.id,r.level],matches);
+}
+export function setTaskCompletion(text:string,date:string,id:string,done:boolean,level?:FinishLevel):string {const old=entryFor(parseBoard(text),id,date);let next=setEntry(text,date,id,done);if(done&&old?.done&&level===undefined)return next;return saveCompletionRating(next,{date,target:'task',id,level:done?level??null:null});}
+export function saveFinishMultiplier(text:string,row:FinishMultiplier):string {if(!Number.isFinite(row.multiplier)||row.multiplier<0||row.multiplier>3)throw new Error('Finish multiplier must be 0–3.');return upsertPlanTable(text,'Finish Multipliers',FINISH_MULTIPLIER_HEADER,2,[row.level,String(row.multiplier)],p=>p[0]===row.level);}
 export function saveAvailability(text:string,block:Availability):string{return upsertPlanTable(text,'Availability',AVAILABILITY_HEADER,6,[block.id,block.label,block.days,block.start,block.end,block.timezone],p=>p[0]===block.id);}
 function upsertPlanTable(text:string,section:string,header:string,width:number,values:string[],matches:(parts:string[])=>boolean):string {
   parseBoard(text);const nl=text.includes('\r\n')?'\r\n':'\n';let next=text;if(!ranges(text.split(/\r?\n/)).has(section))next+=`${nl}## ${section}${nl}${nl}${header}${nl}| ${Array(width).fill('---').join(' | ')} |${nl}`;const row=`| ${values.map(cell).join(' | ')} |`;next=lineEdit(next,section,line=>line.trim().startsWith('|')&&matches(splitCells(line)),()=>row,row);parseBoard(next);return next;
@@ -187,7 +207,7 @@ export function saveSubtask(text:string,sub:Subtask):string{
   const row=`- [${sub.done?'x':' '}] ${[sub.id,sub.taskId,sub.context,String(sub.minutes),sub.title,sub.definition,sub.completed].map(cell).join(' | ')}`;
   next=lineEdit(next,'Subtasks',line=>{const m=line.match(/^\s*- \[[ xX]\]\s*(.*)$/);return !!m&&splitCells(m[1])[0]===sub.id;},()=>row,row);parseBoard(next);return next;
 }
-export function setSubtaskDone(text:string,id:string,done:boolean,date:string):string{const sub=parseBoard(text).subtasks.find(sub=>sub.id===id);if(!sub||!validDay(date))throw new Error('Subtask changed or date is invalid.');return saveSubtask(text,{...sub,done,completed:done?date:'-'});}
+export function setSubtaskDone(text:string,id:string,done:boolean,date:string,level?:FinishLevel):string{const sub=parseBoard(text).subtasks.find(sub=>sub.id===id);if(!sub||!validDay(date))throw new Error('Subtask changed or date is invalid.');let next=saveSubtask(text,{...sub,done,completed:done?date:'-'});if(done&&sub.done&&level===undefined)return next;for(const r of parseBoard(next).completionRatings.filter(r=>r.target==='subtask'&&r.id===id))next=saveCompletionRating(next,{...r,level:null});return done&&level!==undefined?saveCompletionRating(next,{date,target:'subtask',id,level}):next;}
 export function addWorkoutLog(text:string,log:Omit<WorkoutLog,'id'> & {id?:string}):string{
   const board=parseBoard(text);if(!validDay(log.date)||(log.taskId!=='workout'&&log.taskId!=='treadmill')||!Number.isFinite(log.minutes)||log.minutes<0||!Number.isFinite(log.distance)||log.distance<0)throw new Error('Workout log needs a valid date, Workout or Treadmill, and nonnegative duration and distance.');const id=log.id||`w-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;if(board.workoutLogs.some(item=>item.id===id))throw new Error('Workout log ID already exists.');const row=`| ${[id,log.date,log.taskId,String(log.minutes),String(log.distance),log.details,log.note].map(cell).join(' | ')} |`;return lineEdit(text,'Workout Log',()=>false,()=>row,row);
 }
@@ -219,7 +239,7 @@ export function startGroupTimer(text:string,group:GroupRef,date:string,now=Date.
 export function moveGroupTimer(text:string,id:string,delta:number,now=Date.now()):string{
   const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Routine timer changed. Refresh and try again.');const length=focusQueue(board,timer).length;if(!length)throw new Error('This queue is empty. Save this session and choose another task.');return writeTimer(text,{...timer,cursor:Math.max(0,Math.min(length-1,timer.cursor+delta)),stepOffset:timerSeconds(timer,now)});
 }
-export function completeFocusStep(text:string,id:string,cursor:number,now=Date.now()):string{const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id||timer.cursor!==cursor)throw new Error('Focus step changed. Refresh and try again.');const queue=focusQueue(board,timer);const step=queue[cursor];if(!step)throw new Error('Focus queue changed.');const next=step.subtask?setSubtaskDone(text,step.subtask.id,true,timer.date):setEntry(text,timer.date,step.taskId,true);return cursor<queue.length-1?moveGroupTimer(next,id,1,now):next;}
+export function completeFocusStep(text:string,id:string,cursor:number,now=Date.now(),level?:FinishLevel):string{const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id||timer.cursor!==cursor)throw new Error('Focus step changed. Refresh and try again.');const queue=focusQueue(board,timer);const step=queue[cursor];if(!step)throw new Error('Focus queue changed.');const next=step.subtask?setSubtaskDone(text,step.subtask.id,true,timer.date,level):setTaskCompletion(text,timer.date,step.taskId,true,level);return cursor<queue.length-1?moveGroupTimer(next,id,1,now):next;}
 export function pauseTimer(text:string,id:string,now=Date.now()):string{
   const timer=parseBoard(text).timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh and try again.');return writeTimer(text,{...timer,elapsed:timerSeconds(timer,now),started:'-'});
 }
@@ -234,9 +254,9 @@ export function finishTimer(text:string,id:string,note:string,now=Date.now()):st
   const row=`| ${[id,timer.date,timer.taskId,String(timerSeconds(timer,now)),note].map(cell).join(' | ')} |`;
   return writeTimer(lineEdit(text,'Sessions',()=>false,x=>x,row),null);
 }
-export function finishFocus(text:string,id:string,expectedStepId:string,note='',now=Date.now()):string{
-  const board=parseBoard(text);if(board.sessions.some(session=>session.id===id)&&board.timer?.id!==id)return text;const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh before finishing.');const queue=focusQueue(board,timer);const step=queue[Math.min(timer.cursor,Math.max(0,queue.length-1))];if(!step||step.id!==expectedStepId)throw new Error('Focus item changed. Check the current item before finishing.');
-  let next=entryFor(board,step.taskId,timer.date)?text:setEntry(text,timer.date,step.taskId,false);next=step.subtask?(step.done?next:setSubtaskDone(next,step.subtask.id,true,timer.date)):setEntry(next,timer.date,step.taskId,true);if(isQuickQueue(timer.taskId)&&timer.cursor<queue.length-1)return moveGroupTimer(next,id,1,now);return finishTimer(next,id,`Finished: ${step.title}${note.trim()?`. ${note.trim()}`:''}`,now);
+export function finishFocus(text:string,id:string,expectedStepId:string,note='',now=Date.now(),level?:FinishLevel,expectedCursor?:number):string{
+  const board=parseBoard(text);if(board.sessions.some(session=>session.id===id)&&board.timer?.id!==id)return text;const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh before finishing.');if(expectedCursor!==undefined&&timer.cursor!==expectedCursor)throw new Error('Focus queue advanced. Refresh before finishing.');const queue=focusQueue(board,timer);const step=queue[Math.min(timer.cursor,Math.max(0,queue.length-1))];if(!step||step.id!==expectedStepId)throw new Error('Focus item changed. Check the current item before finishing.');
+  let next=entryFor(board,step.taskId,timer.date)?text:setEntry(text,timer.date,step.taskId,false);next=step.subtask?(step.done?next:setSubtaskDone(next,step.subtask.id,true,timer.date,level)):setTaskCompletion(next,timer.date,step.taskId,true,level);if(isQuickQueue(timer.taskId)&&timer.cursor<queue.length-1)return moveGroupTimer(next,id,1,now);return finishTimer(next,id,`Finished: ${step.title}${note.trim()?`. ${note.trim()}`:''}`,now);
 }
 export function cancelTimer(text:string,id:string):string{const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Timer changed. Refresh before cancelling.');let next=text;const step=focusQueue(board,timer)[Math.min(timer.cursor,Math.max(0,focusQueue(board,timer).length-1))];if(step&&!entryFor(board,step.taskId,timer.date))next=setEntry(next,timer.date,step.taskId,false);return writeTimer(next,null);}
 function writeQueueItems(text:string,items:QueueItem[]):string {

@@ -18,7 +18,7 @@ async function request(url,options={}){let r;try{r=await fetch(url,{...options,h
 const account=await request('https://api.github.com/user'),repo=await request(api);
 if(account.login!=='jogurtfm'||repo.private||!repo.permissions?.push)throw new Error('Expected public repository and authenticated account were not confirmed.');
 const plugin=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8')),hud=JSON.parse(await readFile(path.join(root,'desktop/package.json'),'utf8'));
-if(plugin.version!=='0.14.2'||hud.version!=='0.13.2')throw new Error('This reviewed publisher only covers plugin 0.14.2 and HUD 0.13.2.');
+if(plugin.version!=='0.15.0'||hud.version!=='0.14.0')throw new Error('This reviewed publisher only covers plugin 0.15.0 and HUD 0.14.0.');
 const commit=run(['rev-parse','HEAD']);
 const remote=run(['ls-remote','origin','refs/heads/main']).split(/\s/)[0];
 if(!process.argv.includes('--publish')){console.log(JSON.stringify({account:account.login,repository:repo.full_name,commit,remote,plugin:plugin.version,hud:hud.version,changesPublished:false}));process.exit(0);}
@@ -27,8 +27,8 @@ const releaseSources=['src','styles.css','main.js','manifest.json','package.json
 if(run(['diff','HEAD','--',...releaseSources]))throw new Error('Release sources differ from the reviewed commit.');
 const getArg=name=>process.argv[process.argv.indexOf(name)+1];
 async function zipArg(flag,folder,prefix){if(!process.argv.includes(flag))throw new Error(`Missing ${flag}.`);const file=path.resolve(root,getArg(flag)),base=path.resolve(root,folder);if(!file.startsWith(base+path.sep)||!path.basename(file).startsWith(prefix)||!file.endsWith('.zip'))throw new Error('Archive is outside its expected release directory.');const bytes=await readFile(file),hash=createHash('sha256').update(bytes).digest('hex');const sidecar=await readFile(file+'.sha256','utf8');if(!sidecar.startsWith(hash+'  '))throw new Error('Archive checksum mismatch.');return {bytes,hash};}
-const pluginZip=await zipArg('--plugin-zip','release','Color-Sprint-plugin-0.14.2-');
-const hudZip=await zipArg('--hud-zip','desktop/release','Color-Sprint-HUD-0.13.2-win-x64-');
+const pluginZip=await zipArg('--plugin-zip','release','Color-Sprint-plugin-0.15.0-');
+const hudZip=await zipArg('--hud-zip','desktop/release','Color-Sprint-HUD-0.14.0-win-x64-');
 // No force-push. A concurrent upstream edit fails normally.
 run(['push','origin','HEAD:main']);
 if(run(['ls-remote','origin','refs/heads/main']).split(/\s/)[0]!==commit)throw new Error('Remote commit read-back failed.');
@@ -45,11 +45,11 @@ async function release(tag,name,body,assets,latest){
   return {url:r.html_url,tag,verifiedAssets:verified.map(x=>({name:x.name,sha256:x.hash}))};
 }
 const pluginAssets=await Promise.all(['main.js','manifest.json','styles.css'].map(async name=>({name,bytes:await readFile(path.join(root,name))})));
-pluginAssets.push({name:'Color-Sprint-plugin-0.14.2.zip',bytes:pluginZip.bytes});
-const pluginRelease=await release('0.14.2','Color Sprint 0.14.2 · Reflection keyboard fix','Fixes iPhone keyboard obstruction in reflection capture. Save and Hide keyboard sit in a sticky top toolbar; the scoped modal follows the visible screen area, with a shorter intro, smaller responsive text box and scrollable content. Hide keyboard retains the draft, and only explicit Save writes the journal. No new permissions, audio API, upload service or tracker migration.\n\nRegression and reduced-height browser checks passed; physical iPhone confirmation is still required. See REFLECTION-KEYBOARD.md.',pluginAssets,true);
-const checksum=Buffer.from(`${hudZip.hash}  Color-Sprint-HUD-0.13.2-win-x64.zip\n`);
-const hudRelease=await release('hud-0.13.2','Color Sprint HUD 0.13.2 · Reflection keyboard companion','Packages companion Obsidian plugin 0.14.2 with the iPhone reflection keyboard fix. The HUD interface and existing personal effort/rank feature remain unchanged. Side-by-side installation preserves the user profile. PC Obsidian must be closed before plugin replacement; HUD restart and actual mobile BRAT reload are separate. See REFLECTION-KEYBOARD.md.',[{name:'Color-Sprint-HUD-0.13.2-win-x64.zip',bytes:hudZip.bytes},{name:'SHA256SUMS.txt',bytes:checksum}],false);
-const latest=await request(api+'/releases/latest');if(latest.tag_name!=='0.14.2')throw new Error('BRAT latest must remain plugin 0.14.2.');
+pluginAssets.push({name:'Color-Sprint-plugin-0.15.0.zip',bytes:pluginZip.bytes});
+const pluginRelease=await release('0.15.0','Color Sprint 0.15.0 · Rated effort finishes','Adds red 😴 Bare minimum (50%), yellow 🙂 Solid (100%) and green 😤 Full effort (150%) completion choices with point previews. All count as one win; rerating changes points without another win. Ordinary checkboxes stay unrated at base points. Ratings are optional Markdown and protected phone checkpoint data; multipliers are editable with reviewed planning merges. Task cards, routine/subtask/Quick Queue focus and Windows controls use the same model. No vault migration, journal upload or new permission.\n\nBrowser and regression checks passed; physical iPhone confirmation remains separate. See RATED-FINISH.md.',pluginAssets,true);
+const checksum=Buffer.from(`${hudZip.hash}  Color-Sprint-HUD-0.14.0-win-x64.zip\n`);
+const hudRelease=await release('hud-0.14.0','Color Sprint HUD 0.14.0 · Rated effort finishes','Adds rated effort finishes to the cinematic task cards, focus controls and compact desktop rim. Packages companion plugin 0.15.0 for signed vault writes. Red/yellow/green choices affect points, not win count; ordinary Finish remains unrated. Side-by-side installation preserves the profile. Flattens only the timer action hit plane to fix perspective-blocked clicks while retaining curved panels. Close PC Obsidian for companion replacement. Actual mobile BRAT reload and native device acceptance remain separate. See RATED-FINISH.md.',[{name:'Color-Sprint-HUD-0.14.0-win-x64.zip',bytes:hudZip.bytes},{name:'SHA256SUMS.txt',bytes:checksum}],false);
+const latest=await request(api+'/releases/latest');if(latest.tag_name!=='0.15.0')throw new Error('BRAT latest must remain plugin 0.15.0.');
 // User-authorized three-target shipping. Local targets remain private, opt-in and backed up.
 let local={status:'not-configured'};
 const {localPaths}=await import('./deploy-local.mjs');

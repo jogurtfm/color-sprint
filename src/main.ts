@@ -1,5 +1,5 @@
 import { App, Component, ItemView, MarkdownRenderChild, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce, Platform } from 'obsidian';
-import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay, timeBlockFor, saveTimeBlock, clearTimeBlock } from './model';
+import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, setTaskCompletion, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay, timeBlockFor, saveTimeBlock, clearTimeBlock } from './model';
 import { starter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
@@ -101,7 +101,7 @@ export default class ColorSprint extends Plugin {
       editTask:task=>new TaskModal(this.app,this,task,path).open(),editSubtask:(task,sub)=>new SubtaskModal(this.app,this,task,sub,path).open(),editGoal:goal=>new GoalModal(this.app,this,goal,path).open(),
       editEntry:(task,day)=>{void this.read(path).then(text=>new EntryModal(this.app,this,task,day,text,path).open()).catch(e=>this.error(e));},
       schedule:(task,day,detail)=>change(text=>{const board=parseBoard(text);if(board.entries.some(e=>e.taskId===task.id&&e.date===day))throw new Error('Task already has an entry on this day.');return setEntry(text,day,task.id,false,detail);}),scheduleGroup:(group,day)=>change(text=>scheduleGroup(text,group,day)),
-      check:(task,day,done)=>change(text=>setEntry(text,day,task.id,done)),
+      check:(task,day,done)=>change(text=>setTaskCompletion(text,day,task.id,done)),
       start:(task,day)=>change(text=>startTimer(text,task.id,day)),startGroup:(group,day)=>change(text=>startGroupTimer(text,group,day)),moveGroup:(id,delta)=>change(text=>moveGroupTimer(text,id,delta)),
       pause:id=>change(text=>pauseTimer(text,id)),resume:id=>change(text=>resumeTimer(text,id)),refresh:id=>change(text=>refreshTimer(text,id)),logWorkout:log=>change(text=>addWorkoutLog(text,log)),quickCount:count=>change(text=>addQuickCount(text,count)),
       openNote:()=>{void this.openNote(path).catch(e=>this.error(e));},

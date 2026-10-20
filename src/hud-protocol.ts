@@ -1,4 +1,4 @@
-import {parseBoard,setEntry,startTimer,pauseTimer,resumeTimer,refreshTimer,cancelTimer,finishFocus,completeFocusStep,validDay} from './model';
+import {parseBoard,setEntry,startTimer,pauseTimer,resumeTimer,refreshTimer,cancelTimer,finishFocus,completeFocusStep,validDay,setTaskCompletion,validFinishLevel} from './model';
 import {vaultPath} from './daily';
 import {syncFolder} from './sync';
 import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation,reviewEffortProfile} from './model';
@@ -8,7 +8,7 @@ const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
-  if(action.kind==='effort-profile'){if(typeof action.details!=='string'||action.details.length>8000)throw new Error('Invalid effort review.');const value=JSON.parse(action.details);if(!value||Object.keys(value).some(k=>!['profile','expected'].includes(k)))throw new Error('Invalid effort review.');return reviewEffortProfile(text,value.profile,value.expected);}if(action.kind==='move-task')return moveTask(text,action.taskId||'',action.date||'',action.toDate||'',now);
+  if(action.kind==='complete-rated'){if(!validFinishLevel(action.operation))throw new Error('Choose a completion level.');return setTaskCompletion(text,action.date||'',action.taskId||'',true,action.operation);}if(action.kind==='finish-rated'||action.kind==='next-rated'){if(!validFinishLevel(action.operation)||!Number.isSafeInteger(action.cursor))throw new Error('Choose a completion level and current focus cursor.');if(b.timer?.id!==action.timerId||b.timer?.cursor!==action.cursor)throw new Error('Focus queue changed. Refresh first.');return action.kind==='finish-rated'?finishFocus(text,action.timerId!,action.stepId||'',action.note||'',now,action.operation,action.cursor):completeFocusStep(text,action.timerId!,action.cursor!,now,action.operation);}if(action.kind==='effort-profile'){if(typeof action.details!=='string'||action.details.length>8000)throw new Error('Invalid effort review.');const value=JSON.parse(action.details);if(!value||Object.keys(value).some(k=>!['profile','expected'].includes(k)))throw new Error('Invalid effort review.');return reviewEffortProfile(text,value.profile,value.expected);}if(action.kind==='move-task')return moveTask(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='obligation-done')return finishObligation(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='queue-add')return enqueueTask(text,action.taskId||'',action.date||'');
   if(action.kind==='queue-start')return startQuickQueue(text,action.date||'',now,runner);
@@ -25,7 +25,7 @@ export function applyHudAction(text:string,action:HudAction,now=Date.now(),runne
     if(action.kind==='start')return startTimer(text,action.taskId,action.date,now);
     if(action.kind==='complete'&&typeof action.done!=='boolean')throw new Error('Completion must be explicit.');
     if(action.kind==='schedule'&&b.entries.some(e=>e.taskId===action.taskId&&e.date===action.date))return text;
-    return setEntry(text,action.date,action.taskId,action.kind==='complete'?action.done!:false);
+    return action.kind==='complete'?setTaskCompletion(text,action.date,action.taskId,action.done!):setEntry(text,action.date,action.taskId,false);
   }
   const timer=b.timer;if(!timer||timer.id!==action.timerId)throw new Error('The timer changed in Obsidian. Refresh before acting.');
   switch(action.kind){case 'pause':return pauseTimer(text,timer.id,now);case 'resume':return resumeTimer(text,timer.id,now);case 'reset':return refreshTimer(text,timer.id,now);case 'cancel':return cancelTimer(text,timer.id);case 'finish':return finishFocus(text,timer.id,action.stepId||'','',now);case 'next':if(action.cursor!==timer.cursor)throw new Error('The queue advanced elsewhere.');return completeFocusStep(text,timer.id,timer.cursor,now);default:throw new Error('Unsupported action.');}

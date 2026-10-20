@@ -14,6 +14,18 @@ const cinemaCSS=await readFile(new URL('../src/cinema.css',import.meta.url),'utf
 const spatialCSS=await readFile(new URL('../src/spatial.css',import.meta.url),'utf8');
 const workspaceCSS=await readFile(new URL('../src/workspace.css',import.meta.url),'utf8');
 
+test('desktop rated card finishes and rerating change points, not win count; checkbox clears grade',async()=>{
+  const f=await fixture('hud',true);try{const card=()=>f.w.document.querySelector('[data-select="make-bed"]').closest('.task-row');await f.click('[data-select="make-bed"]');card().querySelector('[data-finish-level="light"]').click();await tick();assert.equal(f.board.completionRatings[0].level,'light');assert.match(f.w.document.querySelector('.cs-arcade').textContent,/5 pt/);card().querySelector('[data-finish-level="full"]').click();await tick();assert.equal(f.board.completionRatings[0].level,'full');assert.match(f.w.document.querySelector('.cs-arcade').textContent,/15 pt/);assert.equal(f.board.entries.filter(e=>e.done).length,1);await f.click('[data-check="make-bed"]');assert.equal(f.board.completionRatings.length,0);}finally{f.dom.window.close();}
+});
+
+test('desktop and rim graded focus finish persist level and keep original controls available',async()=>{
+  for(const mode of ['hud','rim-focus']){const f=await fixture(mode,true);try{await f.click('[data-action="start"]');assert.ok(f.w.document.querySelector('[data-action="cancel"]'));await f.click(`${mode==='hud'?'.focus-actions':'.rim-actions'} [data-finish-level="full"]`);assert.equal(f.board.completionRatings[0].level,'full');assert.equal(f.board.timer,null);assert.equal(f.board.sessions.length,1);assert.equal(f.board.entries.filter(e=>e.done).length,1);}finally{f.dom.window.close();}}
+});
+
+test('desktop graded subtask completion advances queue and never checks parent automatically',async()=>{
+  const f=await fixture('focus',true);try{let text=m.saveSubtask(f.text,{id:'first-step',taskId:'make-bed',context:'-',minutes:2,title:'Clear bed',definition:'Remove items',done:false,completed:'-'});text=m.saveSubtask(text,{id:'last-step',taskId:'make-bed',context:'-',minutes:2,title:'Straighten',definition:'Bedding usable',done:false,completed:'-'});f.setText(text);await f.click('[data-action="start"]');await f.click('[data-finish-level="light"]');assert.equal(f.board.timer.cursor,1);assert.equal(f.board.completionRatings[0].target,'subtask');assert.equal(f.board.entries.filter(e=>e.done).length,0);await f.click('[data-finish-level="full"]');assert.equal(f.board.timer,null);assert.equal(f.board.completionRatings.length,2);assert.equal(f.board.entries.filter(e=>e.done).length,0);}finally{f.dom.window.close();}
+});
+
 test('desktop effort profile writes through shared actions and updates real completion score',async()=>{const f=await fixture('hud',true);try{await f.click('[data-check="make-bed"]');assert.match(f.w.document.querySelector('.cs-arcade').textContent,/10 pt/);await f.click('.cs-rank-control');const item=[...f.w.document.querySelectorAll('.cs-effort-item')].find(row=>row.querySelector('summary').textContent.startsWith('Make Bed'));item.querySelector('[name="attention"]').value='2';item.querySelector('[name="notes"]').value='<img src=x> personal context\nTwo lines';item.querySelector('form').dispatchEvent(new f.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();assert.equal(f.board.effortProfiles[0].attention,2);assert.equal(f.board.entries.find(e=>e.taskId==='make-bed').done,true);assert.equal(f.w.document.querySelector('.cs-effort img'),null);await f.click('[data-workspace-tab="Today"]');assert.match(f.w.document.querySelector('.cs-arcade').textContent,/30 pt/);}finally{f.dom.window.close();}});
 
 test('cinematic workspace rail keeps labeled native buttons, selected state and reduced-motion support',async()=>{const f=await fixture('hud',true);try{const d=f.w.document;assert.equal(d.querySelectorAll('.workspace-tab-glyph').length,9);for(const tab of ['Obligations','Queue','Digest','Week','Pages','Goals','History','Effort','Today']){await f.click(`[data-workspace-tab="${tab}"]`);const selected=d.querySelector('.workspace-tabs [aria-pressed="true"]');assert.equal(selected.getAttribute('aria-label'),tab);if(tab!=='Today'){assert.equal(d.querySelector('[data-workspace-view]').dataset.workspaceView,tab);assert.match(d.querySelector('.workspace-sector').textContent,/COMMAND SYSTEM \/ SECTOR/);}}assert.match(workspaceCSS,/transform:none!important/);assert.match(workspaceCSS,/prefers-reduced-motion:reduce/);}finally{f.dom.window.close();}});
@@ -50,6 +62,7 @@ test('packaged toolbar hit regions are loaded last and keep native drag outside 
   assert.match(css,/\.topbar \.brand\{-webkit-app-region:drag\}/);
   assert.match(css,/\.topbar,body\[data-mode="hud"\] \.utility-bar\{transform:none!important;transform-style:flat!important\}/);
   assert.match(css,/\.topbar nav \*[^}]*no-drag!important/);
+  assert.match(css,/\.focus-actions\{transform:none!important;transform-style:flat!important;isolation:isolate\}/);
 });
 
 test('goal evidence draft survives source changes and saves only through an explicit progress action',async()=>{

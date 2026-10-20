@@ -1,6 +1,13 @@
 # Effort profiles and arcade ranks
 
-Plugin 0.14.1 / HUD 0.13.1. Open **Effort**, or **Effort profile** beside the daily rank. Works in mobile Obsidian, PC Obsidian and the desktop HUD. This is a transparent trial, not CHUNITHM's scoring algorithm or a clinical assessment.
+Plugin 0.15.0 / HUD 0.14.0. Open **Effort**, or **Effort profile** beside the daily rank. Works in mobile Obsidian, PC Obsidian and the desktop HUD. This is a transparent trial, not CHUNITHM's scoring algorithm or a clinical assessment.
+
+Today's execution is now separate from usual task difficulty: red 😴 Bare minimum
+earns 50%, yellow 🙂 Solid 100%, and green 😤 Full effort 150% of the base value.
+All count as one task win. Ordinary checkboxes remain unrated at base points;
+no historical rating is inferred. Re-rating updates the same award. Multipliers
+are editable in optional Markdown and recalculate past scores along with profiles.
+See [Rated finishes](RATED-FINISH.md) for controls, schema and sync behavior.
 
 ## A personal profile, not an avoidance counter
 

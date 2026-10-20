@@ -1,5 +1,5 @@
 import {Board,EffortProfile,localDay} from './model';
-import {dailyScore,defaultEffort,effortFor,effortSignals,EFFORT_DIMENSIONS,EFFORT_LABELS} from './effort';
+import {FINISH_LEVELS,finishMultiplier,dailyScore,defaultEffort,effortFor,effortSignals,EFFORT_DIMENSIONS,EFFORT_LABELS} from './effort';
 
 function el<K extends keyof HTMLElementTagNameMap>(root:HTMLElement,tag:K,text='',cls=''):HTMLElementTagNameMap[K]{const node=root.ownerDocument.createElement(tag);node.textContent=text;node.className=cls;root.append(node);return node;}
 export const newEffortEditorState=()=>({scope:'task' as EffortProfile['scope'],drafts:new Map<string,{profile:EffortProfile;expected:EffortProfile|undefined}>()});
@@ -16,7 +16,7 @@ export function mountEffortEditor(root:HTMLElement,board:Board,day:string,locked
   el(rules,'p','Rate starting friction, sustained attention, physical effort, emotional weight and uncertainty. Unknown is not easy. Task ratings override page ratings, then task-type ratings. Proposed rows do not change scores. Daily reflections and repeated pushes inform review, not automatic increases.');
   el(rules,'p','10 + 10 per rated difficulty level; unrated tasks use 20 pt (strength components 0). Manual points override the formula. Only task checkboxes earn points, not timers, logs, subtasks or moves. Current ratings also recalculate past days.');
   el(rules,'p','Trial ranks: C 10 · B 40 · A 70 · S 100 · SS 150 · SSS 200. No streak penalty, debt or requirement to fill the day.');
-  const label=el(root,'label','Profile scope '),scope=el(label,'select');scope.setAttribute('aria-label','Effort profile scope');
+  el(rules,'p',`Today’s finish levels: ${FINISH_LEVELS.map(l=>`${l.emoji} ${l.label} ${finishMultiplier(board,l.id)}×`).join(' · ')}. Ordinary checks are unrated and earn base points. Edit the optional Finish Multipliers Markdown table (0–3). All levels count as one win; subtask levels add no duplicate task points.`);const label=el(root,'label','Profile scope '),scope=el(label,'select');scope.setAttribute('aria-label','Effort profile scope');
   for(const [value,name] of [['task','Individual tasks'],['page','Pages / areas'],['kind','Task types']]){const option=el(scope,'option',name);option.value=value;}
   scope.value=state.scope;
   const list=el(root,'div');

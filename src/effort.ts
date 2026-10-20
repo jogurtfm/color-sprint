@@ -1,8 +1,11 @@
-import {Board,Task,EffortProfile,taskOccurrences} from './model';
+import {Board,Task,EffortProfile,taskOccurrences,FinishLevel,completionLevel} from './model';
 
 export const EFFORT_DIMENSIONS=['friction','attention','physical','emotional','uncertainty'] as const;
 export const EFFORT_LABELS=['Starting friction','Sustained attention','Physical effort','Emotional weight','Uncertainty'];
 export const RANKS=[{name:'D',points:0},{name:'C',points:10},{name:'B',points:40},{name:'A',points:70},{name:'S',points:100},{name:'SS',points:150},{name:'SSS',points:200}];
+export const FINISH_LEVELS=[{id:'light' as const,emoji:'😴',label:'Bare minimum',multiplier:.5},{id:'solid' as const,emoji:'🙂',label:'Solid',multiplier:1},{id:'full' as const,emoji:'😤',label:'Full effort',multiplier:1.5}];
+export function finishMultiplier(board:Board,level:FinishLevel|null):number{return level===null?1:board.finishMultipliers.find(r=>r.level===level)?.multiplier??FINISH_LEVELS.find(r=>r.id===level)!.multiplier;}
+export function completionPoints(board:Board,task:Task,level:FinishLevel|null):number{return Math.round(effortFor(board,task).points*finishMultiplier(board,level)*10)/10;}
 export function defaultEffort(task:Task):EffortProfile {
   // These seeds encode the user's stated starting difficulty only. Other dimensions remain unknown.
   const friction=['treadmill','read-book','reading','hard-task'].includes(task.id)?3:task.id==='five-mile-hike'?2:task.id==='make-bed'?0:null;
@@ -26,9 +29,9 @@ export function dailyScore(board:Board,date:string) {
     const groups=taskOccurrences(board,task);
     return groups.flatMap(group=>{
       const checked=board.entries.filter(e=>e.taskId===task.id&&group.dates.includes(e.date)&&e.done).sort((a,b)=>a.date.localeCompare(b.date));
-      return checked[0]?.date===date?[{taskId:task.id,points:effortFor(board,task).points}]:[];
+      return checked[0]?.date===date?[{taskId:task.id,points:completionPoints(board,task,completionLevel(board,date,'task',task.id)),level:completionLevel(board,date,'task',task.id)}]:[];
     });
   });
-  const points=awards.reduce((sum,a)=>sum+a.points,0),rank=[...RANKS].reverse().find(r=>points>=r.points)!,next=RANKS.find(r=>r.points>points);
-  return {points,rank:rank.name,next:next?.name||null,remaining:next?next.points-points:0,progress:next?(points-rank.points)/(next.points-rank.points):1,awards};
+  const points=Math.round(awards.reduce((sum,a)=>sum+a.points,0)*10)/10,rank=[...RANKS].reverse().find(r=>points>=r.points)!,next=RANKS.find(r=>r.points>points);
+  return {points,rank:rank.name,next:next?.name||null,remaining:next?Math.round((next.points-points)*10)/10:0,progress:next?(points-rank.points)/(next.points-rank.points):1,awards};
 }
