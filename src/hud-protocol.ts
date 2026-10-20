@@ -1,14 +1,14 @@
 import {parseBoard,setEntry,startTimer,pauseTimer,resumeTimer,refreshTimer,cancelTimer,finishFocus,completeFocusStep,validDay} from './model';
 import {vaultPath} from './daily';
 import {syncFolder} from './sync';
-import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation} from './model';
+import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation,reviewEffortProfile} from './model';
 
 export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string;toDate?:string};
 const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','itemId','operation','minutes','goalId','evidence','distance','details','note','toDate'];
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
-  if(action.kind==='move-task')return moveTask(text,action.taskId||'',action.date||'',action.toDate||'',now);
+  if(action.kind==='effort-profile'){if(typeof action.details!=='string'||action.details.length>8000)throw new Error('Invalid effort review.');const value=JSON.parse(action.details);if(!value||Object.keys(value).some(k=>!['profile','expected'].includes(k)))throw new Error('Invalid effort review.');return reviewEffortProfile(text,value.profile,value.expected);}if(action.kind==='move-task')return moveTask(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='obligation-done')return finishObligation(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='queue-add')return enqueueTask(text,action.taskId||'',action.date||'');
   if(action.kind==='queue-start')return startQuickQueue(text,action.date||'',now,runner);

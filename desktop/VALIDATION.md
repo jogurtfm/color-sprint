@@ -1,5 +1,25 @@
 # Preview validation · 2026-10-19 America/Chicago
 
+## 0.13.0 effort-profile pass · October 20
+
+Plugin 0.14.0 / HUD 0.13.0: shared profiles cover five independent dimensions,
+task/page/kind precedence, proposed versus confirmed ratings, daily ranks and
+duplicate-award protection for moved occurrences. Repeated moves flag review,
+not automatic increases. No new runtime network service or dependency.
+
+Focused source security review: effort payload is bounded, keys and numeric
+ratings are validated, notes render through textContent, existing signature
+layouts are preserved, old bridge runtimes are gated, and stale profile saves
+are rejected. Planning proposals cannot replace concurrent user ratings or
+actual checkbox/log state. No live tracker migration or public journal content.
+This is not a third-party security audit.
+
+Browser harness verified a multidimensional treadmill rating saved to Markdown,
+then an explicit demo completion changed the daily rank. Mobile-width controls
+fit at 390 px without horizontal overflow. Native Electron appearance and
+actual iPhone/Relay delivery still require device acceptance. Local prepared
+builds and public BRAT assets are not proof a running device loaded the update.
+
 ## 0.12.0 obligations pass · October 20
 
 - 124 plugin and 95 HUD checks pass, plus both strict TypeScript checks. Coverage

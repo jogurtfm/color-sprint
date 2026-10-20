@@ -11,7 +11,7 @@ const stamp=new Date().toISOString().replace(/[-:]/g,'').slice(0,15),name=`Color
 await mkdir(plugin,{recursive:true});
 const sums=[];for(const file of ['main.js','manifest.json','styles.css']){const bytes=await readFile(path.join(root,file));await copyFile(path.join(root,file),path.join(plugin,file));sums.push(`${createHash('sha256').update(bytes).digest('hex')}  color-sprint/${file}`);}
 await copyFile(path.join(root,'QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE.md'));await writeFile(path.join(folder,'SHA256SUMS.txt'),sums.join('\n')+'\n');
-await copyFile(path.join(root,'OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));
+await copyFile(path.join(root,'OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));await copyFile(path.join(root,'EFFORT.md'),path.join(folder,'EFFORT.md'));
 const zip=folder+'.zip',quote=value=>`'${value.replaceAll("'","''")}'`;
 const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Compress-Archive -LiteralPath ${quote(folder)} -DestinationPath ${quote(zip)} -CompressionLevel Optimal`],{windowsHide:true,encoding:'utf8'});
 if(result.status!==0)throw new Error('Plugin ZIP packaging failed; source files remain intact.');

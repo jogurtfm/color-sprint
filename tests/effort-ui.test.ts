@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {starter} from '../src/starter';
+import {parseBoard,reviewEffortProfile,saveEffortProfile} from '../src/model';
+import {defaultEffort} from '../src/effort';
+import {mountEffortEditor,newEffortEditorState} from '../src/effort-ui';
+const require=createRequire(import.meta.url),{JSDOM}=require('jsdom');
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('effort drafts survive refresh and scope changes without overwriting concurrent ratings',async()=>{const dom=new JSDOM('<div id="root"></div>'),root=dom.window.document.querySelector('#root'),state=newEffortEditorState();let text=starter('2026-10-20');const mount=()=>{root.replaceChildren();mountEffortEditor(root,parseBoard(text),'2026-10-20',false,async(p,expected)=>{text=reviewEffortProfile(text,p,expected);},state);};try{mount();let item=[...root.querySelectorAll('.cs-effort-item')].find((n:any)=>n.textContent.startsWith('Treadmill'));let notes=item.querySelector('textarea');notes.value='Keep my unsaved context.';notes.dispatchEvent(new dom.window.Event('input',{bubbles:true}));text=saveEffortProfile(text,{...defaultEffort(parseBoard(text).tasks.find(t=>t.id==='treadmill')!),status:'confirmed',attention:3});mount();item=[...root.querySelectorAll('.cs-effort-item')].find((n:any)=>n.textContent.startsWith('Treadmill'));assert.equal(item.querySelector('textarea').value,'Keep my unsaved context.');item.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();assert.match(item.querySelector('[role=status]').textContent,/another device/);assert.equal(parseBoard(text).effortProfiles[0].attention,3);assert.equal(state.drafts.size,1);const scope=root.querySelector('[aria-label="Effort profile scope"]');scope.value='kind';scope.dispatchEvent(new dom.window.Event('change'));mount();assert.equal(root.querySelector('[aria-label="Effort profile scope"]').value,'kind');}finally{dom.window.close();}});

@@ -1,4 +1,13 @@
-# Color Sprint HUD · Windows preview 0.12.0
+# Color Sprint HUD · Windows preview 0.13.0
+
+## Personal effort and arcade ranks
+
+Open **Effort** to rate starting friction, sustained attention, physical effort,
+emotional weight and uncertainty per task, page or task type. Today shows points
+and a trial daily letter rank. Repeated pushes flag review, not automatic increases.
+Weights live in optional Markdown, with reviewed sync proposals and stale-edit
+checks. Only explicit task checks earn points; logs, timers and subtasks do not
+double-award. See EFFORT.md. Requires plugin **0.14.0+** for protected vault edits.
 
 ## Persistent obligations
 

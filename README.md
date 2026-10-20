@@ -1,8 +1,9 @@
 # Color Sprint
 
-Local development: **0.12.0** adds mixed, editable Quick Queues shared with the
-Windows HUD **0.11.0**, plus desktop workspace tabs. See [Quick Queue guide](QUICK-QUEUE.md).
-These builds are prepared locally; this line does not mean a BRAT release was published.
+Current source: plugin **0.14.0** / Windows HUD **0.13.0** adds personal effort
+profiles and daily arcade ranks, retaining Quick Queue and persistent obligations.
+See [Effort guide](EFFORT.md). Release asset read-back, not this source version,
+establishes publishing or installation on a device.
 
 A calm, color-coded surface for habits, tasks, goals, and focus sessions in **Obsidian on iPhone, iPad, and desktop**. Your tracker is an ordinary Markdown note: edit it in Obsidian or tap through the interface. Both use the same data.
 

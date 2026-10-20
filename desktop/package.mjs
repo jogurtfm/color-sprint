@@ -18,7 +18,7 @@ await copyFile(path.join(root,'README.md'),path.join(folder,'START HERE.md'));
 await copyFile(path.join(root,'VALIDATION.md'),path.join(folder,'VALIDATION.md'));
 await copyFile(path.join(root,'WINDOWS-THEME.md'),path.join(folder,'WINDOWS-THEME.md'));
 await copyFile(path.join(root,'../QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE.md'));
-await copyFile(path.join(root,'../OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));
+await copyFile(path.join(root,'../OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));await copyFile(path.join(root,'../EFFORT.md'),path.join(folder,'EFFORT.md'));
 const pluginBundle=path.join(appDir,'dist/obsidian-plugin');await mkdir(pluginBundle,{recursive:true});
 for(const file of ['main.js','manifest.json','styles.css'])await copyFile(path.join(root,'..',file),path.join(pluginBundle,file));
 const companion=JSON.parse(await readFile(path.join(pluginBundle,'manifest.json'),'utf8')),companionHashes={};for(const file of ['main.js','manifest.json','styles.css'])companionHashes[file]=createHash('sha256').update(await readFile(path.join(pluginBundle,file))).digest('hex');await writeFile(path.join(pluginBundle,'bundle.json'),JSON.stringify({version:companion.version,files:companionHashes},null,2));

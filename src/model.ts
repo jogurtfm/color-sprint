@@ -23,7 +23,8 @@ export interface Availability {id:string;label:string;days:string;start:string;e
 export interface FocusTarget {date:string;taskId:string;minutes:number}
 export interface TaskMove {id:string;taskId:string;origin:string;from:string;to:string;created:string}
 export interface Obligation {task:Task;origin:string;date:string;dates:string[];detail:string;done:boolean}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; start:string; end:string}
+export interface EffortProfile {id:string;scope:'task'|'page'|'kind';match:string;friction:number|null;attention:number|null;physical:number|null;emotional:number|null;uncertainty:number|null;points:number|null;status:'confirmed'|'proposed';reviewed:string;notes:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; effortProfiles:EffortProfile[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
@@ -38,7 +39,8 @@ export const TIME_BLOCK_HEADER='| Date | Task ID | Start | End | Time zone | Sta
 export const AVAILABILITY_HEADER='| ID | Label | Days | Start | End | Time zone |';
 export const FOCUS_TARGET_HEADER='| Date | Task ID | Minutes |';
 export const TASK_MOVE_HEADER='| ID | Task ID | Original date | From date | To date | Moved ISO |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves'];
+export const EFFORT_HEADER='| ID | Scope | Match | Start friction | Attention | Physical | Emotional | Uncertainty | Points or auto | Status | Reviewed | Notes |';
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves','Effort Profile'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -102,7 +104,11 @@ export function parseBoard(text:string):Board {
   const moveRange=rs.get('Task Moves');const taskMoves=moveRange?table(lines,moveRange,TASK_MOVE_HEADER).map(p=>({id:p[0],taskId:p[1],origin:p[2],from:p[3],to:p[4],created:p[5]})):[];unique(taskMoves.map(m=>m.id),'task move');
   const used=new Map<string,string>(),positions=new Map<string,string>();
   for(const move of taskMoves){if(!taskIds.has(move.taskId)||![move.origin,move.from,move.to].every(validDay)||move.from===move.to||!Number.isFinite(Date.parse(move.created)))throw new Error('Task Moves need an existing task, valid dates, and timestamp.');const identity=move.taskId+'/'+move.origin;const current=positions.get(identity)||move.origin;if(move.from!==current)throw new Error('Task move history branches or is out of order. Review the conflicting moves.');for(const date of [move.origin,move.from,move.to]){const key=move.taskId+'/'+date;if(used.has(key)&&used.get(key)!==identity)throw new Error('Two obligations share a moved task/date. Keep their dates separate.');used.set(key,identity);if(!entries.some(e=>e.taskId===move.taskId&&e.date===date))throw new Error('Task move history references a missing Schedule row. Restore its history.');}positions.set(identity,move.to);}
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,start,end};
+  const effortRange=rs.get('Effort Profile');const rating=(value:string)=>value==='-'?null:integer(value);
+  const effortProfiles:EffortProfile[]=effortRange?table(lines,effortRange,EFFORT_HEADER).map(p=>({id:p[0],scope:p[1] as EffortProfile['scope'],match:p[2],friction:rating(p[3]),attention:rating(p[4]),physical:rating(p[5]),emotional:rating(p[6]),uncertainty:rating(p[7]),points:p[8]==='auto'?null:integer(p[8]),status:p[9] as EffortProfile['status'],reviewed:p[10],notes:p[11]})):[];unique(effortProfiles.map(p=>p.id),'effort profile');
+  for(const p of effortProfiles)if(!['task','page','kind'].includes(p.scope)||!tasks.some(t=>p.match===(p.scope==='task'?t.id:p.scope==='page'?t.page:t.kind))||[p.friction,p.attention,p.physical,p.emotional,p.uncertainty].some(n=>n!==null&&(n<0||n>3))||(p.points!==null&&(p.points<0||p.points>200))||!['confirmed','proposed'].includes(p.status)||(p.reviewed!=='-'&&!validDay(p.reviewed)))throw new Error('Effort Profile needs a known task/page/kind, ratings 0–3 or -, points 0–200 or auto, status and reviewed date.');
+  if(new Set(effortProfiles.map(p=>p.scope+'/'+p.match)).size!==effortProfiles.length)throw new Error('Only one effort profile per task/page/kind.');
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,effortProfiles,start,end};
 }
 export function validTime(value:string):boolean{return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);}
 function validTimezone(value:string):boolean{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}}
@@ -167,6 +173,11 @@ export function saveTimeBlock(text:string,block:TimeBlock):string{
 }
 export function clearTimeBlock(text:string,taskId:string,date:string):string{if(!parseBoard(text).timeBlocks.some(block=>block.taskId===taskId&&block.date===date))return text;return lineEdit(text,'Time Blocks',line=>{const p=splitCells(line);return p[0]===date&&p[1]===taskId;},()=>'', '');}
 export function saveFocusTarget(text:string,target:FocusTarget):string{return upsertPlanTable(text,'Focus Targets',FOCUS_TARGET_HEADER,3,[target.date,target.taskId,String(target.minutes)],p=>p[0]===target.date&&p[1]===target.taskId);}
+export function saveEffortProfile(text:string,p:EffortProfile):string {
+  if(!p||Object.keys(p).some(k=>!['id','scope','match','friction','attention','physical','emotional','uncertainty','points','status','reviewed','notes'].includes(k))||typeof p.notes!=='string'||p.notes.length>2000||[p.friction,p.attention,p.physical,p.emotional,p.uncertainty,p.points].some(n=>n!==null&&(!Number.isSafeInteger(n)||typeof n!=='number')))throw new Error('Invalid effort profile.');
+  return upsertPlanTable(text,'Effort Profile',EFFORT_HEADER,12,[p.id,p.scope,p.match,...[p.friction,p.attention,p.physical,p.emotional,p.uncertainty].map(n=>n===null?'-':String(n)),p.points===null?'auto':String(p.points),p.status,p.reviewed,p.notes],row=>row[0]===p.id);
+}
+export function reviewEffortProfile(text:string,p:EffortProfile,expected:EffortProfile|undefined):string {const current=parseBoard(text).effortProfiles.find(row=>row.scope===p.scope&&row.match===p.match);if(JSON.stringify(current)!==JSON.stringify(expected))throw new Error('Effort rating changed on another device. Refresh before saving.');return saveEffortProfile(text,p);}
 export function saveAvailability(text:string,block:Availability):string{return upsertPlanTable(text,'Availability',AVAILABILITY_HEADER,6,[block.id,block.label,block.days,block.start,block.end,block.timezone],p=>p[0]===block.id);}
 function upsertPlanTable(text:string,section:string,header:string,width:number,values:string[],matches:(parts:string[])=>boolean):string {
   parseBoard(text);const nl=text.includes('\r\n')?'\r\n':'\n';let next=text;if(!ranges(text.split(/\r?\n/)).has(section))next+=`${nl}## ${section}${nl}${nl}${header}${nl}| ${Array(width).fill('---').join(' | ')} |${nl}`;const row=`| ${values.map(cell).join(' | ')} |`;next=lineEdit(next,section,line=>line.trim().startsWith('|')&&matches(splitCells(line)),()=>row,row);parseBoard(next);return next;

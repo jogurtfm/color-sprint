@@ -6,6 +6,9 @@ import { Feedback, FeedbackSettings, DEFAULT_FEEDBACK } from './feedback';
 import { focusMinutes } from './model';
 import {enqueueTask,editQueue,startQuickQueue,queueItemsFor,isQuickQueue,quickQueueId,skipQuickQueue,claimQuickQueue} from './model';
 import {openObligations,moveTask,movedTo,resolvedElsewhere,setEntry} from './model';
+import {reviewEffortProfile} from './model';
+import {effortFor} from './effort';
+import {mountScore,mountEffortEditor,newEffortEditorState} from './effort-ui';
 
 export interface Host {
   queueOwner?():string;
@@ -36,7 +39,7 @@ export interface Host {
   openVoiceReflection?(day:string):void;
   openSyncReview?():void;
 }
-type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'|'Queue'|'Obligations';
+type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'|'Queue'|'Obligations'|'Effort';
 export interface SurfaceOptions {day?:string;page?:string;tab?:Tab;embedded?:boolean}
 export class Surface {
   private board:Board|null=null;
@@ -44,6 +47,7 @@ export class Surface {
   private request=0;private destroyed=false;private pending=false;private focusMode=false;private activitySurface:'workout'|'treadmill'|null=null;private roadmapSurface:string|null=null;private cuedTimerId='';
   private ticker:ReturnType<typeof setInterval>;private timerDisplay:HTMLElement|null=null;
   private focusNotes=new Map<string,string>();
+  private effortEditor=newEffortEditorState();
   private feedback:Feedback;private feedbackSettings:FeedbackSettings;private effectsOpen=false;private returnTab:Tab='Today';
   constructor(private root:HTMLElement,private host:Host,options:SurfaceOptions={}){this.day=options.day||this.day;this.page=options.page||'All';this.tab=options.tab||'Today';this.feedbackSettings={...DEFAULT_FEEDBACK,...host.getFeedback?.()};this.feedback=new Feedback(root,()=>this.host.getFeedback?.()||this.feedbackSettings);root.classList.add('cs-root');if(options.embedded)root.classList.add('cs-embedded');this.ticker=setInterval(()=>this.tick(),1000);}
   get context():{day:string;page:string;tab:Tab}{return {day:this.day,page:this.page,tab:this.tab};}
@@ -63,7 +67,7 @@ export class Surface {
     const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');if(this.host.openSyncReview)this.button(tools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');this.button(tools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
     const nav=this.el('nav',this.root,'cs-tabs');nav.setAttribute('aria-label','Tracker views');
     if(this.host.openVoiceReflection)this.button(nav,'🎙',()=>this.host.openVoiceReflection!(this.day),'cs-voice-shortcut','Voice reflection');
-    for(const tab of ['Today','Obligations','Queue','Digest','Week','Pages','Goals','History'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}const sound=this.button(nav,this.feedbackSettings.sound?'♫':'♫̸',()=>this.setFeedback({sound:!this.feedbackSettings.sound}),'cs-sound-toggle',this.feedbackSettings.sound?'Mute completion sounds':'Enable completion sounds');sound.setAttribute('aria-pressed',String(this.feedbackSettings.sound));
+    for(const tab of ['Today','Obligations','Queue','Digest','Week','Pages','Goals','History','Effort'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}const sound=this.button(nav,this.feedbackSettings.sound?'♫':'♫̸',()=>this.setFeedback({sound:!this.feedbackSettings.sound}),'cs-sound-toggle',this.feedbackSettings.sound?'Mute completion sounds':'Enable completion sounds');sound.setAttribute('aria-pressed',String(this.feedbackSettings.sound));
     const controls=this.el('div',this.root,'cs-controls');this.button(controls,'‹',()=>{this.day=addDays(this.day,-1);this.render();},'cs-icon','Previous day');
     const date=this.el('input',controls,'cs-date');date.type='date';date.value=this.day;date.setAttribute('aria-label','Selected date');date.addEventListener('change',()=>{if(date.value){this.day=date.value;this.render();}});
     this.button(controls,'›',()=>{this.day=addDays(this.day,1);this.render();},'cs-icon','Next day');this.button(controls,'Today',()=>{this.day=localDay();this.render();},'cs-link');const meditation=b.tasks.find(t=>t.id==='mindfulness');if(meditation){const minutes=focusMinutes(b,meditation,this.day);this.button(controls,minutes?`Meditate · ${minutes}m`:'Meditate',()=>this.beginFocus(()=>this.host.start(meditation,this.day)),'cs-link cs-meditate','Start meditation mode');}
@@ -71,7 +75,7 @@ export class Surface {
     const fixed=availabilityFor(b,this.day);if(fixed.length)this.el('p',this.root,'cs-day-availability',fixed.map(block=>`${block.label} ${clockLabel(block.start)}–${clockLabel(block.end)}`).join(' · '));
     if(this.effectsOpen)this.renderFeedbackSettings();
     if(b.timer)this.renderTimer();
-    if(this.tab==='Today')this.renderToday();else if(this.tab==='Obligations')this.renderObligations(this.root);else if(this.tab==='Queue')this.renderQueue();else if(this.tab==='Digest')this.renderDigest();else if(this.tab==='Week')this.renderWeek();else if(this.tab==='Pages')this.renderPages();else if(this.tab==='Goals')this.renderGoals();else this.renderHistory();
+    if(this.tab==='Today')this.renderToday();else if(this.tab==='Effort')mountEffortEditor(this.root,b,this.day,false,async(p,expected)=>{await this.host.change(text=>reviewEffortProfile(text,p,expected));await this.refresh();},this.effortEditor);else if(this.tab==='Obligations')this.renderObligations(this.root);else if(this.tab==='Queue')this.renderQueue();else if(this.tab==='Digest')this.renderDigest();else if(this.tab==='Week')this.renderWeek();else if(this.tab==='Pages')this.renderPages();else if(this.tab==='Goals')this.renderGoals();else this.renderHistory();
     const mobileTools=this.el('footer',this.root,'cs-mobile-tools');this.button(mobileTools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(mobileTools,'Settings',()=>this.host.settings(),'cs-link');this.button(mobileTools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');if(this.host.openSyncReview)this.button(mobileTools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');if(this.host.openDaily)this.button(mobileTools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');
     this.tick();
   }
@@ -149,6 +153,7 @@ export class Surface {
     const hero=this.el('section',this.root,'cs-summary');this.el('p',hero,'cs-eyebrow',new Date(`${this.day}T12:00:00`).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}));this.el('h2',hero,'',tasks.length?`${done} of ${tasks.length} planned tasks complete`:'Start with one clear action.');
     const wins=dailyWins(b,this.day);this.el('p',hero,'cs-wins',`${wins.tasks} task${wins.tasks===1?'':'s'} done · ${wins.subtasks} subtask${wins.subtasks===1?'':'s'} done${wins.tasks+wins.subtasks?' · Nice work.':''}`).setAttribute('aria-live','polite');
     const progress=this.el('progress',hero);progress.max=tasks.length||1;progress.value=done;progress.setAttribute('aria-label','Planned tasks completed');this.el('p',hero,'cs-muted','Your plan can be small. Check off what actually happened.');
+    mountScore(hero,b,this.day,()=>{this.tab='Effort';this.render();});
     this.renderObligations(this.root,true);
     if(!tasks.length)this.el('p',this.root,'cs-empty','Nothing is explicitly scheduled here yet. Choose a real next action below, then tap Plan this day.');
     for(const color of COLORS){const groupTasks=tasks.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',this.root,'cs-group');this.el('h3',group,'cs-group-title',color.name);this.groupAction(group,{kind:'color',value:color.id},'group');for(const task of groupTasks)this.taskCard(task,group,true);}
@@ -160,7 +165,7 @@ export class Surface {
     const moved=movedTo(b,task.id,this.day),resolved=resolvedElsewhere(b,task.id,this.day);if((moved||resolved)&&!entry?.done){this.el('h3',card,'',task.title);this.el('p',card,'cs-muted',`${resolved?'Completed on '+resolved:'Moved to '+moved} · source history retained`);this.button(card,'Open recorded day',()=>{this.day=(resolved||moved)!;this.render();},'cs-small');return;}
     const row=this.el('div',card,'cs-card-main');
     if(scheduledToday){const target=this.el('label',row,'cs-check-target');const check=this.el('input',target,'cs-check');check.type='checkbox';check.checked=!!entry?.done;check.setAttribute('aria-label',`Complete ${task.title}`);check.addEventListener('change',()=>{void this.run(async()=>{try{await this.checkTask(task,this.day,check.checked);}catch(e){check.checked=!check.checked;throw e;}});});}
-    const body=this.el('div',row,'cs-card-body');this.el('h3',body,'cs-task-title',task.title);this.el('p',body,'cs-meta',`${task.page} · ${task.kind}`);const block=timeBlockFor(b,task.id,this.day);if(block){const time=this.el('p',body,'cs-time-slot',timeBlockLabel(block));time.title=block.timezone;if(block.status==='scheduled'&&block.eventUrl!=='-'){const link=this.el('a',time,'cs-event-link',' ↗');link.href=block.eventUrl;link.setAttribute('aria-label','Open Google Calendar event');link.target='_blank';link.rel='noopener noreferrer';}}if(entry?.detail)this.el('p',body,'cs-detail',entry.detail);this.el('p',body,'cs-definition',task.definition);
+    const body=this.el('div',row,'cs-card-body');this.el('h3',body,'cs-task-title',task.title);this.el('p',body,'cs-meta',`${task.page} · ${task.kind} · ${effortFor(b,task).points} pt`);const block=timeBlockFor(b,task.id,this.day);if(block){const time=this.el('p',body,'cs-time-slot',timeBlockLabel(block));time.title=block.timezone;if(block.status==='scheduled'&&block.eventUrl!=='-'){const link=this.el('a',time,'cs-event-link',' ↗');link.href=block.eventUrl;link.setAttribute('aria-label','Open Google Calendar event');link.target='_blank';link.rel='noopener noreferrer';}}if(entry?.detail)this.el('p',body,'cs-detail',entry.detail);this.el('p',body,'cs-definition',task.definition);
     const actions=this.el('div',card,'cs-actions');if(!scheduledToday)this.button(actions,'+ Plan this day',()=>this.host.schedule(task,this.day,''),'cs-small');
     if(scheduledToday)this.button(actions,'Day details',()=>this.host.editEntry(task,this.day),'cs-small');
     if(task.id==='workout'||task.id==='treadmill')this.button(actions,task.id==='workout'?'Manage workout':'Manage treadmill',()=>{this.activitySurface=task.id as 'workout'|'treadmill';this.render();},'cs-small');const increments=this.quickIncrements(task);if(increments.length){const total=this.board!.quickCounts.filter(count=>count.date===this.day&&count.taskId===task.id&&count.unit===increments[0].unit).reduce((sum,count)=>sum+count.amount,0);if(total)this.el('span',actions,'cs-quick-total',`Today: ${total} ${increments[0].unit}`);for(const increment of increments)this.button(actions,`+${increment.amount} ${increment.unit}`,async()=>{await this.host.quickCount({date:this.day,taskId:task.id,amount:increment.amount,unit:increment.unit});this.feedback.show(`+${increment.amount} ${increment.unit}`,this.colorHex(task),'increment');},'cs-small cs-quick',`Add ${increment.amount} ${increment.unit} for ${task.title}`);}
