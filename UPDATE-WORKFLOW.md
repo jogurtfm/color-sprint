@@ -47,6 +47,36 @@ not marked Latest, so it cannot replace BRAT's three plugin assets.
 
 ## Updates from this chat
 
+The user's standing release targets are PC Obsidian, PC Electron HUD, and mobile
+Obsidian through BRAT. For each requested new version, deploy all three, not just
+GitHub. See AGENTS.md. Private local targets are stored in
+`%LOCALAPPDATA%/Color Sprint HUD/deploy-targets.json`.
+
+Configure once with trusted Node 24+:
+
+```powershell
+node scripts/deploy-local.mjs --configure --vault 'ABSOLUTE_VAULT_PATH'
+# After tests/package validation, with PC Obsidian closed:
+node scripts/deploy-local.mjs --install --hud-release 'EXTRACTED_VALIDATED_HUD_FOLDER'
+```
+
+This replaces only main.js, styles.css and manifest.json, with verified backups
+under the existing local HUD profile. It does not change data.json, notes, logs,
+checkboxes, sync settings, permissions or security protections. A running PC
+Obsidian defers replacement. Same-version drift fails for investigation; newer
+installed plugins are never downgraded. HUD builds are installed side by side
+under LocalAppData/Programs/Color Sprint HUD, preserving the old build/profile;
+the stable launcher points to the verified new build. Restart is a separate safe
+step, not a force-kill. Local read-back results are in last-deployment.json.
+Publish/verify the plugin assets for BRAT separately and keep that release Latest.
+Phone download/reload still depends on BRAT and cannot be inferred from publishing.
+The approved publisher invokes this local step automatically after public asset
+verification whenever private local targets are configured. A running Obsidian
+produces an explicit pending status. The stable HUD launcher selects the prepared
+build; safely restarting a running HUD remains a separate, explicit step.
+
+Deployment-only checks (Node 24+): `node --test tests/local-deploy.test.mjs`.
+
 1. Confirm the current checkout, remote changes and outstanding local edits.
 2. Implement the requested scope; preserve existing user changes and actual vault progress.
 3. Run the relevant plugin/HUD checks. Native UI checks are separate from synthetic tests.
