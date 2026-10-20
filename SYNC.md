@@ -10,6 +10,7 @@ This is a safety layer around normal Markdown, not a replacement sync engine or 
 | Task, subtask and goal checkboxes | Actual user actions; planning proposals never replace them. Mobile checkpoint recovery takes precedence when explicitly reviewed and restored. Intentional unchecks are retained. |
 | Completion evidence, sessions, active timer, workout logs and increments | Current tracker is preserved by the planning merger. No invented completion or replacement from a stale planning snapshot. |
 | Reflection capture | Separate dated journal files; not treated as commands or task-completion evidence. |
+| Task Moves / persistent obligations | Explicit user schedule moves; planning proposals retain current history and flag stale edits to moved-away dates. Checkbox recovery preserves real completion without manufacturing a second completion on the new day. |
 
 The user's phone is the primary checkbox device. Under Settings → Color Sprint, **Primary phone checkpoints on this device** defaults on for mobile and off for desktop. This preference is device-local, not synchronized in plugin settings. Leave it on for one primary phone. If multiple primary devices disagree, recovery flags the disagreement rather than guessing based on a wall clock.
 

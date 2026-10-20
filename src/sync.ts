@@ -1,5 +1,6 @@
 import { parseBoard, Board, setEntry, saveTask, saveSubtask, setGoal, saveTimeBlock, saveAvailability, saveFocusTarget, validDay } from './model';
 import { vaultPath } from './daily';
+import {movedTo} from './model';
 
 export const SYNC_FOLDER='Color Sprint Sync';
 export function syncFolder(tracker:string):string {const parts=vaultPath(tracker).split('/');parts.pop();return [...parts,SYNC_FOLDER].join('/');}
@@ -19,6 +20,7 @@ export function mergePlan(baseText:string,currentText:string,proposedText:string
     const before=base[name] as unknown as Row[],after=proposed[name] as unknown as Row[];
     for(const old of before)if(!after.some(row=>key(row)===key(old)))result.conflicts.push(`${name}/${key(old)}: deletion requires review; retained.`);
     for(const row of after){const id=key(row),old=before.find(item=>key(item)===id),now=(parseBoard(result.text)[name] as unknown as Row[]).find(item=>key(item)===id);const next:Row=now?{...now}:{...row,...defaults};const labels:string[]=[];
+      if((name==='entries'||name==='focusTargets')&&movedTo(parseBoard(result.text),String(row.taskId),String(row.date))&&fields.some(field=>!equal(old?.[field],row[field]))){result.conflicts.push(`${name}/${id}: task moved; refine its current planned day instead of its history.`);continue;}
       // Identity fields are carried from the proposed row, not arbitrary data.
       if(old&&!now){if(fields.some(field=>!equal(old[field],row[field])))result.conflicts.push(`${name}/${id}: row was removed on this device; retained removal.`);continue;}
       for(const field of Object.keys(row))if(!fields.includes(field)&&!['id','date','taskId'].includes(field)&&!equal(old?.[field],row[field])&&!(old===undefined&&equal(row[field],defaults[field])))result.protected.push(`${name}/${id}/${field}: actual progress preserved.`);
@@ -34,11 +36,11 @@ export function mergePlan(baseText:string,currentText:string,proposedText:string
   mergeRows('subtasks',['taskId','context','minutes','title','definition'],id,saveSubtask,{done:false,completed:'-'});
   // Time blocks are one unit: never splice a new start with an old end/event ID.
   for(const old of base.timeBlocks)if(!proposed.timeBlocks.some(row=>dateId(row as unknown as Row)===dateId(old as unknown as Row)))result.conflicts.push(`timeBlocks/${old.date}/${old.taskId}: deletion requires review; retained.`);
-  for(const row of proposed.timeBlocks){const old=base.timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId),now=parseBoard(result.text).timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId);if(equal(old,row))continue;if(!equal(now,old)&&!equal(now,row)){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: changed on both sides.`);continue;}if(equal(now,row))continue;try{result.text=saveTimeBlock(result.text,row);result.changes.push(`timeBlocks/${row.date}/${row.taskId}`);}catch(error){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: ${error instanceof Error?error.message:String(error)}`);}}
+  for(const row of proposed.timeBlocks){const old=base.timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId),now=parseBoard(result.text).timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId);if(equal(old,row))continue;if(movedTo(parseBoard(result.text),row.taskId,row.date)){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: task moved; retain event history for review.`);continue;}if(!equal(now,old)&&!equal(now,row)){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: changed on both sides.`);continue;}if(equal(now,row))continue;try{result.text=saveTimeBlock(result.text,row);result.changes.push(`timeBlocks/${row.date}/${row.taskId}`);}catch(error){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: ${error instanceof Error?error.message:String(error)}`);}}
   mergeRows('availability',['label','days','start','end','timezone'],id,saveAvailability);
   mergeRows('focusTargets',['minutes'],dateId,saveFocusTarget);
   if(base.start!==proposed.start||base.end!==proposed.end)result.conflicts.push('Sprint date-range changes require review; current dates retained.');
-  for(const field of ['timer','sessions','workoutLogs','quickCounts','reflections','queueItems'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
+  for(const field of ['timer','sessions','workoutLogs','quickCounts','reflections','queueItems','taskMoves'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
   parseBoard(result.text);return result;
 }
 

@@ -5,6 +5,7 @@ import { itinerary } from './digest';
 import { Feedback, FeedbackSettings, DEFAULT_FEEDBACK } from './feedback';
 import { focusMinutes } from './model';
 import {enqueueTask,editQueue,startQuickQueue,queueItemsFor,isQuickQueue,quickQueueId,skipQuickQueue,claimQuickQueue} from './model';
+import {openObligations,moveTask,movedTo,resolvedElsewhere,setEntry} from './model';
 
 export interface Host {
   queueOwner?():string;
@@ -35,7 +36,7 @@ export interface Host {
   openVoiceReflection?(day:string):void;
   openSyncReview?():void;
 }
-type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'|'Queue';
+type Tab='Today'|'Digest'|'Week'|'Pages'|'Goals'|'History'|'Queue'|'Obligations';
 export interface SurfaceOptions {day?:string;page?:string;tab?:Tab;embedded?:boolean}
 export class Surface {
   private board:Board|null=null;
@@ -62,7 +63,7 @@ export class Surface {
     const tools=this.el('div',head,'cs-toolbar');if(this.host.openDaily)this.button(tools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');this.button(tools,'Markdown ↗',()=>this.host.openNote(),'cs-link');if(this.host.openSyncReview)this.button(tools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');this.button(tools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');this.button(tools,'⚙',()=>this.host.settings(),'cs-icon','Tracker settings');
     const nav=this.el('nav',this.root,'cs-tabs');nav.setAttribute('aria-label','Tracker views');
     if(this.host.openVoiceReflection)this.button(nav,'🎙',()=>this.host.openVoiceReflection!(this.day),'cs-voice-shortcut','Voice reflection');
-    for(const tab of ['Today','Queue','Digest','Week','Pages','Goals','History'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}const sound=this.button(nav,this.feedbackSettings.sound?'♫':'♫̸',()=>this.setFeedback({sound:!this.feedbackSettings.sound}),'cs-sound-toggle',this.feedbackSettings.sound?'Mute completion sounds':'Enable completion sounds');sound.setAttribute('aria-pressed',String(this.feedbackSettings.sound));
+    for(const tab of ['Today','Obligations','Queue','Digest','Week','Pages','Goals','History'] as Tab[]){const btn=this.button(nav,tab,()=>{this.tab=tab;this.render();},tab===this.tab?'is-active':'');btn.setAttribute('aria-current',String(tab===this.tab));}const sound=this.button(nav,this.feedbackSettings.sound?'♫':'♫̸',()=>this.setFeedback({sound:!this.feedbackSettings.sound}),'cs-sound-toggle',this.feedbackSettings.sound?'Mute completion sounds':'Enable completion sounds');sound.setAttribute('aria-pressed',String(this.feedbackSettings.sound));
     const controls=this.el('div',this.root,'cs-controls');this.button(controls,'‹',()=>{this.day=addDays(this.day,-1);this.render();},'cs-icon','Previous day');
     const date=this.el('input',controls,'cs-date');date.type='date';date.value=this.day;date.setAttribute('aria-label','Selected date');date.addEventListener('change',()=>{if(date.value){this.day=date.value;this.render();}});
     this.button(controls,'›',()=>{this.day=addDays(this.day,1);this.render();},'cs-icon','Next day');this.button(controls,'Today',()=>{this.day=localDay();this.render();},'cs-link');const meditation=b.tasks.find(t=>t.id==='mindfulness');if(meditation){const minutes=focusMinutes(b,meditation,this.day);this.button(controls,minutes?`Meditate · ${minutes}m`:'Meditate',()=>this.beginFocus(()=>this.host.start(meditation,this.day)),'cs-link cs-meditate','Start meditation mode');}
@@ -70,7 +71,7 @@ export class Surface {
     const fixed=availabilityFor(b,this.day);if(fixed.length)this.el('p',this.root,'cs-day-availability',fixed.map(block=>`${block.label} ${clockLabel(block.start)}–${clockLabel(block.end)}`).join(' · '));
     if(this.effectsOpen)this.renderFeedbackSettings();
     if(b.timer)this.renderTimer();
-    if(this.tab==='Today')this.renderToday();else if(this.tab==='Queue')this.renderQueue();else if(this.tab==='Digest')this.renderDigest();else if(this.tab==='Week')this.renderWeek();else if(this.tab==='Pages')this.renderPages();else if(this.tab==='Goals')this.renderGoals();else this.renderHistory();
+    if(this.tab==='Today')this.renderToday();else if(this.tab==='Obligations')this.renderObligations(this.root);else if(this.tab==='Queue')this.renderQueue();else if(this.tab==='Digest')this.renderDigest();else if(this.tab==='Week')this.renderWeek();else if(this.tab==='Pages')this.renderPages();else if(this.tab==='Goals')this.renderGoals();else this.renderHistory();
     const mobileTools=this.el('footer',this.root,'cs-mobile-tools');this.button(mobileTools,'Markdown ↗',()=>this.host.openNote(),'cs-link');this.button(mobileTools,'Settings',()=>this.host.settings(),'cs-link');this.button(mobileTools,'Effects',()=>{this.effectsOpen=!this.effectsOpen;this.render();},'cs-link');if(this.host.openSyncReview)this.button(mobileTools,'Sync review',()=>this.host.openSyncReview!(),'cs-link');if(this.host.openDaily)this.button(mobileTools,'Daily note ↗',()=>this.host.openDaily!(),'cs-link');
     this.tick();
   }
@@ -106,6 +107,23 @@ export class Surface {
   private groupAction(parent:HTMLElement,group:GroupRef,label:string):void {if(this.groupIsScheduled(group))this.button(parent,`Focus ${label}`,()=>this.beginFocus(()=>this.host.startGroup(group,this.day)),'cs-group-focus');else this.button(parent,`Schedule ${label}`,()=>this.host.scheduleGroup(group,this.day),'cs-group-focus');}
   private pageFilter(parent:HTMLElement):void {const bar=this.el('div',parent,'cs-pages');for(const page of this.pages()){const button=this.button(bar,page,()=>{this.page=page;this.render();},page===this.page?'is-active':'');button.setAttribute('aria-pressed',String(page===this.page));}if(this.page!=='All')this.groupAction(parent,{kind:'page',value:this.page},`${this.page} routine`);}
   private taskColor(task:Task,el:HTMLElement):void{el.style.setProperty('--cs-color',COLORS.find(c=>c.id===task.color)!.hex);el.setAttribute('data-color',task.color);}
+  private moveControls(parent:HTMLElement,task:Task,from:string):void{
+    const move=async(to:string)=>{await this.host.change(text=>moveTask(text,task.id,from,to));await this.refresh();this.feedback.show(`${task.title} → ${to}`,this.colorHex(task),'saved');};
+    const tomorrow=addDays(this.day,1);const next=this.button(parent,this.day===localDay()?'Tomorrow':'Next day',()=>move(tomorrow),'cs-small',`Move ${task.title} to ${tomorrow}`);next.disabled=from===tomorrow;
+    const picker=this.el('details',parent,'cs-move-picker');this.el('summary',picker,'','Pick date');const date=this.el('input',picker);date.type='date';date.value=tomorrow;date.setAttribute('aria-label',`Move ${task.title} from ${from} to date`);this.button(picker,'Move',()=>move(date.value),'cs-small');
+  }
+  private renderObligations(parent:HTMLElement,compact=false):void{
+    const all=openObligations(this.board!).filter(o=>this.page==='All'||o.task.page===this.page),items=compact?all.filter(o=>o.date==='-'||o.date<this.day):all;
+    if(compact&&!items.length)return;const section=this.el('section',parent,'cs-obligations');this.el('h2',section,'',compact?`Still open · ${items.length} one-off${items.length===1?'':'s'}`:'Obligations');
+    if(!compact){this.el('p',section,'cs-muted','One-off hard tasks stay here until explicitly completed. Moving changes the plan, never your history.');this.pageFilter(section);}
+    for(const item of (compact?items.slice(0,3):items)){const task=item.task,row=this.el('article',section,'cs-obligation');this.taskColor(task,row);row.setAttribute('data-obligation',`${task.id}/${item.origin}`);this.el('strong',row,'',task.title);this.el('p',row,'cs-obligation-detail',item.detail||task.definition);this.el('small',row,'cs-muted',item.date==='-'?'Unplanned':`${item.date<this.day?'Earlier plan':item.date>this.day?'Planned':'Today'}: ${item.date}${item.origin!==item.date?` · original ${item.origin}`:''}`);
+      if(this.board!.timeBlocks.some(block=>block.taskId===task.id&&item.dates.includes(block.date)&&block.status==='needs-review'))this.el('p',row,'cs-muted','Previous calendar/time block needs review. No event was moved.');
+      const actions=this.el('div',row,'cs-actions');if(item.date!==this.day)this.button(actions,this.day===localDay()?'Plan today':'Plan this day',async()=>{await this.host.change(text=>moveTask(text,task.id,item.date,this.day));await this.refresh();},'cs-small');else this.button(actions,'Focus',()=>this.beginFocus(()=>this.host.start(task,this.day)),'cs-small');
+      this.moveControls(actions,task,item.date);
+      this.button(actions,this.day===localDay()?'Done today':'Done this day',async()=>{await this.host.change(text=>{let next=item.date===this.day?text:moveTask(text,task.id,item.date,this.day);return setEntry(next,this.day,task.id,true);});await this.refresh();this.feedback.show(`${task.title} ✓`,this.colorHex(task));},'cs-small',`Complete ${task.title} on ${this.day}`);
+    }
+    if(compact)this.button(section,'All obligations',()=>{this.tab='Obligations';this.render();},'cs-link');else if(!items.length)this.el('p',section,'cs-empty','No open one-offs. Completed obligations stay in your Markdown history.');
+  }
   private renderDigest():void {
     const board=this.board!,day=this.day,plan=itinerary(board,day),wins=dailyWins(board,day);
     const digest=this.el('section',this.root,'cs-digest');const hero=this.el('header',digest,'cs-digest-summary');
@@ -131,6 +149,7 @@ export class Surface {
     const hero=this.el('section',this.root,'cs-summary');this.el('p',hero,'cs-eyebrow',new Date(`${this.day}T12:00:00`).toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}));this.el('h2',hero,'',tasks.length?`${done} of ${tasks.length} planned tasks complete`:'Start with one clear action.');
     const wins=dailyWins(b,this.day);this.el('p',hero,'cs-wins',`${wins.tasks} task${wins.tasks===1?'':'s'} done · ${wins.subtasks} subtask${wins.subtasks===1?'':'s'} done${wins.tasks+wins.subtasks?' · Nice work.':''}`).setAttribute('aria-live','polite');
     const progress=this.el('progress',hero);progress.max=tasks.length||1;progress.value=done;progress.setAttribute('aria-label','Planned tasks completed');this.el('p',hero,'cs-muted','Your plan can be small. Check off what actually happened.');
+    this.renderObligations(this.root,true);
     if(!tasks.length)this.el('p',this.root,'cs-empty','Nothing is explicitly scheduled here yet. Choose a real next action below, then tap Plan this day.');
     for(const color of COLORS){const groupTasks=tasks.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',this.root,'cs-group');this.el('h3',group,'cs-group-title',color.name);this.groupAction(group,{kind:'color',value:color.id},'group');for(const task of groupTasks)this.taskCard(task,group,true);}
     if(available.length){const availableSection=this.el('section',this.root,'cs-available');this.el('h2',availableSection,'','Available to plan');this.el('p',availableSection,'cs-muted','These are not scheduled or due. They stay visible so one planned task does not make the rest of your tracker disappear.');for(const color of COLORS){const groupTasks=available.filter(t=>t.color===color.id);if(!groupTasks.length)continue;const group=this.el('section',availableSection,'cs-group');this.el('h3',group,'cs-group-title',color.name);if(!tasks.some(task=>task.color===color.id))this.groupAction(group,{kind:'color',value:color.id},'group');for(const task of groupTasks)this.taskCard(task,group,false);}}
@@ -138,6 +157,7 @@ export class Surface {
   }
   private taskCard(task:Task,parent:HTMLElement,scheduledToday:boolean):void{
     const b=this.board!;const entry=entryFor(b,task.id,this.day);const card=this.el('article',parent,`cs-card ${entry?.done?'is-done':''}`);this.taskColor(task,card);
+    const moved=movedTo(b,task.id,this.day),resolved=resolvedElsewhere(b,task.id,this.day);if((moved||resolved)&&!entry?.done){this.el('h3',card,'',task.title);this.el('p',card,'cs-muted',`${resolved?'Completed on '+resolved:'Moved to '+moved} · source history retained`);this.button(card,'Open recorded day',()=>{this.day=(resolved||moved)!;this.render();},'cs-small');return;}
     const row=this.el('div',card,'cs-card-main');
     if(scheduledToday){const target=this.el('label',row,'cs-check-target');const check=this.el('input',target,'cs-check');check.type='checkbox';check.checked=!!entry?.done;check.setAttribute('aria-label',`Complete ${task.title}`);check.addEventListener('change',()=>{void this.run(async()=>{try{await this.checkTask(task,this.day,check.checked);}catch(e){check.checked=!check.checked;throw e;}});});}
     const body=this.el('div',row,'cs-card-body');this.el('h3',body,'cs-task-title',task.title);this.el('p',body,'cs-meta',`${task.page} · ${task.kind}`);const block=timeBlockFor(b,task.id,this.day);if(block){const time=this.el('p',body,'cs-time-slot',timeBlockLabel(block));time.title=block.timezone;if(block.status==='scheduled'&&block.eventUrl!=='-'){const link=this.el('a',time,'cs-event-link',' ↗');link.href=block.eventUrl;link.setAttribute('aria-label','Open Google Calendar event');link.target='_blank';link.rel='noopener noreferrer';}}if(entry?.detail)this.el('p',body,'cs-detail',entry.detail);this.el('p',body,'cs-definition',task.definition);
@@ -148,6 +168,7 @@ export class Surface {
     const minutes=focusMinutes(b,task,this.day);this.button(actions,subs.length?'Focus steps':minutes?`Start focus · ${minutes}m`:'Start focus',()=>this.beginFocus(()=>this.host.start(task,this.day)),'cs-small cs-start-focus',`Start focus for ${task.title}`);
     this.button(actions,'+ Queue',()=>this.addToQueue(task),'cs-small',`Add ${task.title} to focus queue`);
     this.button(actions,'Edit',()=>this.host.editTask(task),'cs-small');
+    if(scheduledToday&&!entry?.done&&task.repeat==='-')this.moveControls(actions,task,this.day);
   }
   private renderPages():void {
     this.pageFilter(this.root);const search=this.el('input',this.root,'cs-search');search.type='search';search.placeholder='Find a task…';search.value=this.filter;search.setAttribute('aria-label','Search tasks');
@@ -158,7 +179,7 @@ export class Surface {
   private renderWeek():void {
     this.pageFilter(this.root);this.el('h2',this.root,'','The next seven days');this.el('p',this.root,'cs-muted','✓ completed · ○ planned · + unscheduled. Tap + to plan; tap a planned day to check it.');
     const wrap=this.el('div',this.root,'cs-grid-scroll');const table=this.el('table',wrap,'cs-grid');const thead=this.el('thead',table);const head=this.el('tr',thead);this.el('th',head,'','Task');const days=Array.from({length:7},(_,i)=>addDays(this.day,i));for(const day of days){const th=this.el('th',head,'',new Date(`${day}T12:00:00`).toLocaleDateString(undefined,{weekday:'short',day:'numeric'}));th.scope='col';}
-    const body=this.el('tbody',table);for(const color of COLORS){for(const task of this.board!.tasks.filter(t=>t.color===color.id&&(this.page==='All'||t.page===this.page))){const row=this.el('tr',body);this.taskColor(task,row);const name=this.el('th',row,'cs-grid-name',task.title);name.scope='row';for(const day of days){const entry=entryFor(this.board!,task.id,day);const isPlanned=planned(this.board!,task,day);const block=timeBlockFor(this.board!,task.id,day);const cell=this.el('td',row);const btn=this.button(cell,entry?.done?'✓':isPlanned?'○':'+',()=>isPlanned?this.checkTask(task,day,!entry?.done):this.host.schedule(task,day,''),entry?.done?'cs-cell done':isPlanned?'cs-cell planned':'cs-cell',`${task.title}, ${day}: ${entry?.done?'completed':isPlanned?'planned':'add to plan'}${block?`, ${timeBlockLabel(block)}, ${block.timezone}`:''}`);if(block){this.el('span',btn,'cs-cell-time',`${block.status==='scheduled'?'':'~'}${clockLabel(block.start)}`);btn.title=`${timeBlockLabel(block)} · ${block.timezone}`;}btn.setAttribute('aria-pressed',String(!!entry?.done));}}}
+    const body=this.el('tbody',table);for(const color of COLORS){for(const task of this.board!.tasks.filter(t=>t.color===color.id&&(this.page==='All'||t.page===this.page))){const row=this.el('tr',body);this.taskColor(task,row);const name=this.el('th',row,'cs-grid-name',task.title);name.scope='row';for(const day of days){const entry=entryFor(this.board!,task.id,day),moved=entry?.done?undefined:movedTo(this.board!,task.id,day);const isPlanned=planned(this.board!,task,day);const block=moved?undefined:timeBlockFor(this.board!,task.id,day);const cell=this.el('td',row);const btn=this.button(cell,entry?.done?'✓':moved?'↪':isPlanned?'○':'+',()=>{if(moved){this.day=moved;this.render();return;}return isPlanned?this.checkTask(task,day,!entry?.done):this.host.schedule(task,day,'');},entry?.done?'cs-cell done':isPlanned?'cs-cell planned':'cs-cell',`${task.title}, ${day}: ${entry?.done?'completed':moved?'moved to '+moved:isPlanned?'planned':'add to plan'}${block?`, ${timeBlockLabel(block)}, ${block.timezone}`:''}`);if(block){this.el('span',btn,'cs-cell-time',`${block.status==='scheduled'?'':'~'}${clockLabel(block.start)}`);btn.title=`${timeBlockLabel(block)} · ${block.timezone}`;}btn.setAttribute('aria-pressed',String(!!entry?.done));}}}
   }
   private renderGoals():void {
     this.pageFilter(this.root);this.el('h2',this.root,'','Goals with evidence');const goals=this.board!.goals.filter(g=>this.page==='All'||g.page===this.page);

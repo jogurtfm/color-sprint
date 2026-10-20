@@ -1,13 +1,15 @@
 import {parseBoard,setEntry,startTimer,pauseTimer,resumeTimer,refreshTimer,cancelTimer,finishFocus,completeFocusStep,validDay} from './model';
 import {vaultPath} from './daily';
 import {syncFolder} from './sync';
-import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog} from './model';
+import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation} from './model';
 
-export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string};
-const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','itemId','operation','minutes','goalId','evidence','distance','details','note'];
+export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string;toDate?:string};
+const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','itemId','operation','minutes','goalId','evidence','distance','details','note','toDate'];
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
+  if(action.kind==='move-task')return moveTask(text,action.taskId||'',action.date||'',action.toDate||'',now);
+  if(action.kind==='obligation-done')return finishObligation(text,action.taskId||'',action.date||'',action.toDate||'',now);
   if(action.kind==='queue-add')return enqueueTask(text,action.taskId||'',action.date||'');
   if(action.kind==='queue-start')return startQuickQueue(text,action.date||'',now,runner);
   if(action.kind==='queue-takeover')return claimQuickQueue(text,action.timerId||'',runner);
@@ -35,7 +37,7 @@ export const hudFolder=(tracker:string)=>`${syncFolder(tracker)}/HUD`;
 export function hudNote(value:HudRequest|HudResult):string{return `# Color Sprint HUD bridge\n\nPrivate sync record. Not a planning proposal or phone checkpoint.\n\n\`\`\`json\n${JSON.stringify(value,null,2)}\n\`\`\`\n`;}
 export function hudPayload(text:string):unknown {if(text.length>4*1024*1024)throw new Error('HUD record exceeds 4 MB.');const blocks=[...text.matchAll(/^```json\r?\n([\s\S]*?)\r?\n```\s*$/gm)];if(blocks.length!==1)throw new Error('Expected one HUD JSON payload.');return JSON.parse(blocks[0][1]);}
 // Fixed field order is shared by Node signing and Obsidian WebCrypto verification.
-export function signedHudBody(r:HudRequest):string{const extended=ACTION_FIELDS.slice(7).some(k=>Object.prototype.hasOwnProperty.call(r.action,k));return JSON.stringify([r.version,r.id,r.tracker,r.created,r.expires,r.client,r.publicKey,r.base,...ACTION_FIELDS.slice(0,extended?ACTION_FIELDS.length:7).map(k=>r.action[k as keyof HudAction]??null)]);}
+export function signedHudBody(r:HudRequest):string{const extended=ACTION_FIELDS.slice(7).some(k=>Object.prototype.hasOwnProperty.call(r.action,k));const width=Object.prototype.hasOwnProperty.call(r.action,'toDate')?ACTION_FIELDS.length:extended?ACTION_FIELDS.length-1:7;return JSON.stringify([r.version,r.id,r.tracker,r.created,r.expires,r.client,r.publicKey,r.base,...ACTION_FIELDS.slice(0,width).map(k=>r.action[k as keyof HudAction]??null)]);}
 export function parseHudRequest(text:string,now=Date.now()):HudRequest {
   const r=hudPayload(text) as HudRequest;
   if(!r||r.version!==1||!bridgeId(r.id)||!bridgeId(r.client)||typeof r.tracker!=='string'||typeof r.base!=='string'||typeof r.publicKey!=='string'||!/^[A-Za-z0-9+/]{100,200}={0,2}$/.test(r.publicKey)||typeof r.signature!=='string'||!/^[A-Za-z0-9+/]{80,100}={0,2}$/.test(r.signature)||!Number.isSafeInteger(r.created)||!Number.isSafeInteger(r.expires)||r.expires-r.created>120000||r.expires<=r.created||r.created>now+5000||r.expires<=now)throw new Error('Invalid or expired HUD request. Refresh and try again.');

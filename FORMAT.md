@@ -179,3 +179,12 @@ What a privilege it is to have another day to try again.
 Use one plain quote per line. Focus and Meditation mode select one deterministically for the active session. Edit or remove these lines directly; the plugin does not write them.
 
 Malformed tables, duplicate IDs/dates, missing sections, unknown references/colors, and invalid numeric/date values show a readable error and stop writes. Fix the Markdown to resume. Existing prose and unrelated sections are not regenerated.
+# Optional move history (0.13.0)
+
+`Kind: obligation` (or `one-off`) with `Repeat: -` opts into the persistent
+Obligations view. Nonrepeating Admin tasks are included automatically without
+changing their source colors. Distinct dated entries remain distinct duties.
+The optional `## Task Moves` table links an original occurrence to its next planned
+day, preserving all Schedule rows and checkboxes. See [OBLIGATIONS.md](OBLIGATIONS.md)
+for its six-column schema and calendar/sync safeguards. New clock times and provider
+events are never fabricated by the Move control.

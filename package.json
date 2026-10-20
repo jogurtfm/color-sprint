@@ -1,6 +1,6 @@
 {
   "name": "color-sprint",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "description": "Markdown-first habits, tasks, goals and focus timers for Obsidian desktop and mobile.",
   "scripts": {

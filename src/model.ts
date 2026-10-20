@@ -21,7 +21,9 @@ export interface GroupRef {kind:'page'|'color'; value:string}
 export interface TimeBlock {date:string;taskId:string;start:string;end:string;timezone:string;status:'suggested'|'scheduled'|'needs-review';eventId:string;eventUrl:string}
 export interface Availability {id:string;label:string;days:string;start:string;end:string;timezone:string}
 export interface FocusTarget {date:string;taskId:string;minutes:number}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; start:string; end:string}
+export interface TaskMove {id:string;taskId:string;origin:string;from:string;to:string;created:string}
+export interface Obligation {task:Task;origin:string;date:string;dates:string[];detail:string;done:boolean}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
@@ -35,7 +37,8 @@ export const QUICK_COUNT_HEADER='| ID | Date | Task ID | Amount | Unit |';
 export const TIME_BLOCK_HEADER='| Date | Task ID | Start | End | Time zone | Status | Calendar event ID | Event URL |';
 export const AVAILABILITY_HEADER='| ID | Label | Days | Start | End | Time zone |';
 export const FOCUS_TARGET_HEADER='| Date | Task ID | Minutes |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue'];
+export const TASK_MOVE_HEADER='| ID | Task ID | Original date | From date | To date | Moved ISO |';
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -96,7 +99,10 @@ export function parseBoard(text:string):Board {
   for(const item of queueItems)if(!validDay(item.date)||!taskIds.has(item.taskId)||!item.title||item.minutes>1440||(item.subtaskId!=='-'&&!subtasks.some(s=>s.id===item.subtaskId&&s.taskId===item.taskId)))throw new Error('Focus Queue needs valid dates, tasks, steps and 0–1440 minutes.');
   if(timer&&isQuickQueue(timer.taskId)){if((timer.owner!==undefined&&!/^[-a-z0-9]{1,100}$/.test(timer.owner))||timer.taskId!==quickQueueId(timer.date)||!timer.itemIds?.length||new Set(timer.itemIds).size!==timer.itemIds.length||timer.itemIds.some(id=>!queueItems.some(item=>item.id===id&&item.date===timer.date))||timer.cursor>=timer.itemIds.length)throw new Error('Active queue references missing items. Restore the queue rows or cancel the timer.');}
   else if(timer?.itemIds?.length)throw new Error('Only a Quick Queue timer can contain queue item IDs.');
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,start,end};
+  const moveRange=rs.get('Task Moves');const taskMoves=moveRange?table(lines,moveRange,TASK_MOVE_HEADER).map(p=>({id:p[0],taskId:p[1],origin:p[2],from:p[3],to:p[4],created:p[5]})):[];unique(taskMoves.map(m=>m.id),'task move');
+  const used=new Map<string,string>(),positions=new Map<string,string>();
+  for(const move of taskMoves){if(!taskIds.has(move.taskId)||![move.origin,move.from,move.to].every(validDay)||move.from===move.to||!Number.isFinite(Date.parse(move.created)))throw new Error('Task Moves need an existing task, valid dates, and timestamp.');const identity=move.taskId+'/'+move.origin;const current=positions.get(identity)||move.origin;if(move.from!==current)throw new Error('Task move history branches or is out of order. Review the conflicting moves.');for(const date of [move.origin,move.from,move.to]){const key=move.taskId+'/'+date;if(used.has(key)&&used.get(key)!==identity)throw new Error('Two obligations share a moved task/date. Keep their dates separate.');used.set(key,identity);if(!entries.some(e=>e.taskId===move.taskId&&e.date===date))throw new Error('Task move history references a missing Schedule row. Restore its history.');}positions.set(identity,move.to);}
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,start,end};
 }
 export function validTime(value:string):boolean{return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);}
 function validTimezone(value:string):boolean{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}}
@@ -110,12 +116,34 @@ export const quickQueueId=(date:string)=>'queue:'+date;
 export function isQuickQueue(id:string):boolean{return id.startsWith('queue:')&&validDay(id.slice(6));}
 export function focusQueue(board:Board,timer:Timer):FocusStep[]{
   if(isQuickQueue(timer.taskId))return (timer.itemIds||[]).map(id=>{const item=board.queueItems.find(q=>q.id===id)!;const sub=item.subtaskId==='-'?undefined:board.subtasks.find(s=>s.id===item.subtaskId);return {id:item.id,taskId:item.taskId,subtask:sub,title:item.title,definition:item.definition,minutes:item.minutes,done:sub?sub.done:!!entryFor(board,item.taskId,timer.date)?.done};});
-  const group=parseGroupTimerId(timer.taskId);const tasks=board.tasks.filter(task=>group?(group.kind==='page'?task.page===group.value:task.color===group.value):task.id===timer.taskId);return tasks.flatMap(task=>{const subs=taskSubtasks(board,task.id,timer.date);return subs.length?subs.map(sub=>({id:sub.id,taskId:task.id,subtask:sub,title:sub.title,definition:sub.definition,minutes:sub.minutes,done:sub.done})):[{id:task.id,taskId:task.id,title:task.title,definition:task.definition,minutes:group?focusMinutes(board,task,timer.date):timer.target/60,done:!!entryFor(board,task.id,timer.date)?.done}];});}
+  const group=parseGroupTimerId(timer.taskId);const tasks=board.tasks.filter(task=>group?(!movedTo(board,task.id,timer.date)&&(group.kind==='page'?task.page===group.value:task.color===group.value)):task.id===timer.taskId);return tasks.flatMap(task=>{const subs=taskSubtasks(board,task.id,timer.date);return subs.length?subs.map(sub=>({id:sub.id,taskId:task.id,subtask:sub,title:sub.title,definition:sub.definition,minutes:sub.minutes,done:sub.done})):[{id:task.id,taskId:task.id,title:task.title,definition:task.definition,minutes:group?focusMinutes(board,task,timer.date):timer.target/60,done:!!entryFor(board,task.id,timer.date)?.done}];});}
 export function dailyWins(board:Board,date:string):{tasks:number;subtasks:number}{return {tasks:board.entries.filter(entry=>entry.date===date&&entry.done).length,subtasks:board.subtasks.filter(sub=>sub.done&&sub.completed===date).length};}
 export function validRepeat(value:string):boolean {return value==='-'||value==='daily'||/^(mon|tue|wed|thu|fri|sat|sun)(,(mon|tue|wed|thu|fri|sat|sun))*$/.test(value);}
 export function scheduled(task:Task,day:string):boolean {return task.repeat==='daily'||task.repeat.split(',').includes(['sun','mon','tue','wed','thu','fri','sat'][new Date(`${day}T12:00:00`).getDay()]);}
 export function entryFor(board:Board,id:string,day:string):Entry|undefined{return board.entries.find(e=>e.taskId===id&&e.date===day);}
-export function planned(board:Board,task:Task,day:string):boolean{return !!entryFor(board,task.id,day)||board.sessions.some(session=>session.date===day&&session.taskId===task.id)||board.subtasks.some(sub=>sub.taskId===task.id&&sub.done&&sub.completed===day)||(day>=board.start&&day<=board.end&&scheduled(task,day));}
+export function isObligation(task:Task):boolean{return task.repeat==='-'&&(task.kind==='obligation'||task.kind==='one-off'||/^Admin\b/i.test(task.page)||task.id==='hard-task');}
+export function taskOccurrences(board:Board,task:Task):Obligation[]{
+  const groups=new Map<string,Obligation>();for(const move of board.taskMoves.filter(m=>m.taskId===task.id)){let group=groups.get(move.origin);if(!group){group={task,origin:move.origin,date:move.origin,dates:[move.origin],detail:'',done:false};groups.set(move.origin,group);}group.date=move.to;for(const date of [move.from,move.to])if(!group.dates.includes(date))group.dates.push(date);}
+  for(const entry of board.entries.filter(e=>e.taskId===task.id)){if(![...groups.values()].some(g=>g.dates.includes(entry.date)))groups.set(entry.date,{task,origin:entry.date,date:entry.date,dates:[entry.date],detail:entry.detail,done:entry.done});}
+  for(const group of groups.values()){group.done=group.dates.some(date=>!!entryFor(board,task.id,date)?.done);group.detail=entryFor(board,task.id,group.date)?.detail||entryFor(board,task.id,group.origin)?.detail||'';}
+  return [...groups.values()];
+}
+export function openObligations(board:Board):Obligation[]{return board.tasks.filter(isObligation).flatMap(task=>{const groups=taskOccurrences(board,task);return groups.length?groups.filter(g=>!g.done):[{task,origin:'-',date:'-',dates:[],detail:'',done:false}];}).sort((a,b)=>a.date.localeCompare(b.date)||a.task.title.localeCompare(b.task.title)||a.origin.localeCompare(b.origin));}
+export function movedTo(board:Board,taskId:string,date:string):string|undefined{const moves=board.taskMoves.filter(m=>m.taskId===taskId),move=moves.find(m=>m.origin===date||m.from===date||m.to===date);if(!move)return;const chain=moves.filter(m=>m.origin===move.origin),latest=chain[chain.length-1];return latest.to===date?undefined:latest.to;}
+export function resolvedElsewhere(board:Board,taskId:string,date:string):string|undefined{if(!board.taskMoves.some(m=>m.taskId===taskId))return;const task=board.tasks.find(t=>t.id===taskId);const occurrence=task&&taskOccurrences(board,task).find(o=>o.dates.includes(date));return occurrence?.dates.find(d=>d!==date&&entryFor(board,taskId,d)?.done);}
+export function moveTask(text:string,taskId:string,from:string,to:string,now=Date.now()):string{
+  const board=parseBoard(text),task=board.tasks.find(t=>t.id===taskId);if(!task||task.repeat!=='-'||!validDay(to))throw new Error('Choose a real date for a non-repeating task.');if(from==='-'){if(taskOccurrences(board,task).length)throw new Error('Already planned. Refresh and move the existing obligation.');return setEntry(text,to,taskId,false);}if(!validDay(from)||from===to)throw new Error('Choose a different real date.');
+  const group=taskOccurrences(board,task).find(g=>g.dates.includes(from));if(!group)throw new Error('Plan the task first.');if(group.done)throw new Error('Completed work stays on its actual date.');if(group.date!==from){if(group.date===to)return text;throw new Error(`Already moved to ${group.date}. Refresh before moving again.`);}
+  if(taskOccurrences(board,task).some(other=>other.origin!==group.origin&&other.dates.includes(to)))throw new Error('That date already contains a separate obligation with this label. Choose another day; nothing was merged.');
+  if(board.timer&&board.timer.date===from&&focusQueue(board,board.timer).some(s=>s.taskId===taskId))throw new Error('Finish or cancel the active focus queue before moving this task.');
+  let next=entryFor(board,taskId,to)?text:setEntry(text,to,taskId,false,group.detail);
+  const target=board.focusTargets.find(t=>t.taskId===taskId&&t.date===from);if(target&&!board.focusTargets.some(t=>t.taskId===taskId&&t.date===to))next=saveFocusTarget(next,{...target,date:to});
+  // Keep old time/event IDs for reconciliation, but never fabricate a fresh calendar booking.
+  for(const date of [from,to])if(board.timeBlocks.some(block=>block.taskId===taskId&&block.date===date))next=lineEdit(next,'Time Blocks',line=>{const p=splitCells(line);return p[0]===date&&p[1]===taskId;},line=>{const p=splitCells(line);p[5]='needs-review';return `| ${p.map(cell).join(' | ')} |`;},'');
+  const id=`move-${now}-${board.taskMoves.length+1}-${taskId}`;return upsertPlanTable(next,'Task Moves',TASK_MOVE_HEADER,6,[id,taskId,group.origin,from,to,new Date(now).toISOString()],p=>p[0]===id);
+}
+export function planned(board:Board,task:Task,day:string):boolean{if((movedTo(board,task.id,day)||resolvedElsewhere(board,task.id,day))&&!entryFor(board,task.id,day)?.done)return false;return !!entryFor(board,task.id,day)||board.sessions.some(session=>session.date===day&&session.taskId===task.id)||board.subtasks.some(sub=>sub.taskId===task.id&&sub.done&&sub.completed===day)||(day>=board.start&&day<=board.end&&scheduled(task,day));}
+export function finishObligation(text:string,taskId:string,from:string,today:string,now=Date.now()):string{const board=parseBoard(text),task=board.tasks.find(t=>t.id===taskId);if(!task||!isObligation(task))throw new Error('Choose an existing one-off obligation.');const next=from===today?text:moveTask(text,taskId,from,today,now);return setEntry(next,today,taskId,true);}
 export function groupTimerId(group:GroupRef):string{return `group:${group.kind}:${encodeURIComponent(group.value)}`;}
 export function parseGroupTimerId(id:string):GroupRef|null {const match=id.match(/^group:(page|color):(.+)$/);if(!match)return null;try{return {kind:match[1] as GroupRef['kind'],value:decodeURIComponent(match[2])};}catch{return null;}}
 function lineEdit(text:string,section:string,find:(line:string)=>boolean,transform:(line:string)=>string,append:string):string{
@@ -171,10 +199,11 @@ export function writeTimer(text:string,timer:Timer|null):string{
   for(let i=indices.length-1;i>=0;i--)lines.splice(indices[i],1);const rows=[timer?.itemIds?QUICK_TIMER_HEADER:TIMER_HEADER,`| ${Array(timer?.itemIds?10:8).fill('---').join(' | ')} |`];if(row)rows.push(row);lines.splice(indices[0],0,...rows);const next=lines.join(text.includes('\r\n')?'\r\n':'\n');parseBoard(next);return next;
 }
 export function startTimer(text:string,taskId:string,date:string,now=Date.now()):string{
+  if(movedTo(parseBoard(text),taskId,date)||resolvedElsewhere(parseBoard(text),taskId,date))throw new Error('This task moved or was completed on another day. Open its current plan.');
   const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Open its focus screen to resume or finish it.');const task=board.tasks.find(t=>t.id===taskId);if(!task||!validDay(date))throw new Error('Task or date not found.');const scheduledText=entryFor(board,taskId,date)?text:setEntry(text,date,taskId,false);return writeTimer(scheduledText,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId,date,started:new Date(now).toISOString(),elapsed:0,target:focusMinutes(board,task,date)*60,cursor:0,stepOffset:0});
 }
 export function startGroupTimer(text:string,group:GroupRef,date:string,now=Date.now()):string{
-  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Open its focus screen to resume or save it.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const tasks=board.tasks.filter(task=>group.kind==='page'?task.page===group.value:task.color===group.value);if(!tasks.length)throw new Error('This focus group has no tasks.');if(tasks.some(task=>!entryFor(board,task.id,date)))throw new Error('Schedule every task in this group before starting routine focus.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0,cursor:0,stepOffset:0});
+  const board=parseBoard(text);if(board.timer)throw new Error('A timer is already active. Open its focus screen to resume or save it.');if(!validDay(date)||!group.value.trim())throw new Error('A group timer needs a valid date and group.');const tasks=board.tasks.filter(task=>!movedTo(board,task.id,date)&&(group.kind==='page'?task.page===group.value:task.color===group.value));if(!tasks.length)throw new Error('This focus group has no tasks.');if(tasks.some(task=>!entryFor(board,task.id,date)))throw new Error('Schedule every task in this group before starting routine focus.');return writeTimer(text,{id:`s-${now}-${Math.random().toString(36).slice(2,8)}`,taskId:groupTimerId(group),date,started:new Date(now).toISOString(),elapsed:0,target:0,cursor:0,stepOffset:0});
 }
 export function moveGroupTimer(text:string,id:string,delta:number,now=Date.now()):string{
   const board=parseBoard(text);const timer=board.timer;if(!timer||timer.id!==id)throw new Error('Routine timer changed. Refresh and try again.');const length=focusQueue(board,timer).length;if(!length)throw new Error('This queue is empty. Save this session and choose another task.');return writeTimer(text,{...timer,cursor:Math.max(0,Math.min(length-1,timer.cursor+delta)),stepOffset:timerSeconds(timer,now)});
@@ -207,10 +236,12 @@ function writeQueueItems(text:string,items:QueueItem[]):string {
   const rows=[FOCUS_QUEUE_HEADER,'| --- | --- | --- | --- | --- | --- | --- |',...items.map(item=>`| ${[item.id,item.date,item.taskId,item.subtaskId,String(item.minutes),item.title,item.definition].map(cell).join(' | ')} |`)];
   for(let i=indices.length-1;i>=0;i--)lines.splice(indices[i],1);lines.splice(indices[0],0,...rows);next=lines.join(nl);parseBoard(next);return next;
 }
-export function queueItemsFor(board:Board,date:string):QueueItem[]{return board.queueItems.filter(item=>item.date===date);}
+export function queueItemsFor(board:Board,date:string):QueueItem[]{return board.queueItems.filter(item=>item.date===date&&!movedTo(board,item.taskId,date)&&!resolvedElsewhere(board,item.taskId,date));}
 export function enqueueTask(text:string,taskId:string,date:string):string {
   let board=parseBoard(text);const task=board.tasks.find(task=>task.id===taskId);
   if(!task||!validDay(date))throw new Error('Choose a known task and real queue date.');
+  if(movedTo(board,taskId,date))throw new Error('This task moved to another day. Queue it from its current plan.');
+  if(resolvedElsewhere(board,taskId,date))throw new Error('This obligation was already completed on another day.');
   if(entryFor(board,taskId,date)?.done)throw new Error('This task is complete. Reopen it explicitly before queueing it again.');
   let next=entryFor(board,taskId,date)?text:setEntry(text,date,taskId,false);board=parseBoard(next);
   const subs=taskSubtasks(board,taskId,date).filter(sub=>!sub.done);

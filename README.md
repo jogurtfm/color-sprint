@@ -119,3 +119,11 @@ npm run preview
 Preview serves the same surface at `http://127.0.0.1:8776` with generic browser-local demo data. It is a developer preview, not a hosted replacement for Obsidian. Release files are checked into the repo and attached to versioned GitHub releases for BRAT.
 
 License: [MIT](LICENSE).
+# New in 0.13.0: persistent obligations
+
+**Obligations** keeps unfinished nonrepeating admin/hard tasks visible until
+explicit completion. Use **Tomorrow / Pick date** on a planned one-off card;
+original dates, separate tax/letter entries, notes and progress stay intact.
+Moves are not wins. Calendar IDs stay at the old date marked for review rather
+than pretending a provider event moved. Update PC/mobile before using moves.
+See [OBLIGATIONS.md](OBLIGATIONS.md). Windows companion: HUD 0.12.0.

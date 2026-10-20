@@ -1,4 +1,13 @@
-# Color Sprint HUD · Windows preview 0.11.0
+# Color Sprint HUD · Windows preview 0.12.0
+
+## Persistent obligations
+
+Open **Obligations** for unfinished one-off admin/hard tasks across dates.
+Use **Tomorrow / Pick date** to move the next plan while preserving original
+history, source colors, roadmap context and progress. Distinct taxes/letters
+remain separate. An earlier date is not automatically a miss; moves are not wins.
+Requires plugin **0.13.0+** for these actions on a protected vault. Old calendar
+events/times are retained as needs-review, not silently moved. See OBLIGATIONS.md.
 
 ## Quick Queue and workspace tabs
 

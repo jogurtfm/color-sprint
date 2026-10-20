@@ -7,7 +7,8 @@ import {decorateHolograms} from './holograms';
 import {CinematicUI} from './cinema';
 import {SpatialUI} from './spatial';
 import {ThreeHUD} from './three-hud';
-import {workspaceTabs,workspaceView,WorkspaceTab,TABS} from './workspace';
+import {workspaceTabs,workspaceView,WorkspaceTab,TABS,moveControls} from './workspace';
+import {openObligations,movedTo,resolvedElsewhere} from '../../src/model';
 import {isQuickQueue} from '../../src/model';
 import type {LauncherView} from './launcher';
 import type {Board,Task} from '../../src/model';
@@ -53,6 +54,11 @@ function render(){if(mode.startsWith('rim-')){document.body.classList.toggle('mo
   bind();bindWorkspace();paint();if(settingsOpen)(document.getElementById('settings-dialog') as HTMLDialogElement)?.showModal();
 }
 function bindWorkspace(){
+  if(workspaceTab==='Today'&&mode==='hud'){const count=openObligations(state.source.board!).filter(o=>o.date==='-'||o.date<state.day).length,scroll=root.querySelector('.task-scroll');if(count&&scroll)scroll.insertAdjacentHTML('beforebegin',`<button class="workspace-backlog" data-workspace-tab="Obligations">${count} open one-off${count===1?'':'s'} → Obligations</button>`);}
+  root.querySelectorAll<HTMLElement>('.task-row,.workspace-task').forEach(row=>{const id=row.querySelector<HTMLElement>('[data-select],[data-check]')?.dataset.select||row.querySelector<HTMLElement>('[data-check]')?.dataset.check,board=state.source.board!,task=board.tasks.find(t=>t.id===id),resolved=id&&resolvedElsewhere(board,id,state.day);if(resolved&&!entryFor(board,id!,state.day)?.done){row.querySelectorAll<HTMLInputElement|HTMLButtonElement>('input,button').forEach(el=>el.disabled=true);const status=document.createElement('small');status.textContent=`Completed on ${resolved} · history retained`;row.append(status);return;}if(task&&task.repeat==='-'&&entryFor(board,task.id,state.day)&&!entryFor(board,task.id,state.day)?.done&&!movedTo(board,task.id,state.day)){const tools=document.createElement('div');tools.className='workspace-actions workspace-row-move';tools.innerHTML=moveControls(task,state.day,state.day,state.readOnly||!!state.source.error);row.append(tools);}});
+  root.querySelectorAll<HTMLElement>('[data-defer-task]').forEach(el=>el.onclick=()=>void act({kind:'move-task',taskId:el.dataset.deferTask,date:el.dataset.moveFrom,toDate:el.dataset.moveTo}));
+  root.querySelectorAll<HTMLFormElement>('[data-move-task]').forEach(form=>form.onsubmit=event=>{event.preventDefault();const date=(form.elements.namedItem('toDate') as HTMLInputElement).value;void act({kind:'move-task',taskId:form.dataset.moveTask,date:form.dataset.moveFrom,toDate:date});});
+  root.querySelectorAll<HTMLElement>('[data-obligation-done]').forEach(el=>el.onclick=()=>void act({kind:'obligation-done',taskId:el.dataset.obligationDone,date:el.dataset.moveFrom,toDate:state.day}));
   root.querySelectorAll<HTMLTextAreaElement>('[data-goal-evidence]').forEach(el=>{const id=el.dataset.goalEvidence!;if(goalDrafts.has(id))el.value=goalDrafts.get(id)!;el.oninput=()=>goalDrafts.set(id,el.value);});
   root.querySelectorAll<HTMLElement>('[data-queue-takeover]').forEach(el=>el.onclick=()=>void act({kind:'queue-takeover',timerId:state.source.board?.timer?.id}));
   root.querySelectorAll<HTMLElement>('[data-workspace-tab]').forEach(el=>el.onclick=()=>{const tab=el.dataset.workspaceTab as WorkspaceTab;if(TABS.includes(tab)){workspaceTab=tab;render();}});
@@ -63,7 +69,7 @@ function bindWorkspace(){
   root.querySelectorAll<HTMLInputElement>('[data-queue-minutes]').forEach(el=>el.onchange=()=>void act({kind:'queue-edit',date:state.day,itemId:el.dataset.queueMinutes,operation:'minutes',minutes:Number(el.value)}));
   root.querySelectorAll<HTMLElement>('[data-workspace-start]').forEach(el=>el.onclick=async()=>{await act({kind:'start',taskId:el.dataset.workspaceStart,date:state.day});if(state.source.board?.timer){workspaceTab='Today';render();}});
   root.querySelectorAll<HTMLElement>('[data-workspace-plan]').forEach(el=>el.onclick=()=>void act({kind:'schedule',taskId:el.dataset.workspacePlan,date:state.day}));
-  root.querySelectorAll<HTMLElement>('[data-week-task]').forEach(el=>el.onclick=()=>void act({kind:el.dataset.weekPlanned==='true'?'complete':'schedule',taskId:el.dataset.weekTask,date:el.dataset.weekDay,done:el.dataset.weekDone!=='true'}));
+  root.querySelectorAll<HTMLElement>('[data-week-task]').forEach(el=>{const moved=el.dataset.weekDone==='true'?undefined:movedTo(state.source.board!,el.dataset.weekTask!,el.dataset.weekDay!);if(moved){el.textContent='↪';el.setAttribute('aria-label',`${el.dataset.weekTask}, ${el.dataset.weekDay}: moved to ${moved}`);}el.onclick=()=>{if(moved){void invoke(api.date(moved));return;}void act({kind:el.dataset.weekPlanned==='true'?'complete':'schedule',taskId:el.dataset.weekTask,date:el.dataset.weekDay,done:el.dataset.weekDone!=='true'});};});
   root.querySelectorAll<HTMLInputElement>('[data-workspace-subtask]').forEach(el=>el.onchange=()=>void act({kind:'subtask-check',stepId:el.dataset.workspaceSubtask,date:state.day,done:el.checked}));
   root.querySelectorAll<HTMLElement>('[data-workspace-goal]').forEach(el=>el.onclick=async()=>{const id=el.dataset.workspaceGoal!,goal=state.source.board?.goals.find(g=>g.id===id);const input=[...root.querySelectorAll<HTMLTextAreaElement>('[data-goal-evidence]')].find(e=>e.dataset.goalEvidence===id);if(goal){const evidence=input?.value||'',done=!goal.done;await act({kind:'goal-check',goalId:id,done,evidence});const saved=state.source.board?.goals.find(g=>g.id===id);if(saved?.done===done&&saved.evidence===evidence)goalDrafts.delete(id);}});
   root.querySelectorAll<HTMLFormElement>('[data-workout-form]').forEach(form=>form.onsubmit=event=>{event.preventDefault();const value=(name:string)=>(form.elements.namedItem(name) as HTMLInputElement).value;void act({kind:'workout-log',taskId:form.dataset.workoutForm,date:value('date'),minutes:Number(value('minutes')),distance:Number(value('distance')),details:value('details'),note:value('note')});});

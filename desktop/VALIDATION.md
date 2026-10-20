@@ -1,5 +1,22 @@
 # Preview validation · 2026-10-19 America/Chicago
 
+## 0.12.0 obligations pass · October 20
+
+- 124 plugin and 95 HUD checks pass, plus both strict TypeScript checks. Coverage
+  includes repeated moves, returning to an earlier date, beyond-sprint dates,
+  distinct taxes/letters and collisions, source-date retention, no invented wins,
+  active-focus protection, target durations, event-ID review, stale planning,
+  later source-date phone completions, signed destination fields and actual
+  compiled-plugin bridge read-back/replay protection.
+- Browser pointer checks exercised Obligation plan/move controls on desktop and
+  the shared mobile surface at 390x844. Pick date retained the original date;
+  page width was 375 within the 390 viewport. Preview screenshots use only
+  synthetic data. They do not prove physical iPhone/Relay offline behavior.
+- Source edits and preview tests do not move a live vault task. Local installation
+  is a separate backed-up step and defers while PC Obsidian is running.
+- Native acceptance of this particular build is reported separately. Earlier
+  native 0.11.0 window/accessible UI verification is not acceptance of 0.12.0.
+
 ## Passed
 
 - 0.11.0 feature build: **94 HUD tests and 112 Obsidian-plugin tests pass**, plus

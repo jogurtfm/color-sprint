@@ -42,7 +42,7 @@ That legacy publisher retains its 0.11.0 guard. The explicitly approved two-buil
 workflow is `scripts/publish-queue-release.mjs` (Node 24+ with `--use-system-ca`).
 It requires a reviewed commit and validated `--plugin-zip` / `--hud-zip` paths;
 without `--publish` it is read-only. It never commits automatically. Tags are
-`0.12.0` for BRAT and `hud-0.11.0` for Windows. The desktop release is explicitly
+`0.13.0` for BRAT and `hud-0.12.0` for Windows. The desktop release is explicitly
 not marked Latest, so it cannot replace BRAT's three plugin assets.
 
 ## Updates from this chat
@@ -85,8 +85,8 @@ Deployment-only checks (Node 24+): `node --test tests/local-deploy.test.mjs`.
 5. Read back the remote commit/release and verify asset hashes before saying shipped.
 
 Previous baseline: plugin 0.11.0 at `f59aeb2`; local HUD 0.10.2.
-Approved release scope: plugin 0.12.0 and HUD 0.11.0 with Quick Queue and cinematic
-desktop workspace tabs. Public release read-back, not this document, establishes
+Approved current release scope: plugin 0.13.0 and HUD 0.12.0 with persistent one-off
+obligations and date moves. Public release read-back, not this document, establishes
 shipping. Publishing does not install over a running app or modify a live vault.
 
 GitHub plugin discovery in this chat returned an availability error during this
