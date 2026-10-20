@@ -229,7 +229,7 @@ class ReflectionModal extends Modal {
   private component:Component;private dispose:()=>void;
   constructor(app:App,plugin:ColorSprint,day:string,path:string,private closed:()=>void){
     super(app);this.shouldRestoreSelection=false;this.setTitle(`Reflection · ${day}`);this.component=new Component();this.component.load();
-    this.dispose=mountReflectionPanel(this.contentEl,{draft:plugin.getReflectionDraft(path),draftChanged:draft=>plugin.keepReflectionDraft(path,draft),save:draft=>plugin.saveReflection(path,day,draft),read:async()=>{const file=app.vault.getAbstractFileByPath(path);if(file&&!(file instanceof TFile))throw new Error('Reflection path is not a note.');return {path,text:file instanceof TFile?await app.vault.read(file):''};},renderMarkdown:(note,body)=>MarkdownRenderer.render(app,note.text,body,note.path,this.component),open:async()=>{await plugin.openVoiceJournal(day);this.close();},saved:()=>this.close()});
+    this.dispose=mountReflectionPanel(this.contentEl,{frame:this.modalEl,draft:plugin.getReflectionDraft(path),draftChanged:draft=>plugin.keepReflectionDraft(path,draft),save:draft=>plugin.saveReflection(path,day,draft),read:async()=>{const file=app.vault.getAbstractFileByPath(path);if(file&&!(file instanceof TFile))throw new Error('Reflection path is not a note.');return {path,text:file instanceof TFile?await app.vault.read(file):''};},renderMarkdown:(note,body)=>MarkdownRenderer.render(app,note.text,body,note.path,this.component),open:async()=>{await plugin.openVoiceJournal(day);this.close();},saved:()=>this.close()});
   }
   focusText():void{this.contentEl.querySelector('textarea')?.focus();}
   onClose():void{this.dispose();this.component.unload();this.closed();this.contentEl.empty();}

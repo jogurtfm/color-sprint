@@ -1,5 +1,14 @@
 # Preview validation · 2026-10-19 America/Chicago
 
+## 0.13.2 companion / plugin 0.14.2 · reflection keyboard fix
+
+Adds only local viewport listeners, scoped modal CSS and a draft-preserving blur
+control. No new IPC action, dependency, permission, audio API or network client.
+Tests cover resize/pan/rotation geometry, fallback, listener disposal, action order,
+explicit saving and actual compiled plugin draft preservation. Browser checks at
+390 × 430 and 390 × 360 confirm controls fit and a demo save succeeds. These are
+reduced-height simulations, not physical iPhone/WKWebView acceptance.
+
 ## 0.13.0 effort-profile pass · October 20
 
 Plugin 0.14.0 / HUD 0.13.0: shared profiles cover five independent dimensions,

@@ -1,4 +1,8 @@
-# Color Sprint HUD · Windows preview 0.13.1
+# Color Sprint HUD · Windows preview 0.13.2
+
+Includes companion plugin 0.14.2 with keyboard-aware reflection controls and a
+draft-preserving Hide keyboard button. HUD behavior is otherwise unchanged.
+See REFLECTION-KEYBOARD.md; physical iPhone confirmation remains separate.
 
 ## Personal effort and arcade ranks
 
