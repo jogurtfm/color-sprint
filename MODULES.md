@@ -1,4 +1,43 @@
-# Task-linked modules · 0.17.0
+# Task-linked modules · 0.18.0
+
+## Cookbook · 0.18.0
+
+Start **Cook** focus to open the shared cookbook in PC/iPhone Obsidian or the
+full Windows HUD. It reads ordinary Markdown recipe pages from
+`Color Sprint Modules/Cookbook/Recipes/` alongside the tracker. The same note
+is readable/editable in Obsidian without Color Sprint. See the
+[Cookbook guide and template](modules/cookbook/README.md).
+
+Ingredients are a prep checklist. Steps show plain instructions, temperatures
+as written, and optional timers. Multiple cooking timers can run together in
+the timer tray, even while changing recipes or pausing focus. Start, Pause timer,
+Resume timer, +1 min, Reset timer and Cancel timer are separate from task Finish.
+No prep/timer action changes shared Markdown, task completion, sessions or XP.
+
+Timers/checklists retain state in this app's device-local storage, scoped to the
+vault and recipe revision. They restore using wall-clock elapsed time, not
+interval ticks. They do NOT sync between HUD/PC Obsidian/iPhone. Recipe edits
+invalidate old prep/timer state with a warning. Malformed notes are flagged;
+duplicate IDs pause both copies rather than selecting one. No recipe HTML,
+remote script or arbitrary file path is executed. The cookbook has read/local-
+timer capabilities only, no study-append permission.
+
+Foreground timer cues respect sound preferences. Closed/suspended apps do not
+provide reliable alarms; use the system Clock app for critical cooking alarms.
+Leaving the Cook focus surface stops foreground cues until it is opened again.
+Timings prompt a first check, not doneness or completion. The two supplied
+recipes retain the user's quantities, optional extras and ranges, with each
+range's lower bound as its first-check timer. No servings are inferred.
+
+For an existing vault, add `| cook | cookbook | recipes | 0 | 0 | 0 | 0 |` to
+Bindings.md without replacing existing bindings. Copy this repository's
+`modules/cookbook/` folder to `Color Sprint Modules/Cookbook/` next to the tracker.
+The module is read-only and does not silently create or overwrite recipe notes.
+Missing libraries display bundled recipes; the real editable folder is the
+recommended setup. Add notes from the template to Recipes/ and refresh or wait
+three seconds. The source download remains unchanged.
+
+## Japanese · 0.17.0
 
 The original Japanese screen was a local prototype. Version 0.17.0 connects it
 to real Japanese focus in Obsidian desktop/iPhone and the full Windows HUD.

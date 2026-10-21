@@ -23,6 +23,7 @@ await copyFile(path.join(root,'../OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS
 await copyFile(path.join(root,'../RATED-FINISH.md'),path.join(folder,'RATED-FINISH.md'));
 await copyFile(path.join(root,'../ARCADE.md'),path.join(folder,'ARCADE.md'));
 await copyFile(path.join(root,'../MODULES.md'),path.join(folder,'MODULES.md'));
+await cp(path.join(root,'../modules/cookbook'),path.join(folder,'Cookbook'),{recursive:true,errorOnExist:true,force:false});
 const pluginBundle=path.join(appDir,'dist/obsidian-plugin');await mkdir(pluginBundle,{recursive:true});
 for(const file of ['main.js','manifest.json','styles.css'])await copyFile(path.join(root,'..',file),path.join(pluginBundle,file));
 const companion=JSON.parse(await readFile(path.join(pluginBundle,'manifest.json'),'utf8')),companionHashes={};for(const file of ['main.js','manifest.json','styles.css'])companionHashes[file]=createHash('sha256').update(await readFile(path.join(pluginBundle,file))).digest('hex');await writeFile(path.join(pluginBundle,'bundle.json'),JSON.stringify({version:companion.version,files:companionHashes},null,2));

@@ -6,9 +6,10 @@ export interface ModuleRecord {version:number;id:string;moduleId:string;dataset:
 export interface ReviewRecord extends ModuleRecord {version:1;moduleId:'japanese-srs';deckRevision:string;cardId:string;parentId:string|null;deviceId:string;sessionId:string;date:string;at:string;rating:'again'|'hard'|'good'|'easy';mode:'new'|'review'}
 /** Hosts grant module-specific data access, never arbitrary vault/task/IPC access. */
 export interface ModuleStore {read(dataset:string):Promise<unknown[]>;append(record:ModuleRecord):Promise<void>;subscribe(dataset:string,changed:()=>void):()=>void}
-export interface ModuleServices {store:ModuleStore;now:()=>number;id:()=>string;deviceId:string;documents:Readonly<Record<string,string>>;preview?:boolean}
+export interface ModuleLocalState {read(key:string):string|null;write(key:string,value:string):void}
+export interface ModuleServices {store:ModuleStore;now:()=>number;id:()=>string;deviceId:string;documents:Readonly<Record<string,string>>;preview?:boolean;localState?:ModuleLocalState;prepareCue?:()=>void;cue?:(title:string)=>void}
 export interface ModuleInstance {mount(root:HTMLElement):void;update(focus:ModuleFocus):void;dispose():void}
-export interface ModuleDefinition {id:string;schemaVersion:1;capabilities:readonly ['study.read','study.append'];create(focus:ModuleFocus,binding:ModuleBinding,services:ModuleServices):Promise<ModuleInstance>}
+export interface ModuleDefinition {id:string;schemaVersion:1;capabilities:readonly ('study.read'|'study.append'|'cookbook.read'|'timer.local')[];create(focus:ModuleFocus,binding:ModuleBinding,services:ModuleServices):Promise<ModuleInstance>}
 export type ModuleLoader=()=>Promise<ModuleDefinition>;
 export function activeModuleFocus(board:Board|null):ModuleFocus|null {
   const timer=board?.timer;if(!board||!timer)return null;const queue=focusQueue(board,timer),step=queue[timer.cursor];if(!step)return null;

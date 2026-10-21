@@ -1,5 +1,5 @@
 // Local packaging only. Never uploads or installs into a user's vault.
-import {mkdir,copyFile,readFile,writeFile,stat} from 'node:fs/promises';
+import {mkdir,copyFile,readFile,writeFile,stat,cp} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -16,6 +16,7 @@ await copyFile(path.join(root,'RATED-FINISH.md'),path.join(folder,'RATED-FINISH.
 await copyFile(path.join(root,'ARCADE.md'),path.join(folder,'ARCADE.md'));
 await copyFile(path.join(root,'HUD-BRIDGE.md'),path.join(folder,'HUD-BRIDGE.md'));
 await copyFile(path.join(root,'MODULES.md'),path.join(folder,'MODULES.md'));
+await cp(path.join(root,'modules/cookbook'),path.join(folder,'Cookbook'),{recursive:true,errorOnExist:true,force:false});
 const zip=folder+'.zip',quote=value=>`'${value.replaceAll("'","''")}'`;
 const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Compress-Archive -LiteralPath ${quote(folder)} -DestinationPath ${quote(zip)} -CompressionLevel Optimal`],{windowsHide:true,encoding:'utf8'});
 if(result.status!==0)throw new Error('Plugin ZIP packaging failed; source files remain intact.');

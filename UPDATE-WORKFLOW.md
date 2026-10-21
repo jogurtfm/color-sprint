@@ -85,6 +85,11 @@ Deployment-only checks (Node 24+): `node --test tests/local-deploy.test.mjs`.
 5. Read back the remote commit/release and verify asset hashes before saying shipped.
 
 Previous baseline: plugin 0.11.0 at `f59aeb2`; local HUD 0.10.2.
+Cookbook integration 0.18.0 adds the shared Cook workspace and readable recipe
+notes with independent, device-local cooking timers. Use the version-guarded
+scripts/publish-cookbook-release.mjs with exact verified plugin/HUD archives.
+Keep the plugin release Latest for BRAT. Existing vault recipe/binding changes
+are explicit additions, not whole-tracker planning rewrites. See MODULES.md.
 Current study integration: plugin and HUD 0.17.0 connect the shared learner to
 real Japanese focus. Use scripts/publish-study-release.mjs with reviewed exact
 --plugin-zip and --hud-zip archives. Keep the plugin release Latest for BRAT;

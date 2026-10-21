@@ -19,7 +19,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture(){const dom=new JSDOM('<main id="phone"></main><main id="hud"></main>');const store=new PreviewModuleStore();let id=0;const services:ModuleServices={store,documents:{deck},now:()=>at,id:()=>'review-'+(++id),deviceId:'preview-phone'};return {dom,d:dom.window.document,store,services};}
 
 test('bindings use exact task IDs, bounded targets and no executable paths',()=>{
-  assert.equal(bindings.length,1);assert.equal(bindings[0].taskId,'japanese');assert.equal(bindings[0].targets.kanji,3);assert.equal(parseBindings('# no bindings').length,0);
+  assert.equal(bindings.length,2);assert.equal(bindings[0].taskId,'japanese');assert.equal(bindings[0].targets.kanji,3);assert.equal(bindings[1].taskId,'cook');assert.equal(parseBindings('# no bindings').length,0);
   const row=bindingsText.split('\n').find(l=>l.startsWith('| japanese |'))!;
   for(const bad of [bindingsText.replace('| 3 | 3 | 2 | 10 |','| 999 | 3 | 2 | 10 |'),bindingsText.replace('| japanese | japanese-srs','| japanese | ../../run'),bindingsText.replace(row,row+'\n'+row)])assert.throws(()=>parseBindings(bad));
 });

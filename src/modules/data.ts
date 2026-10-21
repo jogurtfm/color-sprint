@@ -1,17 +1,28 @@
 import defaults from '../../modules/Bindings.md';
 import starterDeck from '../../modules/japanese/N5-Starter.md';
+import shrimp from '../../modules/cookbook/Recipes/Argentine Shrimp.md';
+import peppers from '../../modules/cookbook/Recipes/Stuffed Bell Pepper chicken.md';
 import {vaultPath} from '../daily';
 import {parseBoard} from '../model';
 import {activeModuleFocus,ModuleBinding,ModuleFocus,ReviewRecord} from './contracts';
 import {parseBindings,parseReviewMarkdown,reviewMarkdown,validateReview} from './markdown';
 import {parseDeck,projectReviews} from './japanese/model';
 export interface StudyIO {read(path:string):Promise<string|null>;list(folder:string):Promise<string[]>;create(path:string,text:string):Promise<void>}
-export interface StudyData {binding:ModuleBinding|null;deck:string;records:ReviewRecord[];deviceId:string}
+export interface StudyData {binding:ModuleBinding|null;deck:string;records:ReviewRecord[];deviceId:string;documents?:Record<string,string>;scope?:string}
 export interface StudyPort {load(focus:ModuleFocus):Promise<StudyData>;append(record:ReviewRecord,focus:ModuleFocus):Promise<void>}
 export const moduleFolder=(tracker:string)=>{vaultPath(tracker);return (tracker.includes('/')?tracker.slice(0,tracker.lastIndexOf('/'))+'/':'')+'Color Sprint Modules';};
 export async function loadStudy(io:StudyIO,tracker:string,taskId:string,deviceId:string):Promise<StudyData>{
-  const root=moduleFolder(tracker),bindings=await io.read(root+'/Bindings.md')??defaults,binding=parseBindings(bindings).find(b=>b.taskId===taskId&&b.moduleId==='japanese-srs')||null;
+  const root=moduleFolder(tracker),bindings=await io.read(root+'/Bindings.md')??defaults,binding=parseBindings(bindings).find(b=>b.taskId===taskId&&['japanese-srs','cookbook'].includes(b.moduleId))||null;
   if(!binding)return {binding:null,deck:'',records:[],deviceId};
+  if(binding.moduleId==='cookbook'){
+    if(binding.dataset!=='recipes')throw new Error('Cookbook dataset must be recipes.');
+    const folder=root+'/Cookbook/Recipes/',files=await io.list(folder);if(files.length>100)throw new Error('Cookbook supports up to 100 recipe notes per workspace. Nothing was removed.');
+    const documents:Record<string,string>={};let bytes=0;
+    for(const file of files){if(!file.startsWith(folder)||!file.endsWith('.md'))continue;vaultPath(file);const text=await io.read(file);if(text===null)throw new Error('Recipe files changed while loading. Refresh.');bytes+=text.length;if(bytes>2*1024*1024)throw new Error('Cookbook exceeds the safe loading limit.');documents[file]=text;}
+    // Missing library displays clearly labelled drafts; opening focus never writes files.
+    if(!files.length){documents[folder+'Argentine Shrimp.md']=shrimp;documents[folder+'Stuffed Bell Pepper chicken.md']=peppers;}
+    return {binding,deck:'',records:[],deviceId,documents,scope:deviceId+':'+root};
+  }
   const deck=await io.read(`${root}/Japanese/Decks/${binding.dataset}.md`)??(binding.dataset==='n5-starter'?starterDeck:'');parseDeck(deck);
   const folder=root+'/Japanese/Reviews/',files=await io.list(folder);if(files.length>5000)throw new Error('Study history exceeds this version’s safe loading limit. Nothing was removed.');
   let bytes=0;const records:ReviewRecord[]=[];

@@ -11,7 +11,7 @@ export class TaskModuleHost {
     if(key&&key===this.key&&this.active){this.active.update(focus!);this.active.mount(root!);return;}
     const generation=++this.generation;this.active?.dispose();this.active=null;this.key=key;
     if(!key||!binding||!loader||!focus||!root)return;
-    root.textContent='Opening study module…';
+    root.textContent='Opening task module…';
     try{
       let definition=this.loaded.get(binding.moduleId);if(!definition){definition=loader();this.loaded.set(binding.moduleId,definition);}
       const module=await definition;if(module.id!==binding.moduleId||module.schemaVersion!==1)throw new Error('Unsupported module definition.');
