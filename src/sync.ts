@@ -1,6 +1,7 @@
 import { parseBoard, Board, setEntry, saveTask, saveSubtask, setGoal, saveTimeBlock, saveAvailability, saveFocusTarget, validDay, saveEffortProfile, FinishLevel, completionLevel, saveCompletionRating, validFinishLevel, saveFinishMultiplier } from './model';
 import { vaultPath } from './daily';
 import {movedTo} from './model';
+import {saveScoringRule,saveMetricGoal,saveSubtaskGoal,saveDailyDefault,saveTaskType} from './model';
 
 export const SYNC_FOLDER='Color Sprint Sync';
 export function syncFolder(tracker:string):string {const parts=vaultPath(tracker).split('/');parts.pop();return [...parts,SYNC_FOLDER].join('/');}
@@ -38,9 +39,15 @@ export function mergePlan(baseText:string,currentText:string,proposedText:string
   for(const old of base.timeBlocks)if(!proposed.timeBlocks.some(row=>dateId(row as unknown as Row)===dateId(old as unknown as Row)))result.conflicts.push(`timeBlocks/${old.date}/${old.taskId}: deletion requires review; retained.`);
   for(const row of proposed.timeBlocks){const old=base.timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId),now=parseBoard(result.text).timeBlocks.find(item=>item.date===row.date&&item.taskId===row.taskId);if(equal(old,row))continue;if(movedTo(parseBoard(result.text),row.taskId,row.date)){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: task moved; retain event history for review.`);continue;}if(!equal(now,old)&&!equal(now,row)){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: changed on both sides.`);continue;}if(equal(now,row))continue;try{result.text=saveTimeBlock(result.text,row);result.changes.push(`timeBlocks/${row.date}/${row.taskId}`);}catch(error){result.conflicts.push(`timeBlocks/${row.date}/${row.taskId}: ${error instanceof Error?error.message:String(error)}`);}}
   mergeRows('finishMultipliers',['level','multiplier'],row=>String(row.level),saveFinishMultiplier);mergeRows('availability',['label','days','start','end','timezone'],id,saveAvailability);
+  // Each rule is atomic: never splice a planner's target with another device's points/date.
+  for(const [name,save] of [['scoringRules',saveScoringRule],['metricGoals',saveMetricGoal],['subtaskGoals',saveSubtaskGoal],['dailyDefaults',saveDailyDefault],['taskTypes',saveTaskType]] as const){
+    const key=(r:any)=>name==='scoringRules'?r.id:name==='metricGoals'?r.taskId+'/'+r.since:name==='subtaskGoals'?r.subtaskId+'/'+r.since:r.taskId;
+    for(const old of base[name])if(!proposed[name].some(r=>key(r)===key(old)))result.conflicts.push(`${name}/${key(old)}: deletion requires review; retained.`);
+    for(const row of proposed[name]){const old=base[name].find(r=>key(r)===key(row)),now=parseBoard(result.text)[name].find(r=>key(r)===key(row));if(equal(old,row)||equal(now,row))continue;if(!equal(now,old)){result.conflicts.push(`${name}/${key(row)}: changed on both sides.`);continue;}try{result.text=(save as (text:string,row:any)=>string)(result.text,row);result.changes.push(`${name}/${key(row)}`);}catch(error){result.conflicts.push(`${name}/${key(row)}: ${error instanceof Error?error.message:String(error)}`);}}
+  }
   mergeRows('focusTargets',['minutes'],dateId,saveFocusTarget);mergeRows('effortProfiles',['scope','match','friction','attention','physical','emotional','uncertainty','points','status','reviewed','notes'],id,saveEffortProfile);
   if(base.start!==proposed.start||base.end!==proposed.end)result.conflicts.push('Sprint date-range changes require review; current dates retained.');
-  for(const field of ['timer','sessions','workoutLogs','quickCounts','reflections','queueItems','taskMoves','completionRatings'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
+  for(const field of ['timer','sessions','workoutLogs','quickCounts','stepCounts','reflections','queueItems','taskMoves','completionRatings'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
   parseBoard(result.text);return result;
 }
 

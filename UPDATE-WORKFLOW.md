@@ -47,6 +47,11 @@ not marked Latest, so it cannot replace BRAT's three plugin assets.
 
 ## Updates from this chat
 
+Progress scoring 0.19.0 uses scripts/publish-progress-release.mjs with exact plugin
+and HUD archives. Read PROGRESS.md before reviewing new table proposals. Existing
+trackers are not automatically migrated; all writing clients need 0.19.0+ first.
+The update keeps the previous runtime/profile and never force-closes an app.
+
 The user's standing release targets are PC Obsidian, PC Electron HUD, and mobile
 Obsidian through BRAT. For each requested new version, deploy all three, not just
 GitHub. See AGENTS.md. Private local targets are stored in

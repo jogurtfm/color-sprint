@@ -289,3 +289,22 @@
 .cs-study-workspace{flex:0 0 auto;min-width:0;width:100%}
 .study-focus-clock{display:none}body[data-mode="hud"] .viewport-focus.has-study-module>.core{inset:145px 0 85px;display:flex;flex-direction:column;gap:8px;padding:16px;overflow:auto;pointer-events:auto;max-height:calc(100dvh - 230px);border:1px solid #345e72;border-radius:22px;background:rgba(5,22,35,.97);transform:none!important;--study-accent:#9cd7e5;--study-bg:#0b2433;--study-line:#345e72;--study-ink:#d0e8ef;--study-muted:#8eb3c3}body[data-mode="hud"] .has-study-module .ring-stage,body[data-mode="hud"] .has-study-module .orbit-tag,body[data-mode="hud"] .has-study-module>.neural-panel,body[data-mode="hud"] .has-study-module .sector-caption{display:none!important}body[data-mode="hud"] .viewport-focus.has-study-module .focus-controls{position:static;max-height:none;overflow:visible;flex-shrink:0}body[data-mode="hud"] .has-study-module .study-focus-clock{display:flex;align-items:center;justify-content:space-between;font:10px Consolas,monospace;color:#8eb3c3}.study-focus-clock span{font-size:24px;color:#d0e8ef}.cs-hud-study-hint{font-size:11px}
 body[data-mode="hud"] .viewport-focus.has-study-module>.core{justify-content:flex-start;align-items:stretch}body[data-mode="hud"] .has-study-module .study-focus-clock{flex-shrink:0}
+
+.cs-task-type{display:inline-flex;align-items:center;max-width:100%;font-size:10px;line-height:1.4;letter-spacing:.025em;padding:2px 7px;border:1px solid currentColor;border-radius:4px;opacity:.8;overflow-wrap:anywhere}
+.cs-measured-score{display:block;font-size:11px;line-height:1.4;opacity:.85;margin:4px 0;overflow-wrap:anywhere}
+.cs-progress-settings{margin:10px 0;padding:10px;border:1px solid var(--background-modifier-border,#345e72);border-radius:8px}
+.cs-progress-settings summary,.cs-plan-time summary{cursor:pointer;min-height:36px;display:flex;align-items:center;font-size:12px}
+.cs-progress-settings details{margin:6px 0;border-top:1px solid var(--background-modifier-border,#345e72);padding-top:4px}
+.cs-rule-form{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));max-width:100%;margin:8px 0;align-items:start}
+.cs-rule-form label{display:grid;gap:4px;min-width:0;font-size:12px}
+.cs-rule-form input,.cs-rule-form select{min-width:0;width:100%;max-width:100%;min-height:36px;font-size:14px;box-sizing:border-box}
+.cs-rule-form input[type=checkbox]{width:24px;height:24px;min-height:24px}
+.cs-rule-form small{grid-column:1/-1;font-size:11px;line-height:1.5;overflow-wrap:anywhere;opacity:.8}
+.cs-rule-form button{min-height:40px;white-space:normal}
+.cs-plan-time{font-size:11px;max-width:100%}.cs-plan-time[open]{flex-basis:100%;width:100%;padding:4px 0}
+.cs-hud-task-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%;grid-column:1/-1;margin-top:4px;min-width:0}
+.cs-hud-task-tools>small:not(.cs-task-type){font-size:10px;color:#91b9c8}
+.cs-hud-task-tools button{min-height:32px;padding:4px 9px;font-size:11px}
+.cs-hud-task-tools .cs-plan-time{margin-left:auto}
+.cs-progress-settings input,.cs-progress-settings select,.cs-plan-time input{color:inherit;background:var(--background-primary,var(--cs-panel,#0b2433));border:1px solid var(--background-modifier-border,#345e72);border-radius:4px;padding:6px}
+@media(max-width:600px){.cs-rule-form input,.cs-rule-form select{min-height:44px;font-size:16px}.cs-rule-form button,.cs-plan-time summary,.cs-progress-settings summary{min-height:44px}.cs-plan-time{flex-basis:100%}.cs-task-type{font-size:10px}}

@@ -1,5 +1,10 @@
 # Rated finishes · plugin 0.15.0 / HUD 0.14.0
 
+In 0.19.0, measured goals and separately scored steps bypass effort multipliers.
+Use ordinary Finish/checkbox controls for those items. Dated activation, thresholds,
+and parent gating are documented in [PROGRESS.md](PROGRESS.md). The legacy effort
+examples below still apply to ordinary tasks and dates before activation.
+
 Two separate questions: **How hard is this task usually for you?** (Effort profile,
 base points) and **How did you approach this completion today?** (Finish rating).
 This is self-report, not a judgment of your character or an inferred diagnosis.

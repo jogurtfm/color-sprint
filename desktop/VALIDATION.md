@@ -1,5 +1,26 @@
 # Preview validation · 2026-10-19 America/Chicago
 
+## 0.19.0 progress rules · October 25
+
+220 plugin/shared checks, 116 desktop checks and 7 local-deployment checks passed;
+strict plugin and desktop TypeScript checks passed. A real isolated Edge browser
+used the actual shared surface at 390×844 and 1280×900: saved dated rules, preloaded
+morning defaults, set a rep goal, clicked measured increments, explicitly finished,
+verified the dated rank, saved a suggested time and checked horizontal overflow.
+The test caught and fixed Effort form styling leaking into other mobile tabs.
+
+Security review: new actions stay on the signed exact-base bridge; their payloads
+are bounded/allowlisted and settings batches are validated before a single write.
+Rule merges are atomic; actual checks, counters, ratings and logs stay protected.
+No new permission, network service, journal upload, audio/transcription dependency,
+automatic exercise prescription or Calendar write was introduced. Runtime packages
+exclude private planning copies and reflection notes. Public screenshots use only
+synthetic demo data. Prior unrelated dirty screenshots/files remain excluded.
+
+These checks do not establish real iPhone BRAT delivery, background behavior,
+native Windows display acceptance or Relay phone–PC round-trip success. Verify
+all devices are updated before applying new config proposals.
+
 ## 0.13.2 companion / plugin 0.14.2 · reflection keyboard fix
 
 Adds only local viewport listeners, scoped modal CSS and a draft-preserving blur

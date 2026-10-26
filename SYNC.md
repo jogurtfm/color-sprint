@@ -64,6 +64,12 @@ The script writes a unique new proposal only, refuses linked destination directo
 
 ## Three-way review
 
+0.19.0 adds atomic planning merges for Scoring Rules, Metric Goals, Subtask Goals,
+Daily Defaults and Task Types. Actual Step Counts are protected, not planning
+fields. Update every writing client to 0.19.0+ before reviewing proposals
+that include these sections; older clients cannot apply these settings. Raw inputs,
+subtask checks, task checks, ratings and timers remain protected actual progress.
+
 The plugin compares **base**, **current tracker**, and **proposed plan**. It changes only allowlisted planning fields that still match the base (or already match the proposal). Same-field disagreements, removals, missing referenced entities, invalid intervals, protected-time overlaps and sprint date-range changes are flagged. New schedule entries start unchecked, regardless of a planner's completion claims. Time-block rows are merged atomically, so a start time cannot be spliced with an unrelated end or event ID. Non-planning prose is retained from the current tracker.
 
 In Sync review, inspect **Review changes** before applying. With no disagreements, use **Apply reviewed planning changes**. Otherwise either make a revised proposal, or explicitly choose **Keep current conflicts; apply listed safe changes**. The latter retains current values for every flagged disagreement/removal and marks that proposal processed, not every proposed field accepted. No ambiguous change is auto-selected. If a proposal contains newly introduced tasks needed by dependent rows, those are applied first.

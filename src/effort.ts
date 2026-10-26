@@ -1,4 +1,5 @@
 import {Board,Task,EffortProfile,taskOccurrences,FinishLevel,completionLevel} from './model';
+import {metricProgress,subtaskProgress,completionReady,scoringFor} from './progress';
 
 export const EFFORT_DIMENSIONS=['friction','attention','physical','emotional','uncertainty'] as const;
 export const EFFORT_LABELS=['Starting friction','Sustained attention','Physical effort','Emotional weight','Uncertainty'];
@@ -24,14 +25,19 @@ export function effortSignals(board:Board,task:Task):{moves:number;review:boolea
   const moves=board.taskMoves.filter(m=>m.taskId===task.id).length;return {moves,review:moves>=2};
 }
 export function dailyScore(board:Board,date:string) {
+  const rules=scoringFor(board,date),ranks=RANKS.map(r=>({...r,points:Math.ceil(r.points*(rules?.rankMultiplier??1)/5)*5}));
   const awards=board.tasks.flatMap(task=>{
     // Moved occurrences count once on their first checked date, regardless of later duplicate checks.
     const groups=taskOccurrences(board,task);
     return groups.flatMap(group=>{
       const checked=board.entries.filter(e=>e.taskId===task.id&&group.dates.includes(e.date)&&e.done).sort((a,b)=>a.date.localeCompare(b.date));
-      return checked[0]?.date===date?[{taskId:task.id,points:completionPoints(board,task,completionLevel(board,date,'task',task.id)),level:completionLevel(board,date,'task',task.id)}]:[];
+      if(checked[0]?.date!==date)return [];
+      const metric=metricProgress(board,task,date);
+      return [{taskId:task.id,points:completionReady(board,task,date)?metric?metric.bonus:completionPoints(board,task,completionLevel(board,date,'task',task.id)):0,level:completionLevel(board,date,'task',task.id)}];
     });
   });
-  const points=Math.round(awards.reduce((sum,a)=>sum+a.points,0)*10)/10,rank=[...RANKS].reverse().find(r=>points>=r.points)!,next=RANKS.find(r=>r.points>points);
-  return {points,rank:rank.name,next:next?.name||null,remaining:next?Math.round((next.points-points)*10)/10:0,progress:next?(points-rank.points)/(next.points-rank.points):1,awards};
+  for(const task of board.tasks){const metric=metricProgress(board,task,date);if(metric?.partial)awards.push({taskId:task.id,points:metric.partial,level:null});}
+  for(const sub of board.subtasks){const metric=subtaskProgress(board,sub,date);if(metric){if(metric.earned)awards.push({taskId:sub.taskId,points:metric.earned,level:null});if(sub.done&&sub.completed===date&&metric.met)awards.push({taskId:sub.taskId,points:metric.bonus,level:null});}else if(rules&&sub.done&&sub.completed===date)awards.push({taskId:sub.taskId,points:rules.stepPoints,level:null});}
+  const points=Math.round(awards.reduce((sum,a)=>sum+a.points,0)*10)/10,rank=[...ranks].reverse().find(r=>points>=r.points)!,next=ranks.find(r=>r.points>points);
+  return {points,rank:rank.name,next:next?.name||null,remaining:next?Math.round((next.points-points)*10)/10:0,progress:next?(points-rank.points)/(next.points-rank.points):1,awards,ranks};
 }

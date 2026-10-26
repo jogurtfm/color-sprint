@@ -1,4 +1,7 @@
-import { addDays, localDay, TASK_HEADER, SESSION_HEADER, TIMER_HEADER, WORKOUT_LOG_HEADER, QUICK_COUNT_HEADER } from './model';
+import { addDays, localDay, TASK_HEADER, SESSION_HEADER, TIMER_HEADER, WORKOUT_LOG_HEADER, QUICK_COUNT_HEADER,saveScoringRule,saveDailyDefault,saveTask,parseBoard } from './model';
+
+/** Only for a brand-new tracker: no existing file or historical checkbox is migrated. */
+export function routineStarter(start=localDay()):string{let text=saveScoringRule(starter(start),{id:'scoring-'+start,since:start,rankMultiplier:1.25,stepPoints:5});const meditation=parseBoard(text).tasks.find(t=>t.id==='mindfulness')!;text=saveTask(text,{...meditation,minutes:15,definition:'Meditate for at least 15 actual minutes; choose the practice and record completion honestly.'});for(const taskId of ['make-bed','brush-teeth','clean-kitchen','mindfulness'])text=saveDailyDefault(text,{taskId,since:start,until:'-',enabled:true});return text;}
 
 export function starter(start=localDay()):string{return `# Color Sprint
 

@@ -1,7 +1,7 @@
 {
   "name": "color-sprint-hud",
   "productName": "Color Sprint HUD",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "A local-first Windows visor and desktop widgets for Color Sprint Markdown.",
   "private": true,
   "main": "dist/main.cjs",

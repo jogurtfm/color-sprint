@@ -1,5 +1,10 @@
 # Effort profiles and arcade ranks
 
+0.19.0 adds opt-in, dated progress rules: measured goals can earn partial credit,
+subtasks can earn separate fixed points, and parent awards require their applicable
+steps. Ranks can be modestly harder without changing past dates. See [PROGRESS.md](PROGRESS.md).
+The rules below describe ordinary effort scoring and legacy trackers without that activation.
+
 Plugin 0.15.0 / HUD 0.14.0. Open **Effort**, or **Effort profile** beside the daily rank. Works in mobile Obsidian, PC Obsidian and the desktop HUD. This is a transparent trial, not CHUNITHM's scoring algorithm or a clinical assessment.
 
 Today's execution is now separate from usual task difficulty: red 😴 Bare minimum

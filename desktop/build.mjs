@@ -13,6 +13,7 @@ for(const file of ['index.html','hud.css','rim.css','glass.css','effects.css','l
 await copyFile('node_modules/three/LICENSE','dist/LICENSE-three.txt');
 await copyFile('src/spotify.ps1','dist/spotify.ps1');
 await copyFile('../src/modules/modules.css','dist/modules.css');
+await copyFile('../src/progress.css','dist/progress.css');
 if(process.argv.includes('--tests')){await build({...common,entryPoints:[path.resolve('tests/core.test.ts')],outfile:'test-results/core.test.cjs',bundle:true,platform:'node',format:'cjs',target:'node22'});await build({...common,entryPoints:[path.resolve('src/qa-exports.ts')],outfile:'test-results/fixtures.cjs',bundle:true,platform:'node',format:'cjs',target:'node22'});}
 if(process.argv.includes('--tests'))await build({...common,entryPoints:[path.resolve('tests/rim.test.ts')],outfile:'test-results/rim.test.cjs',bundle:true,platform:'node',format:'cjs',target:'node22'});
 if(process.argv.includes('--tests'))await build({...common,entryPoints:[path.resolve('tests/navigation.test.ts')],outfile:'test-results/navigation.test.cjs',bundle:true,platform:'node',format:'cjs',target:'node22'});

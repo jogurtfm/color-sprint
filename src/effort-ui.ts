@@ -1,23 +1,26 @@
 import {Board,EffortProfile,localDay} from './model';
 import {FINISH_LEVELS,finishMultiplier,dailyScore,defaultEffort,effortFor,effortSignals,EFFORT_DIMENSIONS,EFFORT_LABELS} from './effort';
 import {rankMark} from './arcade';
+import {PlanningSetting} from './model';
+import {mountProgressSettings} from './progress-ui';
 
 function el<K extends keyof HTMLElementTagNameMap>(root:HTMLElement,tag:K,text='',cls=''):HTMLElementTagNameMap[K]{const node=root.ownerDocument.createElement(tag);node.textContent=text;node.className=cls;root.append(node);return node;}
 export const newEffortEditorState=()=>({scope:'task' as EffortProfile['scope'],drafts:new Map<string,{profile:EffortProfile;expected:EffortProfile|undefined}>()});
 export function mountScore(root:HTMLElement,board:Board,day:string,open:()=>void,compact=false):void {
   const score=dailyScore(board,day),box=el(root,'div','','cs-arcade');box.setAttribute('aria-live','polite');
   if(compact){box.classList.add('cs-arcade-compact');const button=el(box,'button','','cs-rank-control');button.type='button';button.setAttribute('aria-label',`Effort profile. Rank ${score.rank}, ${score.points} points${score.next?', '+score.remaining+' to '+score.next:''}`);button.title='Open effort profile · trial daily rank';rankMark(el(button,'b',score.rank,'cs-rank'),score.rank);const meta=el(button,'span','','cs-rank-meta');el(meta,'span','DAILY RANK','cs-rank-label');el(meta,'small',`${score.points} pt`);button.onclick=open;return;}
-  rankMark(el(box,'b',score.rank,'cs-rank'),score.rank);const line=el(box,'div');el(line,'strong',`${score.points} pt · effort score`);el(line,'small',score.next?`${score.remaining} to ${score.next} · trial ranks`:'SSS reached · no extra work required');
+  rankMark(el(box,'b',score.rank,'cs-rank'),score.rank);const line=el(box,'div');el(line,'strong',`${score.points} pt · daily score`);el(line,'small',score.next?`${score.remaining} to ${score.next} · trial ranks`:'SSS reached · no extra work required');
   const button=el(box,'button','Effort profile');button.type='button';button.onclick=open;
 }
-export function mountEffortEditor(root:HTMLElement,board:Board,day:string,locked:boolean,save:(profile:EffortProfile,expected:EffortProfile|undefined)=>Promise<void>,state=newEffortEditorState()):void {
+export function mountEffortEditor(root:HTMLElement,board:Board,day:string,locked:boolean,save:(profile:EffortProfile,expected:EffortProfile|undefined)=>Promise<void>,state=newEffortEditorState(),planningSave?:(value:PlanningSetting|PlanningSetting[])=>Promise<void>):void {
   root.classList.add('cs-effort');el(root,'h2','Your effort profile');
   el(root,'p','How hard it is for you, not a judgment of worth. Open a task to rate its effort.');
+  if(planningSave)mountProgressSettings(root,board,day,locked,planningSave);
   const rules=el(root,'details');el(rules,'summary','How scoring and daily review work');
   el(rules,'p','Rate starting friction, sustained attention, physical effort, emotional weight and uncertainty. Unknown is not easy. Task ratings override page ratings, then task-type ratings. Proposed rows do not change scores. Daily reflections and repeated pushes inform review, not automatic increases.');
-  el(rules,'p','10 + 10 per rated difficulty level; unrated tasks use 20 pt (strength components 0). Manual points override the formula. Only task checkboxes earn points, not timers, logs, subtasks or moves. Current ratings also recalculate past days.');
-  el(rules,'p','Trial ranks: C 10 · B 40 · A 70 · S 100 · SS 150 · SSS 200. No streak penalty, debt or requirement to fill the day.');
-  el(rules,'p',`Today’s finish levels: ${FINISH_LEVELS.map(l=>`${l.emoji} ${l.label} ${finishMultiplier(board,l.id)}×`).join(' · ')}. Ordinary checks are unrated and earn base points. Edit the optional Finish Multipliers Markdown table (0–3). All levels count as one win; subtask levels add no duplicate task points.`);const label=el(root,'label','Profile scope '),scope=el(label,'select');scope.setAttribute('aria-label','Effort profile scope');
+  el(rules,'p','Ordinary tasks use your effort profile. Dated progress rules can award measured increments and separate completed steps. Timers and postponements never award points. Measured goals bypass effort multipliers; a parent with steps needs them complete. Earlier dates retain their dated rules.');
+  el(rules,'p',`Ranks today: ${dailyScore(board,day).ranks.map(r=>r.name+' '+r.points).join(' · ')}. No streak penalty, debt or requirement to fill the day.`);
+  el(rules,'p',`Today’s finish levels: ${FINISH_LEVELS.map(l=>`${l.emoji} ${l.label} ${finishMultiplier(board,l.id)}×`).join(' · ')}. Ordinary checks are unrated and earn base points. Edit the optional Finish Multipliers Markdown table (0–3). All levels count as one win. With dated progress rules, steps earn their configured fixed award and measured goals ignore these multipliers.`);const label=el(root,'label','Profile scope '),scope=el(label,'select');scope.setAttribute('aria-label','Effort profile scope');
   for(const [value,name] of [['task','Individual tasks'],['page','Pages / areas'],['kind','Task types']]){const option=el(scope,'option',name);option.value=value;}
   scope.value=state.scope;
   const list=el(root,'div');

@@ -1,6 +1,6 @@
 import { App, Component, ItemView, MarkdownRenderChild, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ViewStateResult, getFrontMatterInfo, parseYaml, debounce, Platform } from 'obsidian';
 import { COLORS, Task, Goal, WorkoutLog, QuickCount, GroupRef, Subtask, parseBoard, setTaskCompletion, saveTask, saveSubtask, setGoal, setEntry, scheduleGroup, entryFor, startTimer, startGroupTimer, moveGroupTimer, pauseTimer, resumeTimer, refreshTimer, finishTimer, addWorkoutLog, addQuickCount, localDay, validDay, timeBlockFor, saveTimeBlock, clearTimeBlock } from './model';
-import { starter } from './starter';
+import { starter,routineStarter } from './starter';
 import { Surface, Host, SurfaceOptions } from './surface';
 import { DailyLink, dailyLink, embedLink, dailyScaffold, dailyFilename, vaultPath } from './daily';
 import { FeedbackSettings, DEFAULT_FEEDBACK } from './feedback';
@@ -177,7 +177,7 @@ private saveStudy(path:string,record:ReviewRecord,focus:ModuleFocus,base?:string
   private async ensureFolder(path:string):Promise<void>{const pieces=path.split('/');pieces.pop();let parent='';for(const piece of pieces){parent=parent?`${parent}/${piece}`:piece;if(!this.app.vault.getAbstractFileByPath(parent))await this.app.vault.createFolder(parent);}}
   async createNote(path=this.settings.path):Promise<void>{
     vaultPath(path);if(this.app.vault.getAbstractFileByPath(path)){new Notice('Note already exists. No content was replaced.');this.refresh();return;}
-    await this.ensureFolder(path);await this.app.vault.create(path,starter());this.refresh();new Notice('Markdown starter created. Choose tasks in Pages to plan your first day.');
+    await this.ensureFolder(path);await this.app.vault.create(path,routineStarter());this.refresh();new Notice('Markdown starter created with flexible morning defaults. Choose additional tasks in Pages.');
   }
   async frontmatter(path:string):Promise<unknown>{const source=this.app.vault.getAbstractFileByPath(path);if(!(source instanceof TFile))return {};const text=await this.app.vault.read(source);const info=getFrontMatterInfo(text);return info.exists?parseYaml(info.frontmatter):{};}
   async openDailyFile(file:TFile|null):Promise<void>{

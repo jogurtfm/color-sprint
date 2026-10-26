@@ -13,6 +13,7 @@ const sums=[];for(const file of ['main.js','manifest.json','styles.css']){const 
 await copyFile(path.join(root,'QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE.md'));await writeFile(path.join(folder,'SHA256SUMS.txt'),sums.join('\n')+'\n');
 await copyFile(path.join(root,'OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));await copyFile(path.join(root,'EFFORT.md'),path.join(folder,'EFFORT.md'));await copyFile(path.join(root,'REFLECTION-KEYBOARD.md'),path.join(folder,'REFLECTION-KEYBOARD.md'));
 await copyFile(path.join(root,'RATED-FINISH.md'),path.join(folder,'RATED-FINISH.md'));
+await copyFile(path.join(root,'PROGRESS.md'),path.join(folder,'PROGRESS.md'));
 await copyFile(path.join(root,'ARCADE.md'),path.join(folder,'ARCADE.md'));
 await copyFile(path.join(root,'HUD-BRIDGE.md'),path.join(folder,'HUD-BRIDGE.md'));
 await copyFile(path.join(root,'MODULES.md'),path.join(folder,'MODULES.md'));
