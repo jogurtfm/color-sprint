@@ -1,5 +1,7 @@
 # Color Sprint update workflow
 
+Data-only daily planning does not require a code release or app restart. With explicit owner authorization and a configured Windows policy, use the signed route in TRUSTED-PLANNING.md after creating a fresh proposal. Keep all actual progress even in mornings; never replace a stale whole tracker. Code updates still follow the three-target verification and safe-activation workflow below.
+
 This chat is the working brief for requested changes. The repository, commit IDs,
 tests and release read-backs record what was actually implemented and shipped.
 The conversation is not automatically uploaded or mirrored to GitHub.

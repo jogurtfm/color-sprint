@@ -4,6 +4,7 @@ import {syncFolder} from './sync';
 import {reviewPlanningSettings,reviewSuggestedTime,addQuickCount,addStepCount} from './model';
 import {validateReview} from './modules/markdown';
 import {activeModuleFocus} from './modules/contracts';
+import {plannerAction} from './planner';
 import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation,reviewEffortProfile} from './model';
 
 export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string;toDate?:string};
@@ -11,6 +12,7 @@ const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
+  if(action.kind==='plan-apply'){if(typeof action.details!=='string'||action.details.length>512||Object.keys(action).some(k=>!['kind','details'].includes(k)))throw new Error('Invalid planner action.');plannerAction(JSON.parse(action.details));return text;}
   if(action.kind==='planning-setting'||action.kind==='suggest-time'){if(typeof action.details!=='string'||action.details.length>16000)throw new Error('Invalid planning setting.');return action.kind==='suggest-time'?reviewSuggestedTime(text,JSON.parse(action.details)):reviewPlanningSettings(text,JSON.parse(action.details));}
   if(action.kind==='quick-count'){if(typeof action.minutes!=='number'||!['reps','sec','min','mi','pages','count'].includes(action.operation||''))throw new Error('Invalid measured increment.');return addQuickCount(text,{taskId:action.taskId||'',date:action.date||'',amount:action.minutes,unit:action.operation!});}
   if(action.kind==='step-count'){if(typeof action.minutes!=='number'||!['reps','sec','min','mi','pages','count'].includes(action.operation||''))throw new Error('Invalid measured step increment.');return addStepCount(text,{subtaskId:action.stepId||'',date:action.date||'',amount:action.minutes,unit:action.operation!});}
@@ -53,6 +55,7 @@ export function parseHudRequest(text:string,now=Date.now()):HudRequest {
 const bytes=(base64:string)=>Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
 export async function verifyHudRequest(r:HudRequest):Promise<boolean>{const key=await crypto.subtle.importKey('spki',bytes(r.publicKey),{name:'ECDSA',namedCurve:'P-256'},false,['verify']);return crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},key,bytes(r.signature),new TextEncoder().encode(signedHudBody(r)));}
 export interface HudHost {
+  plan?(request:HudRequest):Promise<string>;
   study?(tracker:string,action:HudAction,base:string):Promise<void>;
   runner?():string;
   read(path:string):Promise<string|null>;create(path:string,text:string):Promise<void>;replace(path:string,before:string,after:string):Promise<void>;
@@ -71,7 +74,8 @@ export async function processHudRequest(host:HudHost,tracker:string,id:string,no
   const pending:HudResult={version:1,id,requestSignature:r.signature,status:'processing',message:'Outcome pending. Never replay this request.'},pendingText=hudNote(pending);await host.create(resultPath,pendingText);
   let wrote=false,result:HudResult;
   try{if(!await host.approve(r.client,r.publicKey,tracker))throw new Error('HUD pairing declined. Nothing changed.');parseHudRequest(raw,now());if(await host.read(requestPath)!==raw)throw new Error('HUD request changed after review.');let next='';
-    if(r.action.kind==='study-review'){if(!host.study)throw new Error('Update Windows Obsidian Color Sprint for study reviews.');if(await host.read(tracker)!==r.base)throw new Error('Tracker changed before review.');wrote=true;await host.study(tracker,r.action,r.base);}
+    if(r.action.kind==='plan-apply'){if(!host.plan)throw new Error('Update Windows Color Sprint to 0.20.0 for trusted planning.');if(await host.read(tracker)!==r.base)throw new Error('Tracker changed before planning.');next=await host.plan(r);wrote=true;if(await host.read(tracker)!==next)throw new Error('Plan write is unconfirmed; inspect before retrying.');}
+    else if(r.action.kind==='study-review'){if(!host.study)throw new Error('Update Windows Obsidian Color Sprint for study reviews.');if(await host.read(tracker)!==r.base)throw new Error('Tracker changed before review.');wrote=true;await host.study(tracker,r.action,r.base);}
     else {await host.change(tracker,current=>{parseHudRequest(raw,now());if(current!==r.base)throw new Error('Tracker changed in Obsidian. Nothing overwritten. Refresh and try again.');next=applyHudAction(current,r.action,now(),r.action.kind==='queue-start'||r.action.kind==='queue-takeover'?host.runner?.()||'standalone':'standalone');return next;});wrote=true;
     if(await host.read(tracker)!==next)throw new Error('Tracker changed during verification. Inspect Obsidian before retrying.');}
     result={version:1,id,requestSignature:r.signature,status:'done',message:'Applied and read back through Obsidian.'};

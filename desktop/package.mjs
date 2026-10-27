@@ -22,6 +22,7 @@ await copyFile(path.join(root,'../QUICK-QUEUE.md'),path.join(folder,'QUICK-QUEUE
 await copyFile(path.join(root,'../OBLIGATIONS.md'),path.join(folder,'OBLIGATIONS.md'));await copyFile(path.join(root,'../EFFORT.md'),path.join(folder,'EFFORT.md'));await copyFile(path.join(root,'../REFLECTION-KEYBOARD.md'),path.join(folder,'REFLECTION-KEYBOARD.md'));
 await copyFile(path.join(root,'../RATED-FINISH.md'),path.join(folder,'RATED-FINISH.md'));
 await copyFile(path.join(root,'../PROGRESS.md'),path.join(folder,'PROGRESS.md'));
+await copyFile(path.join(root,'../TRUSTED-PLANNING.md'),path.join(folder,'TRUSTED-PLANNING.md'));
 await copyFile(path.join(root,'../ARCADE.md'),path.join(folder,'ARCADE.md'));
 await copyFile(path.join(root,'../MODULES.md'),path.join(folder,'MODULES.md'));
 await cp(path.join(root,'../modules/cookbook'),path.join(folder,'Cookbook'),{recursive:true,errorOnExist:true,force:false});

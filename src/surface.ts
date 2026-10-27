@@ -17,6 +17,7 @@ import type {StudyPort} from './modules/data';
 import {reviewPlanningSettings,reviewSuggestedTime} from './model';
 import {mountSuggestedTime,mountStepProgressTools,mountStepGoalSettings,mountTaskCountTools} from './progress-ui';
 import {addStepCount,addQuickCount} from './model';
+import {mountWorkoutSteps} from './workout-ui';
 import {taskType,progressLabel,metricFor,COLOR_PURPOSES} from './progress';
 
 export interface Host {
@@ -182,7 +183,7 @@ export class Surface {
     if(scheduledToday)mountFinishChoices(card,b,task,this.day,level=>this.run(async()=>{await this.host.change(text=>setTaskCompletion(text,this.day,task.id,true,level));this.feedback.show(entry?.done?'Effort rating updated':`${task.title} ✓`,this.colorHex(task),entry?.done?'saved':'complete');}),{collapse:true});const actions=this.el('div',card,'cs-actions');mountSuggestedTime(actions,b,task,this.day,false,async value=>{await this.host.change(text=>reviewSuggestedTime(text,value));await this.refresh();});if(!scheduledToday)this.button(actions,'+ Plan this day',()=>this.host.schedule(task,this.day,''),'cs-small');
     if(scheduledToday)this.button(actions,'Day details',()=>this.host.editEntry(task,this.day),'cs-small');
     if(task.id==='workout'||task.id==='treadmill')this.button(actions,task.id==='workout'?'Manage workout':'Manage treadmill',()=>{this.activitySurface=task.id as 'workout'|'treadmill';this.render();},'cs-small');const increments=this.quickIncrements(task);if(increments.length){const total=this.board!.quickCounts.filter(count=>count.date===this.day&&count.taskId===task.id&&count.unit===increments[0].unit).reduce((sum,count)=>sum+count.amount,0);if(total)this.el('span',actions,'cs-quick-total',`Today: ${total} ${increments[0].unit}`);for(const increment of increments)this.button(actions,`+${increment.amount} ${increment.unit}`,async()=>{await this.host.quickCount({date:this.day,taskId:task.id,amount:increment.amount,unit:increment.unit});this.feedback.show(`+${increment.amount} ${increment.unit}`,this.colorHex(task),'increment');},'cs-small cs-quick',`Add ${increment.amount} ${increment.unit} for ${task.title}`);}
-    const subs=taskSubtasks(b,task.id,this.day);if(subs.length||['project','obligation'].includes(task.kind))this.button(actions,subs.length?`Steps ${subs.filter(sub=>sub.done).length}/${subs.length}`:'Roadmap',()=>{this.roadmapSurface=task.id;this.render();},'cs-small');
+    const subs=taskSubtasks(b,task.id,this.day);mountWorkoutSteps(card,b,task,this.day,false,async(sub,done)=>{await this.host.change(text=>setSubtaskDone(text,sub.id,done,this.day));await this.refresh();},()=>this.beginFocus(()=>this.host.start(task,this.day)));if(subs.length||['project','obligation'].includes(task.kind))this.button(actions,subs.length?`Steps ${subs.filter(sub=>sub.done).length}/${subs.length}`:'Roadmap',()=>{this.roadmapSurface=task.id;this.render();},'cs-small');
     const minutes=focusMinutes(b,task,this.day);this.button(actions,subs.length?'Focus steps':minutes?`Start focus · ${minutes}m`:'Start focus',()=>this.beginFocus(()=>this.host.start(task,this.day)),'cs-small cs-start-focus',`Start focus for ${task.title}`);
     this.button(actions,'+ Queue',()=>this.addToQueue(task),'cs-small',`Add ${task.title} to focus queue`);
     this.button(actions,'Edit',()=>this.host.editTask(task),'cs-small');

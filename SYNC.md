@@ -1,4 +1,6 @@
-# Sync safety and planning proposals · 0.10.0
+# Sync safety and planning proposals · 0.20.0
+
+Owner-authorized routine updates may use the separately configured signed local planner in [TRUSTED-PLANNING.md](TRUSTED-PLANNING.md). It applies fresh, conflict-free planning through the plugin queue with the same backup and receipts. It never scans old proposals, bypasses progress protection or auto-restores phone checkpoints. Manual review below remains available for other changes.
 
 This is a safety layer around normal Markdown, not a replacement sync engine or a promise that Relay never conflicts. The tracker remains directly editable and readable by older clients. No existing tracker is migrated or split into an opaque database.
 
