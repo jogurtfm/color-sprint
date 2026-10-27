@@ -7,7 +7,8 @@ export function metricProgress(board:Board,task:Task,date:string){
   const quick=board.quickCounts.filter(c=>c.taskId===task.id&&c.date===date&&c.unit===goal.unit).reduce((n,c)=>n+c.amount,0);
   const logged=board.workoutLogs.filter(l=>l.taskId===task.id&&l.date===date).reduce((n,l)=>n+(goal.unit==='min'?l.minutes:goal.unit==='mi'?l.distance:0),0);
   // Counts and workout fields can describe the same work. Use the larger total, not both.
-  const amount=Math.max(quick,logged),fraction=Math.min(1,amount/goal.target);
+  const actualSets=goal.unit==='reps'?board.exerciseSets.filter(s=>s.taskId===task.id&&s.date===date).reduce((n,s)=>n+s.reps,0):0;
+  const amount=Math.max(quick,logged,actualSets),fraction=Math.min(1,amount/goal.target);
   return {goal,amount,met:amount>=goal.target,partial:Math.round(goal.points*.5*fraction*10)/10,bonus:goal.points*.5};
 }
 export function subtaskMetricFor(board:Board,sub:Subtask,date:string){

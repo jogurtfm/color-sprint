@@ -5,6 +5,7 @@ import {reviewPlanningSettings,reviewSuggestedTime,addQuickCount,addStepCount} f
 import {validateReview} from './modules/markdown';
 import {activeModuleFocus} from './modules/contracts';
 import {plannerAction} from './planner';
+import {saveExercise,logExerciseSet} from './exercises';
 import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation,reviewEffortProfile} from './model';
 
 export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string;toDate?:string};
@@ -12,6 +13,7 @@ const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
+  if(action.kind==='exercise-edit'||action.kind==='exercise-set'){if(typeof action.details!=='string'||action.details.length>12000||Object.keys(action).some(k=>!['kind','details'].includes(k)))throw new Error('Invalid exercise action.');return action.kind==='exercise-edit'?saveExercise(text,JSON.parse(action.details)):logExerciseSet(text,JSON.parse(action.details));}
   if(action.kind==='plan-apply'){if(typeof action.details!=='string'||action.details.length>512||Object.keys(action).some(k=>!['kind','details'].includes(k)))throw new Error('Invalid planner action.');plannerAction(JSON.parse(action.details));return text;}
   if(action.kind==='planning-setting'||action.kind==='suggest-time'){if(typeof action.details!=='string'||action.details.length>16000)throw new Error('Invalid planning setting.');return action.kind==='suggest-time'?reviewSuggestedTime(text,JSON.parse(action.details)):reviewPlanningSettings(text,JSON.parse(action.details));}
   if(action.kind==='quick-count'){if(typeof action.minutes!=='number'||!['reps','sec','min','mi','pages','count'].includes(action.operation||''))throw new Error('Invalid measured increment.');return addQuickCount(text,{taskId:action.taskId||'',date:action.date||'',amount:action.minutes,unit:action.operation!});}

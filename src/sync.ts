@@ -2,6 +2,7 @@ import { parseBoard, Board, setEntry, saveTask, saveSubtask, setGoal, saveTimeBl
 import { vaultPath } from './daily';
 import {movedTo} from './model';
 import {saveScoringRule,saveMetricGoal,saveSubtaskGoal,saveDailyDefault,saveTaskType} from './model';
+import {saveExerciseTarget} from './exercises';
 
 export const SYNC_FOLDER='Color Sprint Sync';
 export function syncFolder(tracker:string):string {const parts=vaultPath(tracker).split('/');parts.pop();return [...parts,SYNC_FOLDER].join('/');}
@@ -46,6 +47,9 @@ export function mergePlan(baseText:string,currentText:string,proposedText:string
     for(const row of proposed[name]){const old=base[name].find(r=>key(r)===key(row)),now=parseBoard(result.text)[name].find(r=>key(r)===key(row));if(equal(old,row)||equal(now,row))continue;if(!equal(now,old)){result.conflicts.push(`${name}/${key(row)}: changed on both sides.`);continue;}try{result.text=(save as (text:string,row:any)=>string)(result.text,row);result.changes.push(`${name}/${key(row)}`);}catch(error){result.conflicts.push(`${name}/${key(row)}: ${error instanceof Error?error.message:String(error)}`);}}
   }
   mergeRows('focusTargets',['minutes'],dateId,saveFocusTarget);mergeRows('effortProfiles',['scope','match','friction','attention','physical','emotional','uncertainty','points','status','reviewed','notes'],id,saveEffortProfile);
+  for(const old of base.exerciseTargets)if(!proposed.exerciseTargets.some(r=>r.taskId===old.taskId&&r.since===old.since))result.conflicts.push(`exerciseTargets/${old.taskId}/${old.since}: deletion requires review; retained.`);
+  for(const row of proposed.exerciseTargets){const old=base.exerciseTargets.find(r=>r.taskId===row.taskId&&r.since===row.since),now=parseBoard(result.text).exerciseTargets.find(r=>r.taskId===row.taskId&&r.since===row.since);if(equal(old,row)||equal(now,row))continue;if(!equal(now,old)){result.conflicts.push(`exerciseTargets/${row.taskId}/${row.since}: changed on both sides.`);continue;}result.text=saveExerciseTarget(result.text,row);result.changes.push(`exerciseTargets/${row.taskId}/${row.since}`);}
+  if(!equal(base.exerciseSets,proposed.exerciseSets))result.protected.push('exerciseSets: actual performed sets retained.');
   if(base.start!==proposed.start||base.end!==proposed.end)result.conflicts.push('Sprint date-range changes require review; current dates retained.');
   for(const field of ['timer','sessions','workoutLogs','quickCounts','stepCounts','reflections','queueItems','taskMoves','completionRatings'] as const)if(!equal(base[field],proposed[field]))result.protected.push(`${field}: retained current data; not a planning field.`);
   parseBoard(result.text);return result;

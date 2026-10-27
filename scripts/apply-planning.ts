@@ -8,6 +8,7 @@ import {parseProposal,syncFolder} from '../src/sync';
 import {vaultPath} from '../src/daily';
 import {automaticPlan,plannerAction,plannerDay,PlannerPolicy} from '../src/planner';
 import {plannerPolicy} from '../src/planner-local';
+import {parseBoard} from '../src/model';
 async function main(){
   const args=new Map<string,string>();let configure=false;for(let i=2;i<process.argv.length;i++){const key=process.argv[i];if(key==='--configure'){configure=true;continue;}if(!['--vault','--tracker','--proposal'].includes(key)||!process.argv[i+1]||args.has(key))throw new Error('Use --vault VAULT --tracker TRACKER [--configure | --proposal plan-ID].');args.set(key,process.argv[++i]);}
   if(!args.get('--vault')||!args.get('--tracker')||process.platform!=='win32'||!process.env.LOCALAPPDATA)throw new Error('A Windows vault/tracker must be explicitly configured.');
@@ -24,6 +25,7 @@ async function main(){
   try{await lstat(await ordinaryPath(vault,`${syncFolder(tracker)}/Applied/${id}.md`));console.log(JSON.stringify({status:'already-processed',proposal:id,trackerWritten:false}));return;}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
   if(Date.parse(p.created)<Date.parse(policy.enabledAt))throw new Error('Old proposal requires manual review; no existing backlog is auto-applied.');
   const integration=await integrationFor(filename),[major,minor]=integration.pluginVersion.split('.').map(Number);if(!integration.ready||!(major>0||major===0&&minor>=20))throw new Error('Windows Obsidian Color Sprint 0.20.0+ is required.');
+  if(JSON.stringify(parseBoard(p.base).exerciseTargets)!==JSON.stringify(parseBoard(p.proposed).exerciseTargets)&&!(major>0||major===0&&minor>=21))throw new Error('Exercise target proposals require Windows Obsidian Color Sprint 0.21.0+.');
   const current=await readFile(filename,'utf8'),expected=automaticPlan(p.base,current,p.proposed,plannerDay()),sha256=createHash('sha256').update(raw).digest('hex');
   await bridge.send(current,{kind:'plan-apply',details:JSON.stringify({id,sha256})},integration);
   if(await readFile(filename,'utf8')!==expected.text)throw new Error('Planner result changed before read-back; inspect before retrying.');

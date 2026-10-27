@@ -1,5 +1,7 @@
 # Color Sprint update workflow
 
+Exercise/category UI 0.21.0 uses scripts/publish-exercises-release.mjs with exact verified plugin/HUD ZIPs. EXERCISES.md documents editable targets, actual sets and semantic category accents. No personal tracker migration or performance logging is part of deployment.
+
 Data-only daily planning does not require a code release or app restart. With explicit owner authorization and a configured Windows policy, use the signed route in TRUSTED-PLANNING.md after creating a fresh proposal. Keep all actual progress even in mornings; never replace a stale whole tracker. Code updates still follow the three-target verification and safe-activation workflow below.
 
 This chat is the working brief for requested changes. The repository, commit IDs,

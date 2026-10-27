@@ -18,6 +18,8 @@ export interface SubtaskGoal {subtaskId:string;target:number;unit:string;points:
 export interface StepCount {id:string;date:string;subtaskId:string;amount:number;unit:string}
 export interface DailyDefault {taskId:string;since:string;until:string;enabled:boolean}
 export interface TaskType {taskId:string;type:string}
+export interface ExerciseTarget {taskId:string;since:string;sets:number|null;reps:number|null;weight:string}
+export interface ExerciseSet {id:string;date:string;taskId:string;set:number;reps:number;weight:string;note:string}
 export const validFinishLevel=(value:unknown):value is FinishLevel=>['light','solid','full'].includes(value as string);
 export interface Goal {id:string; due:string; page:string; title:string; evidence:string; done:boolean}
 export interface Session {id:string; date:string; taskId:string; seconds:number; note:string}
@@ -34,7 +36,7 @@ export interface FocusTarget {date:string;taskId:string;minutes:number}
 export interface TaskMove {id:string;taskId:string;origin:string;from:string;to:string;created:string}
 export interface Obligation {task:Task;origin:string;date:string;dates:string[];detail:string;done:boolean}
 export interface EffortProfile {id:string;scope:'task'|'page'|'kind';match:string;friction:number|null;attention:number|null;physical:number|null;emotional:number|null;uncertainty:number|null;points:number|null;status:'confirmed'|'proposed';reviewed:string;notes:string}
-export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; effortProfiles:EffortProfile[]; completionRatings:CompletionRating[]; finishMultipliers:FinishMultiplier[]; scoringRules:ScoringRule[]; metricGoals:MetricGoal[]; subtaskGoals:SubtaskGoal[]; stepCounts:StepCount[]; dailyDefaults:DailyDefault[]; taskTypes:TaskType[]; start:string; end:string}
+export interface Board {tasks:Task[]; entries:Entry[]; goals:Goal[]; sessions:Session[]; timer:Timer|null; workoutLogs:WorkoutLog[]; quickCounts:QuickCount[]; reflections:string[]; subtasks:Subtask[]; timeBlocks:TimeBlock[]; availability:Availability[]; focusTargets:FocusTarget[]; queueItems:QueueItem[]; taskMoves:TaskMove[]; effortProfiles:EffortProfile[]; completionRatings:CompletionRating[]; finishMultipliers:FinishMultiplier[]; scoringRules:ScoringRule[]; metricGoals:MetricGoal[]; subtaskGoals:SubtaskGoal[]; stepCounts:StepCount[]; dailyDefaults:DailyDefault[]; taskTypes:TaskType[]; exerciseTargets:ExerciseTarget[]; exerciseSets:ExerciseSet[]; start:string; end:string}
 export const TASK_HEADER='| ID | Task | Color | Page | Kind | Repeat | Timer minutes | Done means |';
 export const SESSION_HEADER='| Session ID | Date | Task ID | Seconds | Note |';
 export const TIMER_HEADER='| Session ID | Task ID | Date | Started ISO | Elapsed seconds | Target seconds | Queue cursor | Step offset seconds |';
@@ -58,7 +60,9 @@ export const SUBTASK_GOAL_HEADER='| Subtask ID | Target | Unit | Points | Since 
 export const STEP_COUNT_HEADER='| ID | Date | Subtask ID | Amount | Unit |';
 export const DAILY_DEFAULT_HEADER='| Task ID | Since | Until or - | Enabled |';
 export const TASK_TYPE_HEADER='| Task ID | Type |';
-const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves','Effort Profile','Completion Ratings','Finish Multipliers','Scoring Rules','Metric Goals','Subtask Goals','Step Counts','Daily Defaults','Task Types'];
+export const EXERCISE_TARGET_HEADER='| Task ID | Since | Sets | Reps | Weight |';
+export const EXERCISE_SET_HEADER='| ID | Date | Task ID | Set | Reps | Weight | Note |';
+const SECTIONS=['Tasks','Schedule','Goals','Sessions','Timer'];const OPTIONAL_SECTIONS=['Reflections','Workout Log','Quick Counts','Subtasks','Time Blocks','Availability','Focus Targets','Focus Queue','Task Moves','Effort Profile','Completion Ratings','Finish Multipliers','Scoring Rules','Metric Goals','Subtask Goals','Step Counts','Daily Defaults','Task Types','Exercise Targets','Exercise Sets'];
 export function localDay(date=new Date()):string {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
 export function addDays(day:string,n:number):string {const d=new Date(`${day}T12:00:00`);d.setDate(d.getDate()+n);return localDay(d);}
 export function validDay(day:string):boolean {return /^\d{4}-\d{2}-\d{2}$/.test(day)&&localDay(new Date(`${day}T12:00:00`))===day;}
@@ -145,7 +149,11 @@ export function parseBoard(text:string):Board {
   if(dailyDefaults.some(r=>!taskIds.has(r.taskId)||!validDay(r.since)||(r.until!=='-'&&(!validDay(r.until)||r.until<r.since)))||new Set(dailyDefaults.map(r=>r.taskId)).size!==dailyDefaults.length)throw new Error('Daily Defaults need one known task and valid start/end dates.');
   const taskTypes=optional('Task Types',TASK_TYPE_HEADER).map(p=>({taskId:p[0],type:p[1]}));
   if(taskTypes.some(r=>!taskIds.has(r.taskId)||!r.type||r.type.length>60)||new Set(taskTypes.map(r=>r.taskId)).size!==taskTypes.length)throw new Error('Task Types need one known task and a short type label.');
-  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,effortProfiles,completionRatings,finishMultipliers,scoringRules,metricGoals,subtaskGoals,stepCounts,dailyDefaults,taskTypes,start,end};
+  const exerciseTargets=optional('Exercise Targets',EXERCISE_TARGET_HEADER).map(p=>({taskId:p[0],since:p[1],sets:p[2]==='-'?null:integer(p[2]),reps:p[3]==='-'?null:integer(p[3]),weight:p[4]==='-'?'':p[4]}));
+  if(exerciseTargets.some(r=>!taskIds.has(r.taskId)||!validDay(r.since)||(r.sets!==null&&(r.sets<1||r.sets>50))||(r.reps!==null&&(r.reps<1||r.reps>1000))||r.weight.length>80)||new Set(exerciseTargets.map(r=>r.taskId+'/'+r.since)).size!==exerciseTargets.length)throw new Error('Exercise Targets need a known task, unique date, optional sets 1–50, reps 1–1000 and a short weight.');
+  const exerciseSets=optional('Exercise Sets',EXERCISE_SET_HEADER).map(p=>({id:p[0],date:p[1],taskId:p[2],set:integer(p[3]),reps:integer(p[4]),weight:p[5]==='-'?'':p[5],note:p[6]==='-'?'':p[6]}));unique(exerciseSets.map(r=>r.id),'exercise set');
+  if(exerciseSets.some(r=>!taskIds.has(r.taskId)||!validDay(r.date)||r.set<1||r.set>50||r.reps>1000||r.weight.length>80||r.note.length>500)||new Set(exerciseSets.map(r=>r.taskId+'/'+r.date+'/'+r.set)).size!==exerciseSets.length)throw new Error('Exercise Sets need a known task/date, unique set number 1–50, actual reps 0–1000 and short weight/note.');
+  return {tasks,entries,goals,sessions,timer,workoutLogs,quickCounts,reflections,subtasks,timeBlocks,availability,focusTargets,queueItems,taskMoves,effortProfiles,completionRatings,finishMultipliers,scoringRules,metricGoals,subtaskGoals,stepCounts,dailyDefaults,taskTypes,exerciseTargets,exerciseSets,start,end};
 }
 export function validTime(value:string):boolean{return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);}
 function validTimezone(value:string):boolean{try{new Intl.DateTimeFormat('en',{timeZone:value});return true;}catch{return false;}}

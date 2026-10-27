@@ -18,9 +18,9 @@ export function automaticPlan(base:string,current:string,proposed:string,day:str
   for(const key of ['availability','finishMultipliers','effortProfiles'] as const)if(!same(b[key],p[key]))throw new Error(`${key} changes require review.`);
   for(const task of b.tasks){const next=p.tasks.find(t=>t.id===task.id);if(!next||next.title!==task.title||next.color!==task.color)throw new Error('Task removal, renaming or source recoloring requires review.');}
   for(const key of ['entries','timeBlocks','focusTargets'] as const)for(const row of p[key]){const old=b[key].find(r=>r.taskId===row.taskId&&r.date===row.date);if(!same(old,row)&&row.date<day)throw new Error('Historical schedule changes require review.');}
-  for(const key of ['scoringRules','metricGoals','subtaskGoals','dailyDefaults'] as const)for(const row of p[key])if(row.since<day&&!b[key].some(r=>same(r,row)))throw new Error('Backdated rule changes require review.');
+  for(const key of ['scoringRules','metricGoals','subtaskGoals','dailyDefaults','exerciseTargets'] as const)for(const row of p[key])if(row.since<day&&!b[key].some(r=>same(r,row)))throw new Error('Backdated rule changes require review.');
   const after=parseBoard(result.text);
-  for(const key of ['timer','sessions','workoutLogs','quickCounts','stepCounts','queueItems','taskMoves','completionRatings'] as const)if(!same(c[key],after[key]))throw new Error('Actual progress cannot be overwritten.');
+  for(const key of ['timer','sessions','workoutLogs','quickCounts','stepCounts','queueItems','taskMoves','completionRatings','exerciseSets'] as const)if(!same(c[key],after[key]))throw new Error('Actual progress cannot be overwritten.');
   for(const row of c.entries)if(after.entries.find(r=>r.date===row.date&&r.taskId===row.taskId)?.done!==row.done)throw new Error('Checkbox change rejected.');
   for(const row of c.subtasks){const next=after.subtasks.find(r=>r.id===row.id);if(!next||next.done!==row.done||next.completed!==row.completed)throw new Error('Step progress change rejected.');}
   for(const row of c.goals){const next=after.goals.find(r=>r.id===row.id);if(!next||next.done!==row.done||next.evidence!==row.evidence)throw new Error('Goal evidence change rejected.');}
