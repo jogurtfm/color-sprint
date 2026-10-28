@@ -1,5 +1,9 @@
 # Color Sprint update workflow
 
+Mobile cinematic HUD skin 0.21.2 uses scripts/publish-mobile-hud-release.mjs.
+It adds a reversible mobile appearance setting, etched frames and an actual
+countdown dial, with no planning/progress migration. See MOBILE-POLISH.md.
+
 Mobile Pocket HUD polish 0.21.1 uses scripts/publish-mobile-polish-release.mjs.
 MOBILE-POLISH.md describes the presentation-only changes. Preserve pending local
 activation when the user chooses to leave their PC apps running; publishing for
