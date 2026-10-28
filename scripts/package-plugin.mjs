@@ -16,6 +16,7 @@ await copyFile(path.join(root,'RATED-FINISH.md'),path.join(folder,'RATED-FINISH.
 await copyFile(path.join(root,'PROGRESS.md'),path.join(folder,'PROGRESS.md'));
 await copyFile(path.join(root,'TRUSTED-PLANNING.md'),path.join(folder,'TRUSTED-PLANNING.md'));
 await copyFile(path.join(root,'EXERCISES.md'),path.join(folder,'EXERCISES.md'));
+await copyFile(path.join(root,'MOBILE-POLISH.md'),path.join(folder,'MOBILE-POLISH.md'));
 await copyFile(path.join(root,'ARCADE.md'),path.join(folder,'ARCADE.md'));
 await copyFile(path.join(root,'HUD-BRIDGE.md'),path.join(folder,'HUD-BRIDGE.md'));
 await copyFile(path.join(root,'MODULES.md'),path.join(folder,'MODULES.md'));
