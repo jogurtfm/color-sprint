@@ -23,10 +23,10 @@ const {JSDOM}=require('jsdom');
 const settle=(ms=20)=>new Promise(resolve=>setTimeout(resolve,ms));
 
 test('mobile HUD style loads and saves as appearance only while retaining sound, motion and tracker data',async()=>{
-  const base=setEntry(starter(),localDay(),'make-bed',true),h=await harness(base,{}, {mobile:true,savedData:{feedback:{sound:false,motion:false,haptics:true,hudStyle:false}}});
+  const base=setEntry(starter(),localDay(),'make-bed',true),h=await harness(base,{}, {mobile:true,savedData:{feedback:{sound:false,motion:false,haptics:true,hudStyle:false,ambient:false}}});
   try{assert.equal(h.document.querySelector('.cs-root').dataset.csSkin,'clean');h.button('Effects').click();await settle();
-    const toggle=h.document.querySelector('[aria-label="HUD styling"]');assert.equal(toggle.checked,false);toggle.checked=true;toggle.dispatchEvent(new h.dom.window.Event('change',{bubbles:true}));await settle();
-    assert.equal(h.document.querySelector('.cs-root').dataset.csSkin,'hud');assert.equal((h.savedData as any).feedback.hudStyle,true);assert.equal((h.savedData as any).feedback.sound,false);assert.equal((h.savedData as any).feedback.motion,false);assert.equal(h.text,base);assert.equal(h.writes,0);
+    assert.equal(h.document.querySelector('[aria-label="Ambient lines & 3D"]').checked,false);const toggle=h.document.querySelector('[aria-label="HUD styling"]');assert.equal(toggle.checked,false);toggle.checked=true;toggle.dispatchEvent(new h.dom.window.Event('change',{bubbles:true}));await settle();
+    assert.equal(h.document.querySelector('.cs-root').dataset.csSkin,'hud');assert.equal((h.savedData as any).feedback.hudStyle,true);assert.equal((h.savedData as any).feedback.sound,false);assert.equal((h.savedData as any).feedback.motion,false);assert.equal((h.savedData as any).feedback.ambient,false);assert.equal(h.document.querySelector('.cs-root').dataset.csAmbient,'off');assert.equal(h.text,base);assert.equal(h.writes,0);
   }finally{await h.close();}
 });
 

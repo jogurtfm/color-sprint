@@ -1,0 +1,48 @@
+// Isolated browser-local demo only; no personal vault, microphone or user profile.
+import assert from 'node:assert/strict';import {chromium} from 'playwright';
+process.env.COLOR_SPRINT_PREVIEW_PORT='0';const {server}=await import('./preview.mjs');
+await new Promise(r=>server.listening?r():server.once('listening',r));let browser;
+try{
+  browser=await chromium.launch({headless:true,channel:'msedge'});const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);
+  await page.addStyleTag({content:'#app{height:calc(100dvh - 31px);min-height:0}'});
+  await page.locator('.cs-mobile-cube').waitFor();
+  assert.equal(await page.locator('.cs-cube-face').count(),6);
+  await page.waitForFunction(()=>document.querySelector('.cs-mobile-cube-port')?.getAttribute('data-cs-in-view')==='yes');
+  await page.waitForFunction(()=>Number(document.querySelector('.cs-mobile-cube')?.getAnimations()[0]?.currentTime)>0);
+  assert(await page.locator('.cs-mobile-cube').evaluate(async el=>{const before=getComputedStyle(el).transform;await new Promise(r=>setTimeout(r,150));return before!==getComputedStyle(el).transform;}));
+  assert.equal(await page.locator('.cs-route-packets').first().evaluate(el=>getComputedStyle(el).animationName),'cs-route-flow');
+  assert(await page.locator('.cs-mobile-decor').evaluateAll(els=>els.every(e=>e.getAttribute('aria-hidden')==='true'&&getComputedStyle(e).pointerEvents==='none')));
+  const offscreen=page.locator('.cs-card .cs-mobile-routing').nth(2);
+  await page.waitForFunction(()=>document.querySelectorAll('.cs-card .cs-mobile-routing')[2]?.getAttribute('data-cs-in-view')==='no');
+  assert.equal(await offscreen.locator('.cs-route-packets').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
+  await offscreen.locator('..').scrollIntoViewIfNeeded();
+  await page.waitForFunction(()=>document.querySelectorAll('.cs-card .cs-mobile-routing')[2]?.getAttribute('data-cs-in-view')==='yes');
+  assert.equal(await offscreen.locator('.cs-route-packets').evaluate(el=>getComputedStyle(el).animationPlayState),'running');
+  await page.evaluate(()=>document.querySelector('.cs-root').dataset.csVisible='no');
+  assert.equal(await offscreen.locator('.cs-route-packets').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  const before=await page.evaluate(()=>window.colorSprintPreview.getMarkdown());
+  await page.locator('.cs-mobile-tools').getByRole('button',{name:'Effects',exact:true}).click();await page.getByLabel('Ambient lines & 3D',{exact:true}).uncheck();
+  assert.equal(await page.locator('.cs-mobile-decor').count(),0);assert.equal(await page.evaluate(()=>window.colorSprintPreview.getMarkdown()),before);
+  await page.reload();await page.locator('.cs-card').first().waitFor();assert.equal(await page.locator('.cs-mobile-decor').count(),0);
+  await page.addStyleTag({content:'#app{height:calc(100dvh - 31px);min-height:0}'});
+  await page.locator('.cs-mobile-tools').getByRole('button',{name:'Effects',exact:true}).click();await page.getByLabel('Ambient lines & 3D',{exact:true}).check();await page.getByRole('button',{name:'Close effects',exact:true}).click();
+  await page.setViewportSize({width:900,height:844});await page.waitForFunction(()=>!document.querySelector('.cs-mobile-decor'));
+  await page.setViewportSize({width:390,height:844});await page.locator('.cs-mobile-cube').waitFor();
+  assert(await page.locator('.cs-mobile-decor').count()<=5);
+  const task=page.locator('.cs-card').filter({has:page.getByRole('heading',{name:'Clean Room',exact:true})});await task.getByRole('button',{name:'Start focus for Clean Room',exact:true}).click();
+  await page.locator('.cs-mobile-core').waitFor();assert.equal(await page.locator('.cs-core-ring').count(),3);
+  assert.equal(await page.locator('.cs-mobile-gimbal').evaluate(el=>getComputedStyle(el).transformStyle),'preserve-3d');
+  await page.getByRole('button',{name:'Pause',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.cs-root').dataset.csFocusPaused==='yes');
+  assert.equal(await page.locator('.cs-mobile-gimbal').evaluate(el=>getComputedStyle(el).animationPlayState),'paused');
+  const time=await page.locator('.cs-time-readout').textContent();await page.waitForTimeout(1200);assert.equal(await page.locator('.cs-time-readout').textContent(),time);assert.equal(await page.locator('.cs-core-ring').count(),3);
+  await page.getByRole('button',{name:'Resume',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.cs-mobile-core')?.getAttribute('data-cs-in-view')==='yes');
+  assert.equal(await page.locator('.cs-mobile-gimbal').evaluate(el=>getComputedStyle(el).animationPlayState),'running');
+  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.cs-mobile-gimbal').evaluate(el=>getComputedStyle(el).animationName),'none');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  assert(await page.locator('.cs-focus-card>.cs-mobile-routing').evaluate(el=>Math.abs(el.viewBox.baseVal.height-(el.parentElement.clientHeight-4))<1));
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.locator('.cs-tabs').waitFor();
+  assert.equal(await page.getByLabel('Complete Clean Room',{exact:true}).isChecked(),false);assert.deepEqual(errors,[]);
+  console.log('PASS: bounded animated SVG routes and six-face CSS 3D, offscreen/visibility pause styles, preference persistence with no tracker changes, desktop removal, paused/resumed core, reduced motion, resize-safe frames, working controls, and no false completion.');
+}finally{await browser?.close();await new Promise(r=>server.close(r));}

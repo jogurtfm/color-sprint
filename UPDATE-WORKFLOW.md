@@ -1,5 +1,9 @@
 # Color Sprint update workflow
 
+Mobile animated routing and CSS 3D instruments 0.22.0 use
+scripts/publish-mobile-visuals-release.mjs. MOBILE-POLISH.md documents lifecycle,
+animation limits and the independent ambient toggle. No planning data migration.
+
 Mobile cinematic HUD skin 0.21.2 uses scripts/publish-mobile-hud-release.mjs.
 It adds a reversible mobile appearance setting, etched frames and an actual
 countdown dial, with no planning/progress migration. See MOBILE-POLISH.md.

@@ -13,7 +13,7 @@ try {
   await page.locator('.cs-card').first().waitFor();
   assert.equal(await page.locator('.cs-root').getAttribute('data-cs-skin'),'hud');
   await page.addStyleTag({content:'#app{height:calc(100dvh - 31px);min-height:0}'});
-  const settle=()=>page.evaluate(async()=>{await Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})));document.querySelector('.cs-root').scrollTop=0;});
+  const settle=()=>page.evaluate(async()=>{await Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));document.querySelector('.cs-root').scrollTop=0;});
   // Filter chrome and cards must remain reachable, not spill the document horizontally.
   for(const width of [320,375,390,430,600]){
     await page.setViewportSize({width,height:844});

@@ -1,5 +1,5 @@
-export interface FeedbackSettings {sound:boolean;haptics:boolean;motion:boolean;hudStyle?:boolean}
-export const DEFAULT_FEEDBACK:FeedbackSettings={sound:true,haptics:true,motion:true,hudStyle:true};
+export interface FeedbackSettings {sound:boolean;haptics:boolean;motion:boolean;hudStyle?:boolean;ambient?:boolean}
+export const DEFAULT_FEEDBACK:FeedbackSettings={sound:true,haptics:true,motion:true,hudStyle:true,ambient:true};
 type FeedbackKind='complete'|'increment'|'saved'|'timer';
 
 export class Feedback {
