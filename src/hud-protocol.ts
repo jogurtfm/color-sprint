@@ -6,6 +6,8 @@ import {validateReview} from './modules/markdown';
 import {activeModuleFocus} from './modules/contracts';
 import {plannerAction} from './planner';
 import {saveExercise,logExerciseSet} from './exercises';
+import {reviewSubtaskEdit,startSubtaskTimer} from './subtasks';
+import {addRoadmap} from './roadmaps';
 import {enqueueTask,editQueue,startQuickQueue,advanceQuickQueue,skipQuickQueue,claimQuickQueue,setGoal,setSubtaskDone,addWorkoutLog,moveTask,finishObligation,reviewEffortProfile} from './model';
 
 export type HudAction={kind:string;taskId?:string;date?:string;done?:boolean;timerId?:string;stepId?:string;cursor?:number;itemId?:string;operation?:string;minutes?:number;goalId?:string;evidence?:string;distance?:number;details?:string;note?:string;toDate?:string};
@@ -13,6 +15,8 @@ const ACTION_FIELDS=['kind','taskId','date','done','timerId','stepId','cursor','
 export function applyHudAction(text:string,action:HudAction,now=Date.now(),runner='standalone'):string {
   const b=parseBoard(text);if(!action||typeof action.kind!=='string')throw new Error('Invalid task action.');
   if(Object.keys(action).some(key=>!ACTION_FIELDS.includes(key)))throw new Error('Unsupported action field.');
+  if(action.kind==='subtask-edit'){if(typeof action.details!=='string'||action.details.length>12000||Object.keys(action).some(k=>!['kind','details'].includes(k)))throw new Error('Invalid step action.');return reviewSubtaskEdit(text,JSON.parse(action.details));}
+  if(action.kind==='roadmap-add'){if(!b.tasks.some(t=>t.id===action.taskId)||!validDay(action.date||''))throw new Error('Choose a task and date.');return addRoadmap(text,action.taskId!,b.entries.find(e=>e.taskId===action.taskId&&e.date===action.date)?.detail||'-');}
   if(action.kind==='exercise-edit'||action.kind==='exercise-set'){if(typeof action.details!=='string'||action.details.length>12000||Object.keys(action).some(k=>!['kind','details'].includes(k)))throw new Error('Invalid exercise action.');return action.kind==='exercise-edit'?saveExercise(text,JSON.parse(action.details)):logExerciseSet(text,JSON.parse(action.details));}
   if(action.kind==='plan-apply'){if(typeof action.details!=='string'||action.details.length>512||Object.keys(action).some(k=>!['kind','details'].includes(k)))throw new Error('Invalid planner action.');plannerAction(JSON.parse(action.details));return text;}
   if(action.kind==='planning-setting'||action.kind==='suggest-time'){if(typeof action.details!=='string'||action.details.length>16000)throw new Error('Invalid planning setting.');return action.kind==='suggest-time'?reviewSuggestedTime(text,JSON.parse(action.details)):reviewPlanningSettings(text,JSON.parse(action.details));}
@@ -33,7 +37,7 @@ export function applyHudAction(text:string,action:HudAction,now=Date.now(),runne
   if(!['complete','start','schedule','pause','resume','reset','cancel','finish','next'].includes(action.kind))throw new Error('Unsupported action.');
   if(['complete','start','schedule'].includes(action.kind)){
     if(typeof action.taskId!=='string'||!b.tasks.some(t=>t.id===action.taskId)||typeof action.date!=='string'||!validDay(action.date))throw new Error('Unknown task or invalid date.');
-    if(action.kind==='start')return startTimer(text,action.taskId,action.date,now);
+    if(action.kind==='start')return action.stepId?startSubtaskTimer(text,action.taskId,action.stepId,action.date,now):startTimer(text,action.taskId,action.date,now);
     if(action.kind==='complete'&&typeof action.done!=='boolean')throw new Error('Completion must be explicit.');
     if(action.kind==='schedule'&&b.entries.some(e=>e.taskId===action.taskId&&e.date===action.date))return text;
     return action.kind==='complete'?setTaskCompletion(text,action.date,action.taskId,action.done!):setEntry(text,action.date,action.taskId,false);

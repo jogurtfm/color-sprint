@@ -1,13 +1,16 @@
 // Device-local presentation only: no tracker writes, timers or score changes.
+import {captureChecklistInteraction} from './checklist-interaction';
 export function prepareSurfacePaint(root:HTMLElement, view:string, previous:string, motion:boolean):()=>void {
   const rails=['.cs-tabs','.cs-pages','.cs-categories'];
   const positions=rails.map(selector=>root.querySelector<HTMLElement>(selector)?.scrollLeft||0);
   const open=new Set(Array.from(root.querySelectorAll<HTMLDetailsElement>('details[data-cs-disclosure][open]')).map(el=>el.dataset.csDisclosure));
   const checks=new Map(Array.from(root.querySelectorAll<HTMLElement>('.cs-card[data-cs-task]')).map(el=>[el.dataset.csTask,el.classList.contains('is-done')]));
   const changed=view!==previous;
+  const restoreChecklist=captureChecklistInteraction(root);
   root.dataset.csMotion=motion?'on':'off';
   root.classList.toggle('cs-view-arrival',changed);
   return ()=>{
+    if(!changed)restoreChecklist();
     if(changed)root.scrollTop=0;
     if(!changed)root.querySelectorAll<HTMLDetailsElement>('details[data-cs-disclosure]').forEach(el=>{el.open=open.has(el.dataset.csDisclosure);});
     rails.forEach((selector,index)=>{

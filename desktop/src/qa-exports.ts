@@ -1,6 +1,7 @@
 export * from '../../src/model';
 export * from '../../src/exercises';
 export * from '../../src/categories';
+export * from '../../src/subtasks';
 export {starter} from '../../src/starter';
 export * from './core';
 export * from './settings';

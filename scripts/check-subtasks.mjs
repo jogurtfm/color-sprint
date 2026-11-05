@@ -1,0 +1,48 @@
+// Synthetic previews only. Never reads or writes the user's vault or native app profile.
+import {chromium} from 'playwright';
+import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
+import {mkdir,writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const repo=process.cwd(),m=createRequire(import.meta.url)('../desktop/test-results/fixtures.cjs'),day='2026-11-05';
+const children=[];let browser;
+const boot=(script,cwd,env)=>{const child=spawn(process.execPath,[script],{cwd,env:{...process.env,...env},stdio:'pipe',windowsHide:true});children.push(child);child.stderr.on('data',x=>process.stderr.write(x));};
+const wait=async url=>{for(let i=0;i<100;i++){try{if((await fetch(url)).ok)return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error('Preview failed: '+url);};
+let text=m.setEntry(m.starter(day),day,'clean-room',false);
+const titles=['Pick one zone','Gather clothes','Choose what leaves','Bag outgoing clothes','Clear bed and floor path','Put keepers into storage'];
+for(let i=0;i<titles.length;i++)text=m.saveSubtask(text,{id:'room-'+i,taskId:'clean-room',context:'-',minutes:i===1?0:5,title:titles[i],definition:'Leave one usable space. Stop when this action is done.',done:false,completed:'-'});
+await mkdir('test-results/checklists',{recursive:true});
+try{
+  boot('scripts/preview.mjs',repo,{COLOR_SPRINT_PREVIEW_PORT:'8777'});boot('preview.mjs',path.join(repo,'desktop'),{COLOR_SPRINT_HUD_PREVIEW_PORT:'8789'});
+  await Promise.all([wait('http://127.0.0.1:8777'),wait('http://127.0.0.1:8789')]);
+  browser=await chromium.launch({channel:'msedge',headless:true});
+  const phone=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true});const errors=[];phone.on('pageerror',e=>errors.push(e.message));
+  await phone.goto('http://127.0.0.1:8777/?date='+day+'&view=pages&page=Room');await phone.waitForFunction(()=>window.colorSprintPreview);await phone.evaluate(t=>window.colorSprintPreview.setMarkdown(t),text);
+  const list=phone.locator('[data-checklist-task="clean-room"]');assert.equal(await list.locator('[type=checkbox]').count(),6);
+  await list.getByRole('checkbox',{name:'Complete step: Gather clothes',exact:true}).check();await phone.waitForFunction(()=>window.colorSprintPreview.getMarkdown().includes('- [x] room-1'));
+  assert.equal(await list.locator('[type=checkbox]').count(),6);assert(await list.getByRole('checkbox',{name:'Complete step: Gather clothes',exact:true}).isChecked());
+  assert.equal(await list.getByRole('progressbar').getAttribute('aria-valuenow'),'1');
+  await list.getByRole('button',{name:'+ Add step',exact:true}).click();await list.getByRole('textbox',{name:'Step',exact:true}).fill('Shoes into storage');
+  await phone.evaluate(()=>window.colorSprintPreview.setMarkdown(window.colorSprintPreview.getMarkdown()));
+  assert.equal(await list.getByRole('textbox',{name:'Step',exact:true}).inputValue(),'Shoes into storage');assert(await list.getByRole('textbox',{name:'Step',exact:true}).evaluate(el=>el===document.activeElement));
+  await list.getByRole('button',{name:'Save step',exact:true}).click();await phone.waitForFunction(()=>window.colorSprintPreview.getMarkdown().includes('Shoes into storage'));
+  assert.equal(await list.locator('[type=checkbox]').count(),7);assert.equal(await list.locator('form.cs-step-editor').count(),0);
+  await list.getByRole('button',{name:'Start optional timer for Choose what leaves, 5 minutes',exact:true}).click();await phone.waitForSelector('.cs-focus-mode');assert.match(await phone.locator('.cs-focus-card').textContent(),/Choose what leaves/);
+  await phone.getByRole('button',{name:'Cancel',exact:true}).click();await phone.waitForSelector('[data-checklist-task="clean-room"]');assert.equal(await phone.locator('[data-checklist-task="clean-room"] [type=checkbox]:checked').count(),1);
+  await phone.locator('[data-checklist-task="clean-room"]').screenshot({path:'test-results/checklists/mobile.png'});
+  assert(await phone.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Phone layout must not overflow');
+  await phone.setViewportSize({width:320,height:720});assert(await phone.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Small phone layout must not overflow');
+  await phone.emulateMedia({reducedMotion:'reduce'});await phone.locator('[data-checklist-task="clean-room"]').screenshot({path:'test-results/checklists/mobile-small.png'});
+  const hud=await browser.newPage({viewport:{width:1600,height:1000}});hud.on('pageerror',e=>errors.push(e.message));
+  await writeFile('desktop/test-results/Browser Demo.md',text);await fetch('http://127.0.0.1:8789/date',{method:'POST',body:JSON.stringify({day})});await fetch('http://127.0.0.1:8789/settings',{method:'POST',body:JSON.stringify({patch:{editing:true}})});
+  await hud.goto('http://127.0.0.1:8789');const hl=hud.locator('[data-checklist-task="clean-room"]');await hl.waitFor();assert.equal(await hl.locator('[type=checkbox]').count(),6);
+  const scroll=hud.locator('.task-scroll');await hl.scrollIntoViewIfNeeded();const before=await scroll.evaluate(el=>el.scrollTop);
+  await hl.getByRole('checkbox',{name:'Complete step: Gather clothes',exact:true}).check();await hud.waitForFunction(()=>document.querySelector('[data-checklist-task="clean-room"] [role=progressbar]').getAttribute('aria-valuenow')==='1');assert.equal(await hl.locator('[type=checkbox]').count(),6);assert(Math.abs(await scroll.evaluate(el=>el.scrollTop)-before)<4,'HUD scroll should stay put after a check');
+  await hl.getByRole('button',{name:'+ Add step',exact:true}).click();await hl.getByRole('textbox',{name:'Step',exact:true}).fill('Shoes into storage');await hl.getByRole('button',{name:'Save step',exact:true}).click();await hud.waitForFunction(()=>document.querySelector('[data-checklist-task="clean-room"]').textContent.includes('Shoes into storage'));assert.equal(await hl.locator('form.cs-step-editor').count(),0);
+  await hl.getByRole('button',{name:'Start optional timer for Choose what leaves, 5 minutes',exact:true}).click();await hud.waitForFunction(()=>document.querySelector('.focus-name')?.textContent.includes('Choose what leaves'));
+  await hud.locator('[data-action="cancel"]').first().click();await hud.waitForFunction(()=>!!document.querySelector('[data-action="start"]'));await hud.emulateMedia({reducedMotion:'reduce'});await hl.scrollIntoViewIfNeeded();await hl.screenshot({path:'test-results/checklists/hud.png'});
+  await hud.locator('[data-workspace-tab="Pages"]').click();await hud.waitForSelector('.workspace-view');assert.equal(await hud.locator('[data-checklist-task="clean-room"] [type=checkbox]').count(),7);
+  await hud.locator('[data-checklist-task="clean-room"]').screenshot({path:'test-results/checklists/hud-pages.png'});
+  assert.deepEqual(errors,[]);console.log('Checklist browser checks passed: 390/320px mobile, HUD Today/Pages, check/save/timer/cancel, focus and scroll retention.');
+}finally{await browser?.close();for(const child of children)child.kill();}

@@ -1,5 +1,9 @@
 # Color Sprint update workflow
 
+Checklist-first subtasks 0.23.0 use scripts/publish-checklist-release.mjs with
+verified plugin/HUD archives. See SUBTASKS.md for optional timers, concurrent
+completion preservation and synthetic phone/HUD validation. No tracker migration.
+
 Mobile animated routing and CSS 3D instruments 0.22.0 use
 scripts/publish-mobile-visuals-release.mjs. MOBILE-POLISH.md documents lifecycle,
 animation limits and the independent ambient toggle. No planning data migration.
