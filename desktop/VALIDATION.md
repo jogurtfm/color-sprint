@@ -187,3 +187,20 @@ collapse, Pages and a stale-source banner. It checks stable grid/panel heights,
 actual dashboard width, centered focus and at least 160px of task scroll space.
 It never reads or writes a personal vault. Browser geometry verification is
 separate from a safe restart and native visual acceptance.
+# Expanding game task deck · HUD 0.23.2
+
+Available tasks automatically unfold the left panel into a wider, full-height
+task deck. Expand/Dock also controls it explicitly; docking retains the open
+catalog and local drafts. It is a screen-positioned portal with a shallow 3°
+perspective, so expanding it does not distort the cockpit's grid, right-hand
+panels or center timer. Focus controls stay clear of the expanded edge. Checklist
+text and card spacing enlarge with the deck; its own list scrolls as needed.
+The short opening transition respects reduced motion and does not replay on sync.
+
+`check-catalog-layout.mjs` now requires real expansion in height and width, at
+least 55% of screen height for list work, stable cockpit geometry at all four
+supported test sizes, and functioning manual docking/nested checklists. It checks
+that drafts and keyboard focus survive a real external fixture revision while
+the deck is open. DOM checks cover state through Today/Pages and progress stays
+unchanged by opening/docking. Synthetic previews remain separate from native
+activation. No plugin runtime, task, scoring or phone-data migration is included.

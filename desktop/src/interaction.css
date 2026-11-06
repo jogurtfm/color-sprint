@@ -75,3 +75,23 @@ body[data-mode="hud"] .workspace-tabs>button{flex-shrink:0}
   body[data-mode="hud"] .left-column{grid-template-rows:minmax(0,1fr) 140px}
   body[data-mode="hud"] .right-column{grid-template-rows:145px minmax(0,1fr) 116px}
 }
+
+/* The task bank unfolds into a full-height quest deck. The portal has its own
+   shallow perspective, so height no longer amplifies the cockpit's 11° tilt. */
+.task-deck-toggle{margin-left:8px;flex:none;min-height:30px;padding:5px 9px;font:10px Consolas,monospace;letter-spacing:.4px;border-color:#70e2f166;border-radius:7px;color:#abecf3;background:#0b2639}
+body[data-mode="hud"] .task-deck{position:fixed;z-index:5;left:var(--task-deck-left,38px);top:var(--task-deck-top,152px);bottom:18px;width:min(38vw,720px);max-width:calc(100vw - 40px);height:auto;min-height:0;transform:perspective(2400px) rotateY(3deg);transform-origin:left center;border-radius:24px;background:linear-gradient(145deg,#0a2237f7,#081428f5);box-shadow:inset 0 1px 0 #c0f5ff44,inset 0 0 50px #4dbed811,0 18px 45px #0008,0 0 28px #53cde522}
+body[data-mode="hud"] .task-deck.task-deck-arriving{animation:task-deck-arrive 180ms ease-out}
+body[data-mode="hud"] .task-deck>.panel-title{color:#baf7fa;letter-spacing:2px;min-height:36px;border-bottom:1px solid #83e6ee33;padding-bottom:8px}
+body[data-mode="hud"] .task-deck .task-scroll{margin-top:4px;transform:none;scrollbar-color:#6cb5c5 #08121b}
+body[data-mode="hud"] .task-deck .task-row{padding:11px 9px;gap:12px}
+body[data-mode="hud"] .task-deck .task-select strong{font-size:15px}
+body[data-mode="hud"] .task-deck .task-select small{font-size:10px;line-height:1.6}
+body[data-mode="hud"] .task-deck .cs-step-title{font-size:15px;font-weight:400}
+body[data-mode="hud"] .task-deck .cs-step-checklist{margin-top:14px;padding:15px}
+body[data-mode="hud"] .task-deck .cs-exercise-add{gap:8px}
+body[data-mode="hud"] .task-deck .catalog summary{font-size:10px;min-height:44px;display:block}
+.task-deck-open .viewport-focus .focus-controls{left:max(0px,calc(var(--task-deck-left,38px) + min(38vw,720px) + 14px - (100vw - var(--focus-width))/2))!important}
+.task-deck-open .left-column>.activity-panel{opacity:.25;pointer-events:none}
+@keyframes task-deck-arrive{from{opacity:.75;translate:-12px 0}to{opacity:1;translate:0 0}}
+@media(max-width:1300px){body[data-mode="hud"] .task-deck{bottom:12px;border-radius:18px;padding:12px}body[data-mode="hud"] .task-deck .task-row{padding:9px 4px}body[data-mode="hud"] .task-deck .task-select strong,body[data-mode="hud"] .task-deck .cs-step-title{font-size:14px}}
+@media(prefers-reduced-motion:reduce){body[data-mode="hud"] .task-deck{animation:none}}

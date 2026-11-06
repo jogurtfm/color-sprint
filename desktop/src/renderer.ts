@@ -22,6 +22,7 @@ import {mountHudScore} from './score';
 import {effortFor} from '../../src/effort';
 import {mountFinishChoices} from '../../src/finish-ui';
 import {anchorFocus} from './focus-layout';
+import {TaskDeck} from './task-deck';
 import {Arcade} from '../../src/arcade';
 import {StudyWorkspace} from '../../src/modules/workspace';
 import {activeModuleFocus} from '../../src/modules/contracts';
@@ -34,6 +35,7 @@ import type {Settings} from './settings';
 interface State {source:Source;settings:Settings;day:string;selected:string;now:number;readOnly:boolean;notifyState:string;widgets:string[];version:string;hudVisible?:boolean;rimVisible?:Record<string,boolean>;syncMode?:string;editingLocked?:boolean;bridgeFingerprint?:string;launcher?:LauncherView}
 declare global {interface Window {hud:any}}
 const api=window.hud,root=document.getElementById('app')!,mode=new URLSearchParams(location.search).get('mode')||'hud';document.body.dataset.mode=mode;
+const taskDeck=new TaskDeck(root);
 let state:State,signature='',page='All',settingsOpen=false,busy=false,toastTimer:ReturnType<typeof setTimeout>,audio:AudioContext|null=null;
 let workspaceTab:WorkspaceTab='Today';
 let category:CategoryId|'all'='all',closeExercise:(()=>void)|null=null;
@@ -80,7 +82,7 @@ function render(){const restoreChecklist=captureChecklistInteraction(root);if(mo
     const dashboard=root.querySelector('.dashboard');if(dashboard)dashboard.outerHTML=workspaceView(workspaceTab,b,state.day,page,state.readOnly||!!state.source.error,category);
     root.querySelector('.lower-deck')?.remove();
   }
-  anchorFocus(root);mountStudy();bind();bindWorkspace();paint();restoreChecklist();if(settingsOpen)(document.getElementById('settings-dialog') as HTMLDialogElement)?.showModal();
+  anchorFocus(root);mountStudy();bind();bindWorkspace();paint();restoreChecklist();taskDeck.mount();if(settingsOpen)(document.getElementById('settings-dialog') as HTMLDialogElement)?.showModal();
 }
 const checklistStates=new Map<string,ChecklistState>();
 const effortEditor=newEffortEditorState();function bindWorkspace(){const board=state.source.board;if(board){categoryControls(board);const readout=root.querySelector<HTMLElement>('.wins-panel .wins-readout');if(readout)mountHudScore(readout,board,state.day,()=>{workspaceTab='Effort';render();});const editor=root.querySelector<HTMLElement>('[data-effort-editor]');if(editor)mountEffortEditor(editor,board,state.day,state.readOnly||!!state.source.error,async(profile,expected)=>{await act({kind:'effort-profile',details:JSON.stringify({profile,expected})});const current=state.source.board?.effortProfiles.find(p=>p.scope===profile.scope&&p.match===profile.match);if(JSON.stringify(current)!==JSON.stringify(profile))throw new Error('Effort profile was not saved. Check the connection and refresh.');},effortEditor,async value=>{await act({kind:'planning-setting',details:JSON.stringify(value)});for(const item of Array.isArray(value)?value:[value]){const b=state.source.board!,rows=item.kind==='scoring'?b.scoringRules:item.kind==='metric'?b.metricGoals:item.kind==='step-goal'?b.subtaskGoals:item.kind==='daily'?b.dailyDefaults:b.taskTypes;const row=rows.find(r=>item.kind==='scoring'?(r as any).id===(item.row as any).id:item.kind==='step-goal'?(r as any).subtaskId===(item.row as any).subtaskId&&(r as any).since===(item.row as any).since:(r as any).taskId===(item.row as any).taskId&&(item.kind!=='metric'||(r as any).since===(item.row as any).since));if(JSON.stringify(row)!==JSON.stringify(item.row))throw new Error('Setting not saved. Check the Obsidian connection.');}});}

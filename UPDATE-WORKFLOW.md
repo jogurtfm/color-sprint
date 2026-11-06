@@ -1,5 +1,10 @@
 # Color Sprint update workflow
 
+HUD 0.23.2 restores an expanding, full-height task deck with a wider working
+surface and independent shallow perspective. Use scripts/publish-hud-deck-release.mjs
+with --hud-only and a verified archive. This supersedes the compact-only 0.23.1
+layout; PC/mobile plugin and BRAT Latest remain 0.23.0. See desktop/VALIDATION.md.
+
 HUD 0.23.1 fixes Available task/checklist expansion stretching the cinematic
 dashboard. Use scripts/publish-hud-layout-release.mjs with --hud-only and the
 verified HUD archive. PC/mobile plugin and BRAT Latest remain 0.23.0; no plugin
