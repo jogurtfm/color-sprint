@@ -52,3 +52,26 @@ body[data-mode="hud"] .viewport-focus .core-readout{transform:none!important}
 @media(max-height:620px){body[data-mode="hud"] .viewport-focus{--focus-size:200px}body[data-mode="hud"] .viewport-focus .sector-caption{display:none}body[data-mode="hud"] .viewport-focus>.neural-panel{height:58px}}
 body[data-mode="hud"] .viewport-focus .ring-stage{transform-style:flat;isolation:isolate}
 body[data-mode="hud"] .viewport-focus .core-readout{z-index:3}
+
+/* A definite viewport height keeps expanded task/checklist content out of the
+   grid's intrinsic track sizing and the cinematic panels' perspective bounds. */
+body[data-mode="hud"]{height:100dvh;min-height:0;overflow:hidden}
+body[data-mode="hud"] #app{height:100%;min-width:0;min-height:0;overflow:clip}
+body[data-mode="hud"] .hud-shell{height:100dvh;min-height:0;grid-template-columns:minmax(0,1fr);grid-template-rows:62px 38px minmax(0,1fr) 125px 28px}
+body[data-mode="hud"] .hud-shell>*{min-width:0}
+body[data-mode="hud"] .lower-deck{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+body[data-mode="hud"].source-stale .hud-shell:not(.workspace-mode){grid-template-rows:62px 38px auto minmax(0,1fr) 125px 28px}
+body[data-mode="hud"] .dashboard,body[data-mode="hud"] .dashboard>*,body[data-mode="hud"] .left-column>.panel,body[data-mode="hud"] .right-column>.panel{min-width:0;min-height:0}
+body[data-mode="hud"] .left-column{grid-template-rows:minmax(0,1fr) 176px}
+body[data-mode="hud"] .right-column{grid-template-rows:190px minmax(0,1fr) 138px}
+body[data-mode="hud"] .queue-panel>.task-scroll{flex:1 1 0;min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable}
+body[data-mode="hud"] .queue-panel>:not(.task-scroll):not(.panel-circuit):not(.spatial-hull){flex-shrink:0}
+body[data-mode="hud"] .utility-bar>.location{flex:1;min-width:0;overflow:hidden}
+body[data-mode="hud"] .workspace-tabs{max-width:100%;overflow-x:auto;scrollbar-width:thin}
+body[data-mode="hud"] .workspace-tabs>button{flex-shrink:0}
+@media(max-height:820px){
+  body[data-mode="hud"] .hud-shell{grid-template-rows:52px 32px minmax(0,1fr) 110px 20px}
+  body[data-mode="hud"].source-stale .hud-shell:not(.workspace-mode){grid-template-rows:52px 32px auto minmax(0,1fr) 110px 20px}
+  body[data-mode="hud"] .left-column{grid-template-rows:minmax(0,1fr) 140px}
+  body[data-mode="hud"] .right-column{grid-template-rows:145px minmax(0,1fr) 116px}
+}

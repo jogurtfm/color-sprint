@@ -170,3 +170,20 @@ builds and public BRAT assets are not proof a running device loaded the update.
 - [ ] If desired, explicitly enable startup, then verify after the next Windows login.
 
 Security review: no remote renderer content, Node integration off, context isolation and Chromium sandbox on, restrictive CSP, denied renderer permission prompts, fixed trusted-frame IPC, escaped user strings, no runtime upload service. Revision checks and backups are not a distributed lock with Obsidian/cloud sync; avoid simultaneous cross-device edits. This is a source review, not a third-party security audit.
+# Available task layout regression · HUD 0.23.1
+
+The Today dashboard has a definite viewport-sized grid. Available cards and
+expanded checklists scroll inside the queue; filters scroll with the cards so
+the bank still has usable space at the minimum supported window size. Parent
+panel heights, perspective bounds, itinerary and the screen-centered focus
+instrument remain stable. Decorative overflow is clipped at the window edge.
+Workspace pages keep their independent scroll region. No task/progress/scoring
+data, Obsidian plugin runtime or mobile release changes in this HUD-only patch.
+
+`node check-catalog-layout.mjs` exercises the actual renderer with synthetic
+Markdown: 1920×1080, 1600×900, 1280×800 and 1040×720; outside-sprint empty days,
+mixed planned/available cards, nested checklist expansion, internal scrolling,
+collapse, Pages and a stale-source banner. It checks stable grid/panel heights,
+actual dashboard width, centered focus and at least 160px of task scroll space.
+It never reads or writes a personal vault. Browser geometry verification is
+separate from a safe restart and native visual acceptance.

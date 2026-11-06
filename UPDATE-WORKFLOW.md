@@ -1,5 +1,10 @@
 # Color Sprint update workflow
 
+HUD 0.23.1 fixes Available task/checklist expansion stretching the cinematic
+dashboard. Use scripts/publish-hud-layout-release.mjs with --hud-only and the
+verified HUD archive. PC/mobile plugin and BRAT Latest remain 0.23.0; no plugin
+replacement or tracker migration is needed. See desktop/VALIDATION.md.
+
 Checklist-first subtasks 0.23.0 use scripts/publish-checklist-release.mjs with
 verified plugin/HUD archives. See SUBTASKS.md for optional timers, concurrent
 completion preservation and synthetic phone/HUD validation. No tracker migration.
